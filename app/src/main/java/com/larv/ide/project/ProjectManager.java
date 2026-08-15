@@ -146,6 +146,28 @@ public class ProjectManager {
         });
     }
 
+    public void createFolder(String parentPath, String folderName, OnFileOperationCallback callback) {
+        executor.execute(() -> {
+            File parentDir = new File(parentPath);
+            if (!parentDir.exists() || !parentDir.isDirectory()) {
+                if (callback != null) callback.onError("Invalid parent directory");
+                return;
+            }
+
+            File newFolder = new File(parentDir, folderName);
+            if (newFolder.exists()) {
+                if (callback != null) callback.onError("Folder already exists");
+                return;
+            }
+
+            if (newFolder.mkdirs()) {
+                if (callback != null) callback.onSuccess(newFolder);
+            } else {
+                if (callback != null) callback.onError("Failed to create folder");
+            }
+        });
+    }
+
     public void deleteFile(File file, OnFileOperationCallback callback) {
         executor.execute(() -> {
             try {

@@ -2,20 +2,21 @@
     <style name="Theme.LarvIDE" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryVariant">@color/primary_dark</item>
-        <item name="colorOnPrimary">@color/text_primary</item>
+        <item name="colorOnPrimary">@color/text_on_primary</item>
         <item name="colorSecondary">@color/secondary</item>
         <item name="colorSecondaryVariant">@color/secondary</item>
-        <item name="colorOnSecondary">@color/text_primary</item>
+        <item name="colorOnSecondary">@color/text_on_primary</item>
         <item name="android:colorBackground">@color/background</item>
         <item name="colorSurface">@color/surface</item>
         <item name="colorOnSurface">@color/text_primary</item>
         <item name="colorError">@color/error</item>
-        <item name="colorOnError">@color/text_primary</item>
-        <item name="android:statusBarColor">@color/primary_dark</item>
+        <item name="colorOnError">@color/text_on_primary</item>
+        <item name="android:statusBarColor">@color/status_bar_background</item>
         <item name="android:navigationBarColor">@color/background</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
         <item name="android:fontFamily">monospace</item>
+        <item name="android:windowBackground">@color/background</item>
     </style>
 
     <style name="Theme.LarvIDE.NoActionBar" parent="Theme.LarvIDE">
@@ -29,18 +30,105 @@
         <item name="android:colorBackground">@color/surface</item>
     </style>
 
-    <style name="Widget.LarvIDE.TabLayout" parent="Widget.MaterialComponents.TabLayout">
+    <!-- Editor Tab Layout -->
+    <style name="Widget.LarvIDE.EditorTabLayout" parent="Widget.MaterialComponents.TabLayout">
         <item name="tabIndicatorColor">@color/primary</item>
-        <item name="tabSelectedTextColor">@color/primary</item>
-        <item name="tabTextColor">@color/text_secondary</item>
-        <item name="tabBackground">@color/tab_inactive</item>
         <item name="tabIndicatorHeight">2dp</item>
-        <item name="tabTextAppearance">@style/TextAppearance.LarvIDE.Tab</item>
+        <item name="tabSelectedTextColor">@color/tab_selected_text</item>
+        <item name="tabTextColor">@color/tab_unselected_text</item>
+        <item name="tabBackground">@drawable/editor_tab_background</item>
+        <item name="tabTextAppearance">@style/TextAppearance.LarvIDE.EditorTab</item>
+        <item name="tabMode">scrollable</item>
+        <item name="tabGravity">fill</item>
+        <item name="tabMinWidth">80dp</item>
+        <item name="tabMaxWidth">240dp</item>
     </style>
 
-    <style name="TextAppearance.LarvIDE.Tab" parent="TextAppearance.MaterialComponents.Button">
+    <style name="TextAppearance.LarvIDE.EditorTab" parent="TextAppearance.MaterialComponents.Button">
         <item name="android:textSize">12sp</item>
         <item name="android:textAllCaps">false</item>
         <item name="fontFamily">monospace</item>
+        <item name="android:fontWeight">400</item>
+    </style>
+
+    <!-- Bottom Tab Layout -->
+    <style name="Widget.LarvIDE.BottomTabLayout" parent="Widget.MaterialComponents.TabLayout">
+        <item name="tabIndicatorColor">@color/primary</item>
+        <item name="tabIndicatorHeight">2dp</item>
+        <item name="tabSelectedTextColor">@color/tab_selected_text</item>
+        <item name="tabTextColor">@color/tab_unselected_text</item>
+        <item name="tabBackground">@color/tab_bar_background</item>
+        <item name="tabTextAppearance">@style/TextAppearance.LarvIDE.BottomTab</item>
+        <item name="tabMode">scrollable</item>
+        <item name="tabGravity">fill</item>
+        <item name="tabMinWidth">72dp</item>
+        <item name="tabMaxWidth">160dp</item>
+    </style>
+
+    <style name="TextAppearance.LarvIDE.BottomTab" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="fontFamily">monospace</item>
+    </style>
+
+    <!-- Tool Window Tab Layout (Vertical) -->
+    <style name="Widget.LarvIDE.ToolWindowTabLayout" parent="Widget.MaterialComponents.TabLayout">
+        <item name="tabIndicator">@null</item>
+        <item name="tabSelectedTextColor">@color/text_primary</item>
+        <item name="tabTextColor">@color/text_secondary</item>
+        <item name="tabBackground">@drawable/tool_window_tab_background</item>
+        <item name="tabTextAppearance">@style/TextAppearance.LarvIDE.ToolWindowTab</item>
+        <item name="tabMode">fixed</item>
+        <item name="tabGravity">fill</item>
+    </style>
+
+    <style name="TextAppearance.LarvIDE.ToolWindowTab" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="fontFamily">monospace</item>
+    </style>
+
+    <!-- Toolbar Style -->
+    <style name="Widget.LarvIDE.Toolbar" parent="Widget.MaterialComponents.Toolbar.Primary">
+        <item name="android:background">@color/toolbar_background</item>
+        <item name="titleTextColor">@color/text_primary</item>
+        <item name="subtitleTextColor">@color/text_secondary</item>
+    </style>
+
+    <!-- Button Styles -->
+    <style name="Widget.LarvIDE.ToolbarButton" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:minWidth">28dp</item>
+        <item name="android:minHeight">28dp</item>
+        <item name="android:padding">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="iconTint">@color/text_secondary</item>
+        <item name="rippleColor">@color/hover</item>
+    </style>
+
+    <style name="Widget.LarvIDE.FabRun" parent="Widget.MaterialComponents.FloatingActionButton">
+        <item name="backgroundTint">@color/success</item>
+        <item name="tint">@color/text_on_primary</item>
+        <item name="rippleColor">@color/primary_light</item>
+    </style>
+
+    <!-- Card Styles -->
+    <style name="Widget.LarvIDE.Card" parent="Widget.MaterialComponents.CardView">
+        <item name="cardBackgroundColor">@color/surface</item>
+        <item name="cardCornerRadius">4dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeColor">@color/border</item>
+        <item name="strokeWidth">1dp</item>
+    </style>
+
+    <style name="Widget.LarvIDE.SidebarCard" parent="Widget.MaterialComponents.CardView">
+        <item name="cardBackgroundColor">@color/sidebar_background</item>
+        <item name="cardCornerRadius">0dp</item>
+        <item name="cardElevation">0dp</item>
+    </style>
+
+    <!-- Divider -->
+    <style name="Widget.LarvIDE.Divider" parent="">
+        <item name="android:background">@color/divider</item>
     </style>
 </resources>

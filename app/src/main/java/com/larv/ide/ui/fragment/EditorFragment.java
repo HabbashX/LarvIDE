@@ -121,6 +121,7 @@ public class EditorFragment extends Fragment {
         }
     }
 
+    @NonNull
     private String escapeForJs(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")

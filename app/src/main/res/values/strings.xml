@@ -7,13 +7,18 @@
     <string name="compile_code">Compile</string>
     <string name="save_file">Save</string>
     <string name="new_file">New File</string>
+    <string name="new_folder">New Folder</string>
     <string name="delete_file">Delete</string>
     <string name="rename_file">Rename</string>
     <string name="project_name_hint">Project name</string>
     <string name="file_name_hint">File name</string>
-    <string name="output_title">Output</string>
-    <string name="errors_title">Errors</string>
-    <string name="files_title">Files</string>
+    <string name="folder_name_hint">Folder name</string>
+    <string name="output_title">Run</string>
+    <string name="errors_title">Problems</string>
+    <string name="files_title">Project</string>
+    <string name="structure_title">Structure</string>
+    <string name="terminal_title">Terminal</string>
+    <string name="logcat_title">Logcat</string>
     <string name="no_project_selected">No project selected</string>
     <string name="create_first_project">Create your first project</string>
     <string name="compiling">Compiling\u2026</string>
@@ -24,5 +29,10 @@
     <string name="permission_storage_title">Storage Permission</string>
     <string name="permission_storage_message">Larv IDE needs access to your projects folder to read and write Java files.</string>
     <string name="select_project_folder">Select Projects Folder</string>
-    <string name="java_file_template">public class %s {\n    public static void main(String[] args) {\n        System.out.println(\"Hello from Larv IDE!\");\n    }\n}</string>
+    <string name="java_file_template">public class %s {\n    public static void main(String[] args) {\n        System.out.println("Hello from Larv IDE!");\n    }\n}</string>
+    <string name="collapse_all">Collapse All</string>
+    <string name="refresh">Refresh</string>
+    <string name="project">Project</string>
+    <string name="split_editor">Split Editor</string>
+    <string name="settings">Settings</string>
 </resources>

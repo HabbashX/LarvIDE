@@ -21,10 +21,74 @@
         app:showAsAction="ifRoom" />
 
     <item
+        android:id="@+id/menu_save_all"
+        android:title="Save All"
+        android:icon="@android:drawable/ic_menu_save"
+        app:showAsAction="ifRoom" />
+
+    <item
         android:id="@+id/menu_compile"
         android:title="@string/compile_code"
         android:icon="@android:drawable/ic_media_play"
         app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/menu_run"
+        android:title="Run"
+        android:icon="@android:drawable/ic_media_play"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_debug"
+        android:title="Debug"
+        android:icon="@android:drawable/ic_media_play"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_stop"
+        android:title="Stop"
+        android:icon="@android:drawable/ic_media_pause"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_build"
+        android:title="Build"
+        android:icon="@android:drawable/ic_menu_manage"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_rebuild"
+        android:title="Rebuild Project"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_clean"
+        android:title="Clean Project"
+        app:showAsAction="never" />
+
+    <group android:id="@+id/group_view">
+        <item
+            android:id="@+id/menu_toggle_project"
+            android:title="Project"
+            android:checkable="true"
+            android:checked="true"
+            app:showAsAction="never" />
+        <item
+            android:id="@+id/menu_toggle_structure"
+            android:title="Structure"
+            android:checkable="true"
+            app:showAsAction="never" />
+        <item
+            android:id="@+id/menu_toggle_terminal"
+            android:title="Terminal"
+            android:checkable="true"
+            app:showAsAction="never" />
+        <item
+            android:id="@+id/menu_toggle_logcat"
+            android:title="Logcat"
+            android:checkable="true"
+            app:showAsAction="never" />
+    </group>
 
     <item
         android:id="@+id/menu_settings"

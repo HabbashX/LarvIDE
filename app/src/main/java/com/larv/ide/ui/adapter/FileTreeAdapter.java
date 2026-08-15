@@ -62,6 +62,57 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
         }
     }
 
+    public void collapseAll() {
+        collapseRecursive(rootNodes);
+        refreshVisibleNodes();
+    }
+
+    public void expandAll() {
+        expandRecursive(rootNodes);
+        refreshVisibleNodes();
+    }
+
+    private void collapseRecursive(List<FileNode> nodes) {
+        for (FileNode node : nodes) {
+            if (node.getType() == FileNode.Type.DIRECTORY) {
+                node.setExpanded(false);
+            }
+        }
+    }
+
+    private void expandRecursive(List<FileNode> nodes) {
+        for (FileNode node : nodes) {
+            if (node.getType() == FileNode.Type.DIRECTORY) {
+                node.setExpanded(true);
+                expandRecursive(node.getChildren());
+            }
+        }
+    }
+
+    public FileNode findNodeByPath(String path) {
+        return findNodeRecursive(rootNodes, path);
+    }
+
+    private FileNode findNodeRecursive(List<FileNode> nodes, String path) {
+        for (FileNode node : nodes) {
+            if (node.getPath().equals(path)) {
+                return node;
+            }
+            FileNode found = findNodeRecursive(node.getChildren(), path);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    public void expandPath(String path) {
+        for (FileNode node : rootNodes) {
+            if (path.startsWith(node.getPath())) {
+                node.setExpanded(true);
+            }
+        }
+        refreshVisibleNodes();
+    }
+
     @NonNull
     @Override
     public FileViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -115,7 +166,7 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
                 icon.setColorFilter(itemView.getContext().getColor(android.R.color.white));
             } else if (node.isJavaFile()) {
                 icon.setImageResource(android.R.drawable.ic_menu_report_image);
-                icon.setColorFilter(itemView.getContext().getColor(R.color.accent_blue));
+                icon.setColorFilter(itemView.getContext().getColor(R.color.accent_variable));
             } else {
                 icon.setImageResource(android.R.drawable.ic_menu_report_image);
                 icon.setColorFilter(itemView.getContext().getColor(R.color.text_secondary));

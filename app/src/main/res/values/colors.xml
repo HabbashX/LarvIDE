@@ -1,27 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Primary Colors -->
     <color name="primary">#2196F3</color>
     <color name="primary_dark">#1976D2</color>
     <color name="primary_light">#64B5F6</color>
     <color name="secondary">#FF9800</color>
-    <color name="background">#1E1E1E</color>
-    <color name="surface">#2D2D2D</color>
-    <color name="surface_variant">#383838</color>
-    <color name="text_primary">#FFFFFF</color>
-    <color name="text_secondary">#B0B0B0</color>
-    <color name="text_disabled">#6A6A6A</color>
-    <color name="error">#EF5350</color>
-    <color name="success">#66BB6A</color>
-    <color name="warning">#FFCA28</color>
-    <color name="divider">#444444</color>
+
+    <!-- Background Colors (IntelliJ Darcula inspired) -->
+    <color name="background">#1F1F1F</color>
     <color name="editor_background">#1E1E1E</color>
-    <color name="editor_line_number">#555555</color>
-    <color name="editor_selection">#264F78</color>
+    <color name="surface">#2D2D2D</color>
+    <color name="surface_variant">#333333</color>
     <color name="sidebar_background">#252526</color>
+    <color name="toolbar_background">#2D2D2D</color>
+    <color name="tab_bar_background">#2D2D2D</color>
+    <color name="status_bar_background">#007ACC</color>
+
+    <!-- Text Colors -->
+    <color name="text_primary">#CCCCCC</color>
+    <color name="text_secondary">#9E9E9E</color>
+    <color name="text_disabled">#6A6A6A</color>
+    <color name="text_on_primary">#FFFFFF</color>
+
+    <!-- Semantic Colors -->
+    <color name="error">#F44747</color>
+    <color name="success">#4CAF50</color>
+    <color name="warning">#FFCA28</color>
+    <color name="info">#2196F3</color>
+
+    <!-- UI Colors -->
+    <color name="divider">#3C3C3C</color>
+    <color name="border">#3C3C3C</color>
+    <color name="selection">#264F78</color>
+    <color name="hover">#2A2D2E</color>
+
+    <!-- Editor Colors -->
+    <color name="editor_line_number">#606366</color>
+    <color name="editor_line_highlight">#282B2E</color>
+    <color name="editor_selection">#264F78</color>
+    <color name="editor_search_match">#515D3E</color>
+    <color name="editor_bracket_match">#FFD700</color>
+
+    <!-- Tab Colors -->
     <color name="tab_active">#1E1E1E</color>
     <color name="tab_inactive">#2D2D2D</color>
-    <color name="accent_green">#4EC9B0</color>
-    <color name="accent_blue">#569CD6</color>
-    <color name="accent_orange">#CE9178</color>
-    <color name="accent_purple">#C586C0</color>
+    <color name="tab_hover">#333333</color>
+    <color name="tab_selected_text">#CCCCCC</color>
+    <color name="tab_unselected_text">#9E9E9E</color>
+
+    <!-- Syntax Highlighting (Darcula) -->
+    <color name="accent_keyword">#CC7832</color>
+    <color name="accent_string">#6A8759</color>
+    <color name="accent_comment">#808080</color>
+    <color name="accent_number">#6897BB</color>
+    <color name="accent_type">#4EC9B0</color>
+    <color name="accent_function">#DCDCAA</color>
+    <color name="accent_variable">#9CDCFE</color>
+    <color name="accent_constant">#4FC1FF</color>
+    <color name="accent_annotation">#C586C0</color>
+    <color name="accent_punctuation">#CCCCCC</color>
+
+    <!-- Tool Window Colors -->
+    <color name="tool_window_header">#2D2D2D</color>
+    <color name="tool_window_button">#333333</color>
+    <color name="tool_window_button_hover">#3C3C3C</color>
 </resources>
