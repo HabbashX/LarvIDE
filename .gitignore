@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+app/build/
+*.iml
+
+# Local configuration
+local.properties
+*.log
+
+# Android
+*.apk
+*.ap_
+*.aab
+output/
+*.dex
+*.class
+
+# IDE
+.idea/
+*.iws
+*.ipr
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+app/src/main/assets/editor.html.map

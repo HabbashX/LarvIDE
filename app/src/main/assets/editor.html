@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Monaco Editor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            background: #1E1E1E;
+            color: #D4D4D4;
+            font-family: 'Monospace', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        #editor {
+            height: 100%;
+            width: 100%;
+        }
+        .monaco-editor {
+            background: #1E1E1E !important;
+        }
+        .monaco-editor .margin {
+            background: #1E1E1E !important;
+        }
+        .monaco-editor .lines-content {
+            background: #1E1E1E !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="editor"></div>
+
+    <!-- Monaco Editor AMD Loader -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script>
+        require.config({
+            paths: {
+                'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs'
+            }
+        });
+
+        let editor = null;
+        let currentFile = '';
+        let currentContent = '';
+        let debounceTimer = null;
+        let completionProvider = null;
+
+        // Initialize editor
+        require(['vs/editor/editor.main'], function() {
+            // Define Java language
+            monaco.languages.register({ id: 'java' });
+            monaco.languages.setMonarchTokensProvider('java', {
+                tokenizer: {
+                    root: [
+                        [/\/\/.*$/, 'comment'],
+                        [/\/\*/, 'comment', '@comment'],
+                        [/"([^"\\]|\\.)*$/, 'string.invalid'],
+                        [/"/, 'string', '@string'],
+                        [/'[^\\']'/, 'string'],
+                        [/(\\d+\.\d+|\d+)(f|F|d|D|l|L)?/, 'number'],
+                        [/0x[0-9a-fA-F]+(l|L)?/, 'number.hex'],
+                        [/\b(abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while|record|sealed|permits|yield|var|module|exports|opens|requires|uses|provides|with|non-sealed)\b/, 'keyword'],
+                        [/\b(true|false|null)\b/, 'keyword'],
+                        [/@[a-zA-Z_][a-zA-Z0-9_]*/, 'tag'],
+                        [/[a-zA-Z_][a-zA-Z0-9_]*/, 'identifier'],
+                        [/[{}()\[\]]/, '@brackets'],
+                        [/[<>:=&|+\-*/%~^!]=?/, 'operator'],
+                        [/[;,.]/, 'delimiter']
+                    ],
+                    comment: [
+                        [/[^*]+/, 'comment'],
+                        [/\*\//, 'comment', '@pop'],
+                        [/./, 'comment']
+                    ],
+                    string: [
+                        [/[^\\"]+/, 'string'],
+                        [/\\./, 'string.escape'],
+                        [/"/, 'string', '@pop']
+                    ]
+                }
+            });
+
+            monaco.languages.setLanguageConfiguration('java', {
+                comments: {
+                    lineComment: '//',
+                    blockComment: ['/*', '*/']
+                },
+                brackets: [
+                    ['{', '}'],
+                    ['[', ']'],
+                    ['(', ')']
+                ],
+                autoClosingPairs: [
+                    { open: '{', close: '}' },
+                    { open: '[', close: ']' },
+                    { open: '(', close: ')' },
+                    { open: '"', close: '"' },
+                    { open: '\'', close: '\'' }
+                ],
+                surroundingPairs: [
+                    { open: '{', close: '}' },
+                    { open: '[', close: ']' },
+                    { open: '(', close: ')' },
+                    { open: '"', close: '"' },
+                    { open: '\'', close: '\'' }
+                ],
+                folding: {
+                    markers: {
+                        start: /^\s*\/\/\s*#region\b/,
+                        end: /^\s*\/\/\s*#endregion\b/
+                    }
+                }
+            });
+
+            editor = monaco.editor.create(document.getElementById('editor'), {
+                value: '',
+                language: 'java',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: false },
+                lineNumbers: 'on',
+                fontSize: 14,
+                fontFamily: '"JetBrains Mono", "Fira Code", "Consolas", "Monospace"',
+                tabSize: 4,
+                insertSpaces: true,
+                scrollBeyondLastLine: false,
+                renderLineHighlight: 'all',
+                selectionHighlight: true,
+                occurrencesHighlight: true,
+                matchBrackets: 'always',
+                autoIndent: 'full',
+                formatOnPaste: true,
+                formatOnType: true,
+                wordBasedSuggestions: 'off',
+                suggestOnTriggerCharacters: true,
+                quickSuggestions: {
+                    other: true,
+                    comments: false,
+                    strings: false
+                },
+                snippetSuggestions: 'inline',
+                tabCompletion: 'on',
+                parameterHints: { enabled: true },
+                hover: { enabled: true },
+                lightbulb: { enabled: false },
+                codeLens: false,
+                folding: true,
+                renderIndentGuides: true,
+                renderWhitespace: 'selection',
+                cursorBlinking: 'smooth',
+                cursorSmoothCaretAnimation: 'on',
+                smoothScrolling: true,
+                experimental: {
+                    enableSnippetInlineCompletion: true
+                }
+            });
+
+            // Listen for content changes
+            editor.onDidChangeModelContent(function(e) {
+                currentContent = editor.getValue();
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(function() {
+                    if (window.LarvIDE) {
+                        window.LarvIDE.onContentChange(currentFile, currentContent);
+                    }
+                }, 300);
+            });
+
+            // Listen for cursor position changes
+            editor.onDidChangeCursorPosition(function(e) {
+                if (window.LarvIDE) {
+                    window.LarvIDE.onCursorChange(e.position.lineNumber, e.position.column);
+                }
+            });
+
+            // Register completion provider
+            completionProvider = monaco.languages.registerCompletionItemProvider('java', {
+                triggerCharacters: ['.', '(', '"', '\'', '@', '<', ' ', '\t'],
+                provideCompletionItems: function(model, position) {
+                    if (window.LarvIDE) {
+                        return window.LarvIDE.requestCompletions(currentFile, position.lineNumber, position.column);
+                    }
+                    return { suggestions: [] };
+                }
+            });
+
+            // Notify ready
+            if (window.LarvIDE) {
+                window.LarvIDE.onEditorReady();
+            }
+        });
+
+        // JavaScript interface functions
+        window.setContent = function(file, content) {
+            currentFile = file;
+            currentContent = content;
+            if (editor) {
+                editor.setValue(content);
+            }
+        };
+
+        window.getContent = function() {
+            return currentContent;
+        };
+
+        window.setTheme = function(theme) {
+            if (editor) {
+                monaco.editor.setTheme(theme);
+            }
+        };
+
+        window.setFontSize = function(size) {
+            if (editor) {
+                editor.updateOptions({ fontSize: size });
+            }
+        };
+
+        window.showDiagnostics = function(diagnostics) {
+            if (editor) {
+                const markers = diagnostics.map(function(d) {
+                    return {
+                        startLineNumber: d.line,
+                        startColumn: d.column || 1,
+                        endLineNumber: d.endLine || d.line,
+                        endColumn: d.endColumn || 100,
+                        message: d.message,
+                        severity: d.severity === 'ERROR' ? monaco.MarkerSeverity.Error : 
+                                 d.severity === 'WARNING' ? monaco.MarkerSeverity.Warning : 
+                                 monaco.MarkerSeverity.Info
+                    };
+                });
+                monaco.editor.setModelMarkers(editor.getModel(), 'java', markers);
+            }
+        };
+
+        window.clearDiagnostics = function() {
+            if (editor) {
+                monaco.editor.setModelMarkers(editor.getModel(), 'java', []);
+            }
+        };
+
+        window.focus = function() {
+            if (editor) {
+                editor.focus();
+            }
+        };
+    </script>
+</body>
+</html>
