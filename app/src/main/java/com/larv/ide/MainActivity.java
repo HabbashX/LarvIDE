@@ -106,9 +106,7 @@ public class MainActivity extends AppCompatActivity
         setContentView(R.layout.activity_main);
         
         initViews();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            initServices();
-        }
+        initServices();  // Always init projectManager first
         setupListeners();
         checkPermissions();
         
@@ -176,7 +174,6 @@ public class MainActivity extends AppCompatActivity
         setupResizeHandle();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.N)
     private void initServices() {
         projectManager = new ProjectManager(this);
         projectManager.setListener(this);
@@ -661,7 +658,6 @@ public class MainActivity extends AppCompatActivity
         popup.show();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.N)
     private void showTabCloseMenu(int index, View anchor) {
         PopupMenu popup = new PopupMenu(this, anchor);
         popup.getMenu().add("Close").setOnMenuItemClickListener(item -> {
@@ -679,21 +675,17 @@ public class MainActivity extends AppCompatActivity
         popup.show();
     }
 
-    private void closeOtherTabs(int keepIndex) {
+private void closeOtherTabs(int keepIndex) {
         for (int i = openFiles.size() - 1; i >= 0; i--) {
             if (i != keepIndex) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    closeEditorTab(i);
-                }
+                closeEditorTab(i);
             }
         }
     }
-
+ 
     private void closeAllTabs() {
         for (int i = openFiles.size() - 1; i >= 0; i--) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                closeEditorTab(i);
-            }
+            closeEditorTab(i);
         }
     }
 

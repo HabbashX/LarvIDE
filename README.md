@@ -1,3 +1,6 @@
+# Project is under development , project is not ready to use it may have alot of problems and the UI is not ready
+
+
 # Larv IDE - Lightweight Java IDE for Android
 
 A minimal, offline-first Java IDE designed for students with limited resources. Built for Android phones, enabling Java development without a laptop.
