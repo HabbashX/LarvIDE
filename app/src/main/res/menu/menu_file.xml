@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/menu_new_project"
+        android:title="New Project..." />
+
+    <item
+        android:id="@+id/menu_open_project"
+        android:title="Open Project..." />
+
+    <item
+        android:id="@+id/menu_new_file"
+        android:title="New File..." />
+
+    <item
+        android:id="@+id/menu_new_folder"
+        android:title="New Folder..." />
+
+    <item
+        android:id="@+id/menu_save"
+        android:title="Save" />
+
+    <item
+        android:id="@+id/menu_save_all"
+        android:title="Save All" />
+
+    <item
+        android:id="@+id/menu_close_project"
+        android:title="Close Project" />
+</menu>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/menu_find"
+        android:title="Find in File..." />
+
+    <item
+        android:id="@+id/menu_find_next"
+        android:title="Find Next" />
+
+    <item
+        android:id="@+id/menu_find_previous"
+        android:title="Find Previous" />
+</menu>

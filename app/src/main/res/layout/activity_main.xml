@@ -7,27 +7,56 @@
     android:background="@color/background"
     tools:context=".MainActivity">
 
-    <!-- Top Toolbar -->
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
+    <!-- Menu Bar (File Edit Search View Build Settings) -->
+    <LinearLayout
+        android:id="@+id/menuBar"
         android:layout_width="0dp"
-        android:layout_height="?attr/actionBarSize"
+        android:layout_height="32dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:background="@color/toolbar_background"
-        android:elevation="0dp"
+        android:paddingHorizontal="6dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:title="@string/app_name"
-        app:titleTextColor="@color/text_primary"
-        app:subtitleTextColor="@color/text_secondary"
-        app:menu="@menu/toolbar_menu" />
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/menuFile"
+            style="@style/Widget.LarvIDE.MenuItem"
+            android:text="File" />
+
+        <TextView
+            android:id="@+id/menuEdit"
+            style="@style/Widget.LarvIDE.MenuItem"
+            android:text="Edit" />
+
+        <TextView
+            android:id="@+id/menuSearch"
+            style="@style/Widget.LarvIDE.MenuItem"
+            android:text="Search" />
+
+        <TextView
+            android:id="@+id/menuView"
+            style="@style/Widget.LarvIDE.MenuItem"
+            android:text="View" />
+
+        <TextView
+            android:id="@+id/menuBuild"
+            style="@style/Widget.LarvIDE.MenuItem"
+            android:text="Build" />
+
+        <TextView
+            android:id="@+id/menuSettings"
+            style="@style/Widget.LarvIDE.MenuItem"
+            android:text="Settings" />
+    </LinearLayout>
 
     <!-- Main Content Area -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/mainContent"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:layout_constraintTop_toBottomOf="@id/menuBar"
         app:layout_constraintBottom_toTopOf="@id/statusBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -37,7 +66,7 @@
             android:id="@+id/leftToolWindowBar"
             android:layout_width="36dp"
             android:layout_height="0dp"
-            android:background="@color/sidebar_background"
+            android:background="@color/background"
             android:paddingTop="8dp"
             android:paddingBottom="8dp"
             app:tabGravity="fill"
@@ -51,9 +80,13 @@
         <!-- Left Tool Window Content (Project, Structure, etc.) -->
         <FrameLayout
             android:id="@+id/leftToolWindowContent"
-            android:layout_width="280dp"
+            android:layout_width="200dp"
             android:layout_height="0dp"
-            android:background="@color/sidebar_background"
+            android:background="@drawable/island_background"
+            android:padding="4dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp"
+            android:layout_marginEnd="4dp"
             android:visibility="visible"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -78,7 +111,7 @@
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
                         android:paddingHorizontal="8dp"
-                        android:background="@color/toolbar_background"
+                        android:background="@color/surface"
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
                         app:layout_constraintEnd_toEndOf="parent">
@@ -94,41 +127,44 @@
 
                         <ImageButton
                             android:id="@+id/btnNewFile"
-                            android:layout_width="28dp"
-                            android:layout_height="28dp"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="@string/new_file"
-                            android:src="@android:drawable/ic_menu_add"
+                            android:src="@drawable/ic_new_file"
                             android:tint="@color/text_secondary"
                             android:scaleType="centerInside" />
 
                         <ImageButton
                             android:id="@+id/btnNewFolder"
-                            android:layout_width="28dp"
-                            android:layout_height="28dp"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginStart="4dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="@string/new_folder"
-                            android:src="@drawable/ic_folder"
+                            android:src="@drawable/ic_new_folder"
                             android:tint="@color/text_secondary"
                             android:scaleType="centerInside" />
 
                         <ImageButton
                             android:id="@+id/btnRefreshProject"
-                            android:layout_width="28dp"
-                            android:layout_height="28dp"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginStart="4dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="Refresh"
-                            android:src="@android:drawable/ic_popup_sync"
+                            android:src="@drawable/ic_refresh"
                             android:tint="@color/text_secondary"
                             android:scaleType="centerInside" />
 
                         <ImageButton
                             android:id="@+id/btnCollapseAll"
-                            android:layout_width="28dp"
-                            android:layout_height="28dp"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginStart="4dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="Collapse All"
-                            android:src="@android:drawable/ic_menu_close_clear_cancel"
+                            android:src="@drawable/ic_collapse_all"
                             android:tint="@color/text_secondary"
                             android:scaleType="centerInside" />
 
@@ -138,12 +174,13 @@
                             android:layout_weight="1" />
 
                         <ImageButton
-                            android:id="@+id/btnProjectSettings"
-                            android:layout_width="28dp"
-                            android:layout_height="28dp"
+                            android:id="@+id/btnCloseProjectWindow"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginStart="4dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
-                            android:contentDescription="Settings"
-                            android:src="@android:drawable/ic_menu_preferences"
+                            android:contentDescription="Close project panel"
+                            android:src="@drawable/ic_close"
                             android:tint="@color/text_secondary"
                             android:scaleType="centerInside" />
                     </LinearLayout>
@@ -169,7 +206,7 @@
             android:id="@+id/leftResizer"
             android:layout_width="2dp"
             android:layout_height="0dp"
-            android:background="@color/divider"
+            android:background="@color/resizer"
             android:visibility="visible"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -180,6 +217,12 @@
             android:id="@+id/editorArea"
             android:layout_width="0dp"
             android:layout_height="0dp"
+            android:background="@drawable/island_background"
+            android:padding="4dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:layout_marginBottom="4dp"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toTopOf="@id/bottomResizer"
             app:layout_constraintStart_toEndOf="@id/leftResizer"
@@ -188,7 +231,7 @@
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="@color/editor_background">
+                android:background="@android:color/transparent">
 
                 <!-- Editor Tab Bar -->
                 <com.google.android.material.tabs.TabLayout
@@ -203,8 +246,10 @@
                     app:layout_constraintEnd_toStartOf="@id/editorTabActions"
                     app:tabIndicatorColor="@color/primary"
                     app:tabIndicatorHeight="2dp"
+                    app:tabIndicatorFullWidth="false"
                     app:tabSelectedTextColor="@color/text_primary"
                     app:tabTextColor="@color/text_secondary"
+                    app:tabRippleColor="@color/hover"
                     app:tabTextAppearance="@style/TextAppearance.LarvIDE.EditorTab"
                     app:tabMode="scrollable"
                     app:tabGravity="fill" />
@@ -221,12 +266,23 @@
                     app:layout_constraintEnd_toEndOf="parent">
 
                     <ImageButton
+                        android:id="@+id/btnRun"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="6dp"
+                        android:background="@drawable/bg_run_button"
+                        android:contentDescription="@string/run_code"
+                        android:src="@drawable/ic_run"
+                        android:tint="@color/text_on_primary"
+                        android:scaleType="centerInside" />
+
+                    <ImageButton
                         android:id="@+id/btnSplitEditor"
                         android:layout_width="28dp"
                         android:layout_height="28dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
-                        android:contentDescription="Split Editor"
-                        android:src="@android:drawable/ic_menu_directions"
+                        android:contentDescription="Expand editor"
+                        android:src="@drawable/ic_expand"
                         android:tint="@color/text_secondary"
                         android:scaleType="centerInside" />
 
@@ -236,7 +292,7 @@
                         android:layout_height="28dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:contentDescription="@string/new_file"
-                        android:src="@android:drawable/ic_menu_add"
+                        android:src="@drawable/ic_add"
                         android:tint="@color/text_secondary"
                         android:scaleType="centerInside" />
                 </LinearLayout>
@@ -266,6 +322,71 @@
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintEnd_toEndOf="parent" />
+
+                <!-- Welcome / Start Screen -->
+                <LinearLayout
+                    android:id="@+id/welcomeView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:visibility="gone"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:src="@drawable/ic_java"
+                        android:contentDescription="@string/app_name" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="@string/app_name"
+                        android:textColor="@color/text_primary"
+                        android:textSize="28sp"
+                        android:textStyle="bold"
+                        android:gravity="center" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Lightweight Java IDE"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp"
+                        android:gravity="center" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="28dp"
+                        android:orientation="horizontal"
+                        android:gravity="center">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnWelcomeNewProject"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:paddingHorizontal="20dp"
+                            android:text="@string/new_project"
+                            android:textAllCaps="false" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnWelcomeOpenProject"
+                            style="?attr/materialButtonOutlinedStyle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:paddingHorizontal="20dp"
+                            android:text="@string/open_project"
+                            android:textAllCaps="false" />
+                    </LinearLayout>
+                </LinearLayout>
             </androidx.constraintlayout.widget.ConstraintLayout>
         </FrameLayout>
 
@@ -274,7 +395,7 @@
             android:id="@+id/rightResizer"
             android:layout_width="2dp"
             android:layout_height="0dp"
-            android:background="@color/divider"
+            android:background="@color/resizer"
             android:visibility="gone"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -285,7 +406,11 @@
             android:id="@+id/rightToolWindowContent"
             android:layout_width="280dp"
             android:layout_height="0dp"
-            android:background="@color/sidebar_background"
+            android:background="@drawable/island_background"
+            android:padding="4dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp"
+            android:layout_marginStart="4dp"
             android:visibility="gone"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -305,7 +430,7 @@
             android:id="@+id/bottomResizer"
             android:layout_width="0dp"
             android:layout_height="2dp"
-            android:background="@color/divider"
+            android:background="@color/resizer"
             android:visibility="visible"
             app:layout_constraintBottom_toTopOf="@id/bottomToolWindow"
             app:layout_constraintStart_toStartOf="parent"
@@ -316,7 +441,11 @@
             android:id="@+id/bottomToolWindow"
             android:layout_width="0dp"
             android:layout_height="200dp"
-            android:background="@color/surface"
+            android:background="@drawable/island_background"
+            android:padding="4dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
             android:visibility="visible"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -326,29 +455,53 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent">
 
-                <!-- Bottom Tab Bar -->
-                <com.google.android.material.tabs.TabLayout
-                    android:id="@+id/bottomTabLayout"
+                <!-- Bottom Tool Window Header -->
+                <LinearLayout
+                    android:id="@+id/bottomToolWindowHeader"
                     android:layout_width="0dp"
                     android:layout_height="32dp"
-                    android:background="@color/tab_bar_background"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
                     app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:tabIndicatorColor="@color/primary"
-                    app:tabIndicatorHeight="2dp"
-                    app:tabSelectedTextColor="@color/text_primary"
-                    app:tabTextColor="@color/text_secondary"
-                    app:tabTextAppearance="@style/TextAppearance.LarvIDE.BottomTab"
-                    app:tabMode="scrollable"
-                    app:tabGravity="fill" />
+                    app:layout_constraintEnd_toEndOf="parent">
+
+                    <!-- Bottom Tab Bar -->
+                    <com.google.android.material.tabs.TabLayout
+                        android:id="@+id/bottomTabLayout"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:background="@color/tab_bar_background"
+                        app:tabIndicatorColor="@color/primary"
+                        app:tabIndicatorHeight="2dp"
+                        app:tabIndicatorFullWidth="false"
+                        app:tabSelectedTextColor="@color/text_primary"
+                        app:tabTextColor="@color/text_secondary"
+                        app:tabRippleColor="@color/hover"
+                        app:tabTextAppearance="@style/TextAppearance.LarvIDE.BottomTab"
+                        app:tabMode="scrollable"
+                        app:tabGravity="fill" />
+
+                    <ImageButton
+                        android:id="@+id/btnCloseBottomWindow"
+                        android:layout_width="26dp"
+                        android:layout_height="26dp"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="2dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Close panel"
+                        android:src="@drawable/ic_close"
+                        android:tint="@color/text_secondary"
+                        android:scaleType="centerInside" />
+                </LinearLayout>
 
                 <!-- Bottom Content -->
                 <androidx.viewpager2.widget.ViewPager2
                     android:id="@+id/bottomViewPager"
                     android:layout_width="0dp"
                     android:layout_height="0dp"
-                    app:layout_constraintTop_toBottomOf="@id/bottomTabLayout"
+                    app:layout_constraintTop_toBottomOf="@id/bottomToolWindowHeader"
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintEnd_toEndOf="parent" />
@@ -363,7 +516,7 @@
         android:layout_height="24dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="@color/status_bar_background"
+        android:background="@drawable/bg_status_bar"
         android:paddingHorizontal="8dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"

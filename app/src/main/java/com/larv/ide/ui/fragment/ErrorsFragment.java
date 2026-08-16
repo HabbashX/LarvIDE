@@ -42,7 +42,7 @@ public class ErrorsFragment extends Fragment {
         recyclerView.setAdapter(adapter);
     }
 
-    public void setErrors(List<Diagnostic> errors) {
+    public void setErrors(@NonNull List<Diagnostic> errors) {
         if (errors.isEmpty()) {
             emptyView.setVisibility(View.VISIBLE);
             recyclerView.setVisibility(View.GONE);

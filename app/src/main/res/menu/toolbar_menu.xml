@@ -5,37 +5,45 @@
     <item
         android:id="@+id/menu_new_project"
         android:title="@string/new_project"
-        android:icon="@android:drawable/ic_menu_add"
-        app:showAsAction="ifRoom" />
+        android:icon="@drawable/ic_new_file"
+        app:showAsAction="always" />
 
     <item
         android:id="@+id/menu_open_project"
         android:title="@string/open_project"
-        android:icon="@android:drawable/ic_menu_agenda"
+        android:icon="@drawable/ic_open"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/menu_expand_editor"
+        android:title="Expand Editor"
+        android:icon="@drawable/ic_expand"
+        android:checkable="true"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/menu_run"
+        android:title="@string/run_code"
+        android:icon="@drawable/ic_run"
+        app:iconTint="@color/run_green"
         app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/menu_save"
         android:title="@string/save_file"
-        android:icon="@android:drawable/ic_menu_save"
+        android:icon="@drawable/ic_save"
         app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/menu_save_all"
         android:title="Save All"
-        android:icon="@android:drawable/ic_menu_save"
-        app:showAsAction="ifRoom" />
+        android:icon="@drawable/ic_save"
+        app:showAsAction="never" />
 
     <item
         android:id="@+id/menu_compile"
         android:title="@string/compile_code"
-        android:icon="@android:drawable/ic_media_play"
-        app:showAsAction="ifRoom" />
-
-    <item
-        android:id="@+id/menu_run"
-        android:title="Run"
-        android:icon="@android:drawable/ic_media_play"
+        android:icon="@drawable/ic_run"
         app:showAsAction="never" />
 
     <item
@@ -93,6 +101,6 @@
     <item
         android:id="@+id/menu_settings"
         android:title="Settings"
-        android:icon="@android:drawable/ic_menu_preferences"
+        android:icon="@drawable/ic_settings"
         app:showAsAction="never" />
 </menu>

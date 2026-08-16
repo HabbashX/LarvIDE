@@ -1,11 +1,14 @@
 package com.larv.ide.ui.fragment;
 
 import android.annotation.SuppressLint;
+import android.content.Context;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -68,12 +71,29 @@ public class EditorFragment extends Fragment {
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
 
+        webView.setFocusable(true);
+        webView.setFocusableInTouchMode(true);
+
+        // Ensure tapping the editor opens the soft keyboard
+        webView.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                v.requestFocus();
+                InputMethodManager imm = (InputMethodManager) requireContext()
+                    .getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.showSoftInput(webView, InputMethodManager.SHOW_FORCED);
+                }
+            }
+            return false;
+        });
+
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 isReady = true;
+                view.requestFocus();
                 if (listener != null) {
                     listener.onEditorReady();
                 }
@@ -118,6 +138,12 @@ public class EditorFragment extends Fragment {
     public void focus() {
         if (isReady && webView != null) {
             webView.post(() -> webView.evaluateJavascript("window.focus();", null));
+        }
+    }
+
+    public void execAction(String action) {
+        if (isReady && webView != null) {
+            webView.evaluateJavascript("window.execAction('" + action + "');", null);
         }
     }
 

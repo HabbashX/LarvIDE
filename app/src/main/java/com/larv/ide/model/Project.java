@@ -1,11 +1,14 @@
 package com.larv.ide.model;
 
 import java.io.File;
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
 public class Project implements Serializable {
+    @Serial
+    private static final long serialVersionUID = -8775483781163883760L;
     private String name;
     private String path;
     private long lastModified;

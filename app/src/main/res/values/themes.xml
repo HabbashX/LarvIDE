@@ -15,7 +15,7 @@
         <item name="android:navigationBarColor">@color/background</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
-        <item name="android:fontFamily">monospace</item>
+        <item name="android:fontFamily">@font/jetbrains_mono</item>
         <item name="android:windowBackground">@color/background</item>
     </style>
 
@@ -47,7 +47,7 @@
     <style name="TextAppearance.LarvIDE.EditorTab" parent="TextAppearance.MaterialComponents.Button">
         <item name="android:textSize">12sp</item>
         <item name="android:textAllCaps">false</item>
-        <item name="fontFamily">monospace</item>
+        <item name="fontFamily">@font/jetbrains_mono</item>
         <item name="android:fontWeight">400</item>
     </style>
 
@@ -68,7 +68,7 @@
     <style name="TextAppearance.LarvIDE.BottomTab" parent="TextAppearance.MaterialComponents.Caption">
         <item name="android:textSize">11sp</item>
         <item name="android:textAllCaps">false</item>
-        <item name="fontFamily">monospace</item>
+        <item name="fontFamily">@font/jetbrains_mono</item>
     </style>
 
     <!-- Tool Window Tab Layout (Vertical) -->
@@ -85,7 +85,7 @@
     <style name="TextAppearance.LarvIDE.ToolWindowTab" parent="TextAppearance.MaterialComponents.Caption">
         <item name="android:textSize">11sp</item>
         <item name="android:textAllCaps">false</item>
-        <item name="fontFamily">monospace</item>
+        <item name="fontFamily">@font/jetbrains_mono</item>
     </style>
 
     <!-- Toolbar Style -->
@@ -130,5 +130,20 @@
     <!-- Divider -->
     <style name="Widget.LarvIDE.Divider" parent="">
         <item name="android:background">@color/divider</item>
+    </style>
+
+    <!-- Menu Bar Item -->
+    <style name="Widget.LarvIDE.MenuItem" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginEnd">2dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:gravity">center_vertical</item>
     </style>
 </resources>

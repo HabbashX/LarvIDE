@@ -148,22 +148,32 @@ public class ProjectManager {
 
     public void createFolder(String parentPath, String folderName, OnFileOperationCallback callback) {
         executor.execute(() -> {
-            File parentDir = new File(parentPath);
-            if (!parentDir.exists() || !parentDir.isDirectory()) {
-                if (callback != null) callback.onError("Invalid parent directory");
-                return;
-            }
+            try {
+                if (folderName == null || folderName.trim().isEmpty()) {
+                    if (callback != null) callback.onError("Folder name cannot be empty");
+                    return;
+                }
 
-            File newFolder = new File(parentDir, folderName);
-            if (newFolder.exists()) {
-                if (callback != null) callback.onError("Folder already exists");
-                return;
-            }
+                File parentDir = new File(parentPath);
+                if (!parentDir.exists() || !parentDir.isDirectory()) {
+                    if (callback != null) callback.onError("Invalid parent directory");
+                    return;
+                }
 
-            if (newFolder.mkdirs()) {
-                if (callback != null) callback.onSuccess(newFolder);
-            } else {
-                if (callback != null) callback.onError("Failed to create folder");
+                File newFolder = new File(parentDir, folderName.trim());
+                if (newFolder.exists()) {
+                    if (callback != null) callback.onError("Folder already exists");
+                    return;
+                }
+
+                if (newFolder.mkdirs()) {
+                    if (callback != null) callback.onSuccess(newFolder);
+                } else {
+                    if (callback != null) callback.onError("Failed to create folder");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to create folder", e);
+                if (callback != null) callback.onError("Failed to create folder: " + e.getMessage());
             }
         });
     }

@@ -9,8 +9,13 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
+import android.content.SharedPreferences;
 import android.text.InputType;
+import android.util.Log;
 import android.view.Gravity;
+import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
@@ -30,7 +35,6 @@ import androidx.fragment.app.FragmentManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.viewpager2.widget.ViewPager2;
 
-import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 import com.larv.ide.compiler.Dexer;
@@ -38,7 +42,6 @@ import com.larv.ide.compiler.JavaCompiler;
 import com.larv.ide.compiler.JavaRunner;
 import com.larv.ide.completion.CompletionItem;
 import com.larv.ide.completion.ProjectIndexer;
-import com.larv.ide.model.Diagnostic;
 import com.larv.ide.model.FileNode;
 import com.larv.ide.model.OpenFile;
 import com.larv.ide.model.Project;
@@ -64,38 +67,48 @@ public class MainActivity extends AppCompatActivity
 
     private static final String TAG = "MainActivity";
     private static final int REQUEST_STORAGE_PERMISSION = 1001;
+    private static final String PREFS_NAME = "larv_ide";
+    private static final String PREF_LAST_PROJECT = "last_project_path";
 
-    private MaterialToolbar toolbar;
+    private SharedPreferences prefs;
 
-    // Left tool window
+    private android.widget.TextView menuFile;
+    private android.widget.TextView menuEdit;
+    private android.widget.TextView menuSearch;
+    private android.widget.TextView menuView;
+    private android.widget.TextView menuBuild;
+    private android.widget.TextView menuSettings;
+
     private View leftToolWindowContent;
     private FrameLayout projectToolWindow;
     private ImageButton btnNewFile;
     private ImageButton btnNewFolder;
     private ImageButton btnRefreshProject;
     private ImageButton btnCollapseAll;
-    private ImageButton btnProjectSettings;
 
-    // Editor
     private FrameLayout editorContainer;
     private View noEditorPlaceholder;
+    private View welcomeView;
     private TabLayout tabLayout;
     private ImageButton newTabButton;
     private ImageButton btnSplitEditor;
+    private ImageButton btnRun;
+    private ImageButton btnCloseProjectWindow;
+    private ImageButton btnCloseBottomWindow;
 
-    // Bottom tool window
     private FrameLayout bottomToolWindow;
     private TabLayout bottomTabLayout;
     private ViewPager2 bottomViewPager;
     private BottomPanelAdapter bottomPanelAdapter;
 
-    // Status bar
     private android.widget.TextView statusText;
     private android.widget.TextView statusPosition;
 
-    // Resizers
     private View leftResizer;
     private View bottomResizer;
+
+    private final Handler autosaveHandler = new Handler(Looper.getMainLooper());
+    private final Runnable autosaveRunnable = this::autoSaveModifiedFiles;
 
     private androidx.recyclerview.widget.RecyclerView fileTreeRecyclerView;
     private FileTreeAdapter fileTreeAdapter;
@@ -108,14 +121,13 @@ public class MainActivity extends AppCompatActivity
     private JavaRunner javaRunner;
     private ProjectIndexer projectIndexer;
     private final ExecutorService compilerExecutor = Executors.newSingleThreadExecutor();
-
-    // State
     private Project currentProject;
     private final List<OpenFile> openFiles = new ArrayList<>();
     private boolean isCompiling = false;
     private String selectedDirectory = "";
     private boolean leftWindowVisible = true;
     private boolean bottomWindowVisible = true;
+    private boolean editorMaximized = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -126,8 +138,11 @@ public class MainActivity extends AppCompatActivity
         initServices();
         setupListeners();
         checkPermissions();
+        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
         handleIntent(getIntent());
+        restoreLastProject();
+        showWelcome(currentProject == null);
     }
 
     @Override
@@ -149,9 +164,24 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    private void restoreLastProject() {
+        if (prefs == null) return;
+        String savedPath = prefs.getString(PREF_LAST_PROJECT, "");
+        if (savedPath.isEmpty()) return;
+        File dir = new File(savedPath);
+        if (dir.exists() && dir.isDirectory()) {
+            projectManager.openProject(new Project(dir.getName(), dir.getAbsolutePath()));
+        }
+    }
+
     private void initViews() {
-        toolbar = findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
+        // Menu bar
+        menuFile = findViewById(R.id.menuFile);
+        menuEdit = findViewById(R.id.menuEdit);
+        menuSearch = findViewById(R.id.menuSearch);
+        menuView = findViewById(R.id.menuView);
+        menuBuild = findViewById(R.id.menuBuild);
+        menuSettings = findViewById(R.id.menuSettings);
 
         // Left tool window
         leftToolWindowContent = findViewById(R.id.leftToolWindowContent);
@@ -160,20 +190,23 @@ public class MainActivity extends AppCompatActivity
         btnNewFolder = findViewById(R.id.btnNewFolder);
         btnRefreshProject = findViewById(R.id.btnRefreshProject);
         btnCollapseAll = findViewById(R.id.btnCollapseAll);
-        btnProjectSettings = findViewById(R.id.btnProjectSettings);
+        btnCloseProjectWindow = findViewById(R.id.btnCloseProjectWindow);
         leftResizer = findViewById(R.id.leftResizer);
 
         // Editor
         editorContainer = findViewById(R.id.editorContainer);
         noEditorPlaceholder = findViewById(R.id.noEditorPlaceholder);
+        welcomeView = findViewById(R.id.welcomeView);
         tabLayout = findViewById(R.id.tabLayout);
         newTabButton = findViewById(R.id.newTabButton);
         btnSplitEditor = findViewById(R.id.btnSplitEditor);
+        btnRun = findViewById(R.id.btnRun);
 
         // Bottom tool window
         bottomToolWindow = findViewById(R.id.bottomToolWindow);
         bottomTabLayout = findViewById(R.id.bottomTabLayout);
         bottomViewPager = findViewById(R.id.bottomViewPager);
+        btnCloseBottomWindow = findViewById(R.id.btnCloseBottomWindow);
         bottomResizer = findViewById(R.id.bottomResizer);
 
         // Status bar
@@ -227,7 +260,6 @@ public class MainActivity extends AppCompatActivity
         });
         btnRefreshProject.setOnClickListener(v -> projectManager.refreshFileTree());
         btnCollapseAll.setOnClickListener(v -> fileTreeAdapter.collapseAll());
-        btnProjectSettings.setOnClickListener(v -> showSettingsDialog());
 
         newTabButton.setOnClickListener(v -> {
             if (currentProject == null) {
@@ -236,8 +268,23 @@ public class MainActivity extends AppCompatActivity
                 showNewFileDialog();
             }
         });
-        btnSplitEditor.setOnClickListener(v ->
-            Toast.makeText(this, "Split editor not yet available", Toast.LENGTH_SHORT).show());
+        btnSplitEditor.setOnClickListener(v -> toggleMaximizeEditor());
+        btnRun.setOnClickListener(v -> compileAndRun());
+        btnCloseProjectWindow.setOnClickListener(v -> closeLeftWindow());
+        btnCloseBottomWindow.setOnClickListener(v -> closeBottomWindow());
+
+        // Welcome screen buttons
+        findViewById(R.id.btnWelcomeNewProject).setOnClickListener(v -> showNewProjectDialog());
+        findViewById(R.id.btnWelcomeOpenProject).setOnClickListener(v -> showOpenProjectDialog());
+
+        // Menu bar
+        menuFile.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_file, this::onMenuBarItemSelected, null));
+        menuEdit.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_edit, this::onMenuBarItemSelected, null));
+        menuSearch.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_search, this::onMenuBarItemSelected, null));
+        menuView.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_view, this::onMenuBarItemSelected,
+            this::syncViewMenuState));
+        menuBuild.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_build, this::onMenuBarItemSelected, null));
+        menuSettings.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_settings, this::onMenuBarItemSelected, null));
 
         // Editor tabs
         tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
@@ -272,7 +319,7 @@ public class MainActivity extends AppCompatActivity
                 int screenWidth = getResources().getDisplayMetrics().widthPixels;
                 int newWidth = (int) x;
                 ViewGroup.LayoutParams params = leftToolWindowContent.getLayoutParams();
-                params.width = Math.max(180, Math.min(screenWidth - 400, newWidth));
+                params.width = Math.max(140, Math.min(screenWidth - 300, newWidth));
                 leftToolWindowContent.setLayoutParams(params);
                 return true;
             }
@@ -318,18 +365,19 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    // ============ ProjectManager.OnProjectChangeListener ============
-
     @Override
-    public void onProjectOpened(Project project) {
+    public void onProjectOpened(@NonNull Project project) {
         currentProject = project;
         selectedDirectory = project.getPath();
+        if (prefs != null) {
+            prefs.edit().putString(PREF_LAST_PROJECT, project.getPath()).apply();
+        }
         runOnUiThread(() -> {
-            getSupportActionBar().setSubtitle(project.getName());
-            bottomToolWindow.setVisibility(View.VISIBLE);
+            bottomToolWindow.setVisibility(editorMaximized ? View.GONE : View.VISIBLE);
             bottomWindowVisible = true;
             updateWindowTitle();
             showWelcomeStatus(true);
+            showWelcome(false);
         });
     }
 
@@ -340,8 +388,10 @@ public class MainActivity extends AppCompatActivity
         editorFragments.clear();
         currentEditorFile = "";
         selectedDirectory = "";
+        if (prefs != null) {
+            prefs.edit().remove(PREF_LAST_PROJECT).apply();
+        }
         runOnUiThread(() -> {
-            getSupportActionBar().setSubtitle(null);
             bottomToolWindow.setVisibility(View.GONE);
             bottomWindowVisible = false;
             tabLayout.removeAllTabs();
@@ -349,6 +399,7 @@ public class MainActivity extends AppCompatActivity
             noEditorPlaceholder.setVisibility(View.VISIBLE);
             updateWindowTitle();
             statusText.setText("No project");
+            showWelcome(true);
         });
     }
 
@@ -367,8 +418,6 @@ public class MainActivity extends AppCompatActivity
         runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show());
     }
 
-    // ============ FileTreeAdapter.OnFileClickListener ============
-
     @Override
     public void onFileClick(@NonNull FileNode node) {
         if (node.getType() == FileNode.Type.DIRECTORY) {
@@ -384,7 +433,6 @@ public class MainActivity extends AppCompatActivity
         showFileContextMenu(node);
     }
 
-    // ============ EditorFragment.EditorListener ============
 
     @Override
     public void onContentChange(String file, String content) {
@@ -394,8 +442,13 @@ public class MainActivity extends AppCompatActivity
             openFile.setContent(content);
             if (changed) {
                 openFile.setModified(true);
-                updateTabModified(file, true);
-                statusText.setText("Updated: " + new File(file).getName());
+                String fileName = new File(file).getName();
+                runOnUiThread(() -> {
+                    updateTabModified(file, true);
+                    statusText.setText("Updated: " + fileName);
+                    autosaveHandler.removeCallbacks(autosaveRunnable);
+                    autosaveHandler.postDelayed(autosaveRunnable, 1000);
+                });
                 scheduleTypeCheck();
             }
         }
@@ -412,7 +465,7 @@ public class MainActivity extends AppCompatActivity
     }
 
     @Override
-    public void onCompletionsRequested(String file, int line, int column, EditorFragment.CompletionCallback callback) {
+    public void onCompletionsRequested(String file, int line, int column, @NonNull EditorFragment.CompletionCallback callback) {
         List<CompletionItem> completions = projectIndexer.getCompletions("", file, line, column);
         callback.onCompletions(completions);
     }
@@ -429,8 +482,6 @@ public class MainActivity extends AppCompatActivity
             }
         }
     }
-
-    // ============ File Operations ============
 
     private void openFileInEditor(@NonNull File file) {
         String filePath = file.getAbsolutePath();
@@ -463,6 +514,7 @@ public class MainActivity extends AppCompatActivity
 
                     tabLayout.selectTab(tab);
                     noEditorPlaceholder.setVisibility(View.GONE);
+                    welcomeView.setVisibility(View.GONE);
                     projectIndexer.indexFile(openFile);
                     statusText.setText(file.getName() + " - Loading");
                 });
@@ -554,7 +606,11 @@ public class MainActivity extends AppCompatActivity
     // ============ Compilation & Execution ============
 
     private void compileAndRun() {
-        if (isCompiling || openFiles.isEmpty()) return;
+        if (openFiles.isEmpty()) {
+            Toast.makeText(this, "Open a file first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (isCompiling) return;
 
         isCompiling = true;
         runOnUiThread(() -> {
@@ -562,11 +618,18 @@ public class MainActivity extends AppCompatActivity
             bottomPanelAdapter.getOutputFragment().clear();
             bottomPanelAdapter.getErrorsFragment().setErrors(new ArrayList<>());
             bottomViewPager.setCurrentItem(0);
+            bottomWindowVisible = true;
             bottomToolWindow.setVisibility(View.VISIBLE);
+            bottomResizer.setVisibility(View.VISIBLE);
         });
 
         compilerExecutor.execute(() -> {
             JavaCompiler.CompilationResult compileResult = javaCompiler.compile(openFiles);
+            android.util.Log.d("MainActivity", "compile success=" + compileResult.isSuccess()
+                + " diagnostics=" + compileResult.getDiagnostics().size());
+            if (!compileResult.isSuccess() && compileResult.getRawOutput() != null) {
+                android.util.Log.d("MainActivity", "RAW COMPILER OUTPUT:\n" + compileResult.getRawOutput());
+            }
 
             runOnUiThread(() -> {
                 bottomPanelAdapter.getErrorsFragment().setErrors(compileResult.getDiagnostics());
@@ -574,6 +637,11 @@ public class MainActivity extends AppCompatActivity
                 if (!compileResult.isSuccess()) {
                     isCompiling = false;
                     statusText.setText("Compilation failed");
+                    if (compileResult.getRawOutput() != null && !compileResult.getRawOutput().isEmpty()) {
+                        for (String line : compileResult.getRawOutput().split("\n")) {
+                            bottomPanelAdapter.getOutputFragment().addLine(line);
+                        }
+                    }
                     bottomViewPager.setCurrentItem(1);
                     return;
                 }
@@ -659,8 +727,6 @@ public class MainActivity extends AppCompatActivity
         });
     }
 
-    // ============ UI Dialogs ============
-
     private String resolveTargetDirectory() {
         if (selectedDirectory != null && !selectedDirectory.isEmpty()) {
             File dir = new File(selectedDirectory);
@@ -688,9 +754,10 @@ public class MainActivity extends AppCompatActivity
         builder.setPositiveButton("Create", (dialog, which) -> {
             String fileName = input.getText().toString().trim();
             if (fileName.isEmpty()) {
-                Toast.makeText(this, "Name cannot be empty", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "File name cannot be empty", Toast.LENGTH_SHORT).show();
                 return;
             }
+            dialog.dismiss();
             projectManager.createFile(parentPath, fileName,
                 new ProjectManager.OnFileOperationCallback() {
                     @Override
@@ -725,9 +792,10 @@ public class MainActivity extends AppCompatActivity
         builder.setPositiveButton("Create", (dialog, which) -> {
             String folderName = input.getText().toString().trim();
             if (folderName.isEmpty()) {
-                Toast.makeText(this, "Name cannot be empty", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Folder name cannot be empty", Toast.LENGTH_SHORT).show();
                 return;
             }
+            dialog.dismiss();
             projectManager.createFolder(parentPath, folderName,
                 new ProjectManager.OnFileOperationCallback() {
                     @Override
@@ -735,6 +803,7 @@ public class MainActivity extends AppCompatActivity
                         selectedDirectory = file.getAbsolutePath();
                         runOnUiThread(() -> {
                             Toast.makeText(MainActivity.this, "Folder created", Toast.LENGTH_SHORT).show();
+                            statusText.setText("Folder created: " + file.getName());
                             projectManager.refreshFileTree();
                         });
                     }
@@ -780,6 +849,8 @@ public class MainActivity extends AppCompatActivity
             return true;
         });
         popup.getMenu().add("Delete").setOnMenuItemClickListener(item -> {
+
+
             confirmDelete(node);
             return true;
         });
@@ -960,6 +1031,48 @@ public class MainActivity extends AppCompatActivity
         statusText.setText("All files saved");
     }
 
+    private void autoSaveModifiedFiles() {
+        for (OpenFile openFile : openFiles) {
+            if (openFile.isModified()) {
+                String filePath = openFile.getFilePath();
+                projectManager.writeFile(new File(filePath), openFile.getContent(),
+                    new ProjectManager.OnFileOperationCallback() {
+                        @Override
+                        public void onSuccess(File file) {
+                            openFile.setModified(false);
+                            runOnUiThread(() -> updateTabModified(filePath, false));
+                        }
+                        @Override
+                        public void onError(String error) {
+                            Log.w(TAG, "Auto-save failed for " + filePath + ": " + error);
+                        }
+                    });
+            }
+        }
+    }
+
+    private void saveAllModifiedFilesSync() {
+        for (OpenFile openFile : openFiles) {
+            if (openFile.isModified()) {
+                File file = new File(openFile.getFilePath());
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+                    fos.write(openFile.getContent().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    openFile.setModified(false);
+                    updateTabModified(openFile.getFilePath(), false);
+                } catch (IOException e) {
+                    Log.w(TAG, "Auto-save failed for " + file.getAbsolutePath(), e);
+                }
+            }
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        autosaveHandler.removeCallbacks(autosaveRunnable);
+        saveAllModifiedFilesSync();
+    }
+
     private void updateWindowTitle() {
         String title = getString(R.string.app_name);
         if (currentProject != null) {
@@ -968,10 +1081,144 @@ public class MainActivity extends AppCompatActivity
         setTitle(title);
     }
 
+    private void showMenuBarPopup(View anchor, int menuRes, java.util.function.BiPredicate<Integer, Integer> itemHandler, java.util.function.Consumer<android.view.Menu> preparer) {
+        android.widget.PopupMenu popup = new android.widget.PopupMenu(this, anchor);
+        popup.getMenuInflater().inflate(menuRes, popup.getMenu());
+        if (preparer != null) {
+            preparer.accept(popup.getMenu());
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            if (itemHandler != null && itemHandler.test(item.getItemId(), item.getGroupId())) {
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private boolean onMenuBarItemSelected(int itemId, int groupId) {
+        if (itemId == R.id.menu_new_project) {
+            showNewProjectDialog();
+            return true;
+        } else if (itemId == R.id.menu_open_project) {
+            showOpenProjectDialog();
+            return true;
+        } else if (itemId == R.id.menu_new_file) {
+            if (currentProject == null) {
+                Toast.makeText(this, "Open a project first", Toast.LENGTH_SHORT).show();
+            } else {
+                showNewFileDialog();
+            }
+            return true;
+        } else if (itemId == R.id.menu_new_folder) {
+            if (currentProject == null) {
+                Toast.makeText(this, "Open a project first", Toast.LENGTH_SHORT).show();
+            } else {
+                showNewFolderDialog();
+            }
+            return true;
+        } else if (itemId == R.id.menu_save) {
+            saveCurrentFile();
+            return true;
+        } else if (itemId == R.id.menu_save_all) {
+            saveAllFiles();
+            return true;
+        } else if (itemId == R.id.menu_close_project) {
+            projectManager.closeProject();
+            return true;
+        } else if (itemId == R.id.menu_undo) {
+            runOnCurrentEditor(f -> f.execAction("undo"));
+            return true;
+        } else if (itemId == R.id.menu_redo) {
+            runOnCurrentEditor(f -> f.execAction("redo"));
+            return true;
+        } else if (itemId == R.id.menu_select_all) {
+            runOnCurrentEditor(f -> f.execAction("selectAll"));
+            return true;
+        } else if (itemId == R.id.menu_find) {
+            runOnCurrentEditor(f -> f.execAction("find"));
+            return true;
+        } else if (itemId == R.id.menu_find_next) {
+            runOnCurrentEditor(f -> f.execAction("findNext"));
+            return true;
+        } else if (itemId == R.id.menu_find_previous) {
+            runOnCurrentEditor(f -> f.execAction("findPrevious"));
+            return true;
+        } else if (itemId == R.id.menu_toggle_project) {
+            toggleLeftWindow();
+            return true;
+        } else if (itemId == R.id.menu_toggle_terminal) {
+            toggleBottomWindow();
+            return true;
+        } else if (itemId == R.id.menu_expand_editor) {
+            toggleMaximizeEditor();
+            return true;
+        } else if (itemId == R.id.menu_run) {
+            compileAndRun();
+            return true;
+        } else if (itemId == R.id.menu_compile) {
+            compileAndRun();
+            return true;
+        } else if (itemId == R.id.menu_clean) {
+            clearBuildOutput();
+            return true;
+        } else if (itemId == R.id.menu_settings) {
+            showSettingsDialog();
+            return true;
+        } else if (itemId == R.id.menu_about) {
+            showAboutDialog();
+            return true;
+        }
+        return false;
+    }
+
+    private void runOnCurrentEditor(java.util.function.Consumer<EditorFragment> action) {
+        if (!currentEditorFile.isEmpty()) {
+            EditorFragment fragment = editorFragments.get(currentEditorFile);
+            if (fragment != null) {
+                action.accept(fragment);
+            }
+        }
+    }
+
+    private void syncViewMenuState(android.view.Menu menu) {
+        android.view.MenuItem projectItem = menu.findItem(R.id.menu_toggle_project);
+        if (projectItem != null) {
+            projectItem.setChecked(leftWindowVisible);
+        }
+        android.view.MenuItem terminalItem = menu.findItem(R.id.menu_toggle_terminal);
+        if (terminalItem != null) {
+            terminalItem.setChecked(bottomWindowVisible);
+        }
+        android.view.MenuItem expandItem = menu.findItem(R.id.menu_expand_editor);
+        if (expandItem != null) {
+            expandItem.setChecked(editorMaximized);
+        }
+    }
+
+    private void clearBuildOutput() {
+        javaCompiler.clearOutputDirectory();
+        statusText.setText("Build output cleared");
+    }
+
+    private void showAboutDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle("About LarvIDE")
+            .setMessage("LarvIDE - Lightweight Java IDE for Android\nVersion 1.0\nBuilt with ECJ, R8, Monaco Editor")
+            .setPositiveButton("OK", null)
+            .show();
+    }
+
     private void toggleLeftWindow() {
         leftWindowVisible = !leftWindowVisible;
         leftToolWindowContent.setVisibility(leftWindowVisible ? View.VISIBLE : View.GONE);
         leftResizer.setVisibility(leftWindowVisible ? View.VISIBLE : View.GONE);
+    }
+
+    private void closeLeftWindow() {
+        leftWindowVisible = false;
+        leftToolWindowContent.setVisibility(View.GONE);
+        leftResizer.setVisibility(View.GONE);
     }
 
     private void toggleBottomWindow() {
@@ -980,37 +1227,36 @@ public class MainActivity extends AppCompatActivity
         bottomResizer.setVisibility(bottomWindowVisible ? View.VISIBLE : View.GONE);
     }
 
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        int id = item.getItemId();
-        if (id == R.id.menu_new_project) {
-            showNewProjectDialog();
-            return true;
-        } else if (id == R.id.menu_open_project) {
-            showOpenProjectDialog();
-            return true;
-        } else if (id == R.id.menu_save) {
-            saveCurrentFile();
-            return true;
-        } else if (id == R.id.menu_save_all) {
-            saveAllFiles();
-            return true;
-        } else if (id == R.id.menu_compile || id == R.id.menu_run) {
-            compileAndRun();
-            return true;
-        } else if (id == R.id.menu_toggle_project) {
-            item.setChecked(!item.isChecked());
-            toggleLeftWindow();
-            return true;
-        } else if (id == R.id.menu_toggle_terminal) {
-            item.setChecked(!item.isChecked());
-            toggleBottomWindow();
-            return true;
-        } else if (id == R.id.menu_build || id == R.id.menu_rebuild) {
-            compileAndRun();
-            return true;
+    private void closeBottomWindow() {
+        bottomWindowVisible = false;
+        bottomToolWindow.setVisibility(View.GONE);
+        bottomResizer.setVisibility(View.GONE);
+    }
+
+    private void showWelcome(boolean show) {
+        welcomeView.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (show) {
+            noEditorPlaceholder.setVisibility(View.GONE);
+        } else if (openFiles.isEmpty()) {
+            noEditorPlaceholder.setVisibility(View.VISIBLE);
         }
-        return super.onOptionsItemSelected(item);
+    }
+
+    private void toggleMaximizeEditor() {
+        editorMaximized = !editorMaximized;
+        if (editorMaximized) {
+            leftToolWindowContent.setVisibility(View.GONE);
+            leftResizer.setVisibility(View.GONE);
+            bottomToolWindow.setVisibility(View.GONE);
+            bottomResizer.setVisibility(View.GONE);
+            statusText.setText("Editor maximized");
+        } else {
+            leftToolWindowContent.setVisibility(leftWindowVisible ? View.VISIBLE : View.GONE);
+            leftResizer.setVisibility(leftWindowVisible ? View.VISIBLE : View.GONE);
+            bottomToolWindow.setVisibility(bottomWindowVisible ? View.VISIBLE : View.GONE);
+            bottomResizer.setVisibility(bottomWindowVisible ? View.VISIBLE : View.GONE);
+            statusText.setText("Layout restored");
+        }
     }
 
     @Override

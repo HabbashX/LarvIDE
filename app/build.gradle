@@ -32,6 +32,32 @@ android {
             excludes += "META-INF/*"
         }
     }
+
+    sourceSets {
+        main {
+            assets.srcDirs += "$buildDir/generated/assets"
+        }
+    }
+}
+
+// Bundle android.jar so the on-device ECJ compiler can resolve java.* types
+tasks.register('copyBootclasspath') {
+    def sdkDir = android.sdkDirectory
+    def platform = new File(sdkDir, "platforms/android-34/android.jar")
+    def outFile = file("$buildDir/generated/assets/bootclasspath/android.jar")
+    inputs.file(platform)
+    outputs.file(outFile)
+    doLast {
+        outFile.parentFile.mkdirs()
+        copy {
+            from platform
+            into outFile.parentFile
+        }
+    }
+}
+
+tasks.named('preBuild') {
+    dependsOn 'copyBootclasspath'
 }
 
 dependencies {
@@ -52,8 +78,15 @@ dependencies {
     // JSON parsing
     implementation 'com.google.code.gson:gson:2.10.1'
     
-    // ECJ - Eclipse Compiler for Java
-    implementation 'org.eclipse.jdt:ecj:3.40.0'
+    // ECJ - Eclipse Compiler for Java.
+    // 3.26.0 is the last version that runs on a Java 8 runtime / Android < API 33:
+    // Util.getInputStreamAsByteArray still uses a manual read loop. ECJ 3.27+
+    // switched to InputStream.readAllBytes() (missing on Android below API 33),
+    // and 3.28+ additionally requires a Java 11 runtime.
+    implementation 'org.eclipse.jdt:ecj:3.26.0'
+    
+    // R8/D8 so the on-device dex step can produce real classes.dex
+    implementation 'com.android.tools:r8:8.6.27'
     
     // D8/R8 is included in Android Gradle Plugin
     

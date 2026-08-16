@@ -10,13 +10,37 @@
             padding: 0;
             box-sizing: border-box;
         }
+        @font-face {
+            font-family: 'JetBrains Mono';
+            src: url('file:///android_asset/fonts/JetBrainsMono-Regular.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'JetBrains Mono';
+            src: url('file:///android_asset/fonts/JetBrainsMono-Medium.ttf') format('truetype');
+            font-weight: 500;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'JetBrains Mono';
+            src: url('file:///android_asset/fonts/JetBrainsMono-SemiBold.ttf') format('truetype');
+            font-weight: 600;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'JetBrains Mono';
+            src: url('file:///android_asset/fonts/JetBrainsMono-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+        }
         html, body {
             height: 100%;
             width: 100%;
             overflow: hidden;
-            background: #1E1E1E;
-            color: #D4D4D4;
-            font-family: 'Monospace', monospace;
+            background: #3C3F41;
+            color: #BCBEC4;
+            font-family: 'JetBrains Mono', monospace;
             font-size: 14px;
             line-height: 1.5;
         }
@@ -25,13 +49,13 @@
             width: 100%;
         }
         .monaco-editor {
-            background: #1E1E1E !important;
+            background: #3C3F41 !important;
         }
         .monaco-editor .margin {
-            background: #1E1E1E !important;
+            background: #3C3F41 !important;
         }
         .monaco-editor .lines-content {
-            background: #1E1E1E !important;
+            background: #3C3F41 !important;
         }
     </style>
 </head>
@@ -39,11 +63,11 @@
     <div id="editor"></div>
 
     <!-- Monaco Editor AMD Loader -->
-    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script src="editor/vs/loader.js"></script>
     <script>
         require.config({
             paths: {
-                'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs'
+                'vs': 'file:///android_asset/editor/vs'
             }
         });
 
@@ -120,10 +144,62 @@
                 }
             });
 
+            monaco.editor.defineTheme('islands-dark', {
+                base: 'vs-dark',
+                inherit: true,
+                rules: [
+                    { token: 'comment', foreground: '7D7F85', fontStyle: 'italic' },
+                    { token: 'string', foreground: '6A8759' },
+                    { token: 'string.escape', foreground: '6A8759', fontStyle: 'bold' },
+                    { token: 'string.invalid', foreground: 'F75464' },
+                    { token: 'number', foreground: '6897BB' },
+                    { token: 'number.hex', foreground: '6897BB' },
+                    { token: 'keyword', foreground: 'CC7832' },
+                    { token: 'tag', foreground: 'BBB529' },
+                    { token: 'identifier', foreground: 'BCBEC4' },
+                    { token: 'operator', foreground: 'BCBEC4' },
+                    { token: 'delimiter', foreground: 'BCBEC4' },
+                    { token: 'bracket', foreground: 'BCBEC4' }
+                ],
+                colors: {
+                    'editor.background': '#3C3F41',
+                    'editor.foreground': '#BCBEC4',
+                    'editorLineNumber.foreground': '#6F737A',
+                    'editorLineNumber.activeForeground': '#BCBEC4',
+                    'editorCursor.foreground': '#BCBEC4',
+                    'editor.selectionBackground': '#2B445D',
+                    'editor.inactiveSelectionBackground': '#3A4450',
+                    'editor.lineHighlightBackground': '#3A3C3E',
+                    'editor.lineHighlightBorder': '#00000000',
+                    'editorGutter.background': '#3C3F41',
+                    'editorGutter.modifiedBackground': '#F2C55C',
+                    'editorGutter.addedBackground': '#73BD79',
+                    'editorGutter.deletedBackground': '#F75464',
+                    'editorIndentGuide.background1': '#464A4C',
+                    'editorIndentGuide.activeBackground1': '#5A5E60',
+                    'editorWhitespace.foreground': '#464A4C',
+                    'editorBracketMatch.border': '#F2C55C',
+                    'editorBracketMatch.background': '#4C5052',
+                    'editorWidget.background': '#3C3F41',
+                    'editorWidget.border': '#4C5052',
+                    'editorSuggestWidget.background': '#3C3F41',
+                    'editorSuggestWidget.border': '#4C5052',
+                    'editorSuggestWidget.selectedBackground': '#464A4C',
+                    'editorSuggestWidget.foreground': '#BCBEC4',
+                    'editorHoverWidget.background': '#3C3F41',
+                    'editorHoverWidget.border': '#4C5052',
+                    'scrollbarSlider.background': '#464A4C77',
+                    'scrollbarSlider.hoverBackground': '#5A5E60AA',
+                    'editorOverviewRuler.border': '#00000000',
+                    'editor.findMatchBackground': '#4B5A3C',
+                    'editor.findMatchHighlightBackground': '#4B5A3C55'
+                }
+            });
+
             editor = monaco.editor.create(document.getElementById('editor'), {
                 value: '',
                 language: 'java',
-                theme: 'vs-dark',
+                theme: 'islands-dark',
                 automaticLayout: true,
                 minimap: { enabled: false },
                 lineNumbers: 'on',
@@ -250,6 +326,22 @@
         window.focus = function() {
             if (editor) {
                 editor.focus();
+            }
+        };
+
+        window.execAction = function(action) {
+            if (!editor) return;
+            try {
+                switch (action) {
+                    case 'undo': editor.trigger('', 'undo', null); break;
+                    case 'redo': editor.trigger('', 'redo', null); break;
+                    case 'find': editor.trigger('', 'actions.find', null); break;
+                    case 'findNext': editor.trigger('', 'actions.find.next', null); break;
+                    case 'findPrevious': editor.trigger('', 'actions.find.previous', null); break;
+                    case 'selectAll': editor.trigger('', 'editor.action.selectAll', null); break;
+                }
+            } catch (e) {
+                // ignore
             }
         };
     </script>

@@ -1,6 +1,5 @@
 package com.larv.ide.ui.adapter;
 
-import android.os.Build;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -8,7 +7,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.larv.ide.R;
@@ -19,9 +18,10 @@ import java.util.List;
 
 public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileViewHolder> {
 
-    private List<FileNode> visibleNodes = new ArrayList<>();
+    private final List<FileNode> visibleNodes = new ArrayList<>();
     private final List<FileNode> rootNodes = new ArrayList<>();
     private final OnFileClickListener listener;
+    private String selectedPath = null;
 
     public interface OnFileClickListener {
         void onFileClick(FileNode node);
@@ -108,9 +108,19 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
         for (FileNode node : rootNodes) {
             if (path.startsWith(node.getPath())) {
                 node.setExpanded(true);
+                expandAncestors(node.getChildren(), path);
             }
         }
         refreshVisibleNodes();
+    }
+
+    private void expandAncestors(List<FileNode> nodes, String path) {
+        for (FileNode node : nodes) {
+            if (node.getType() == FileNode.Type.DIRECTORY && path.startsWith(node.getPath())) {
+                node.setExpanded(true);
+                expandAncestors(node.getChildren(), path);
+            }
+        }
     }
 
     @NonNull
@@ -124,11 +134,14 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
     @Override
     public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
         FileNode node = visibleNodes.get(position);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            holder.bind(node);
-        }
+        holder.bind(node);
+        holder.itemView.setSelected(node.getPath().equals(selectedPath));
 
-        holder.itemView.setOnClickListener(v -> listener.onFileClick(node));
+        holder.itemView.setOnClickListener(v -> {
+            selectedPath = node.getPath();
+            notifyDataSetChanged();
+            listener.onFileClick(node);
+        });
         holder.itemView.setOnLongClickListener(v -> {
             listener.onFileLongClick(node);
             return true;
@@ -152,7 +165,6 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
             more = itemView.findViewById(R.id.fileMore);
         }
 
-        @RequiresApi(api = Build.VERSION_CODES.M)
         void bind(@NonNull FileNode node) {
             name.setText(node.getName());
             
@@ -161,15 +173,15 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
                 itemView.getPaddingRight(), itemView.getPaddingBottom());
 
             if (node.getType() == FileNode.Type.DIRECTORY) {
-                icon.setImageResource(node.isExpanded() ? 
-                    android.R.drawable.arrow_up_float : android.R.drawable.arrow_down_float);
-                icon.setColorFilter(itemView.getContext().getColor(android.R.color.white));
+                icon.setImageResource(node.isExpanded() ?
+                    R.drawable.ic_folder_open : R.drawable.ic_folder);
+                icon.clearColorFilter();
             } else if (node.isJavaFile()) {
-                icon.setImageResource(android.R.drawable.ic_menu_report_image);
-                icon.setColorFilter(itemView.getContext().getColor(R.color.accent_variable));
+                icon.setImageResource(R.drawable.ic_java);
+                icon.clearColorFilter();
             } else {
-                icon.setImageResource(android.R.drawable.ic_menu_report_image);
-                icon.setColorFilter(itemView.getContext().getColor(R.color.text_secondary));
+                icon.setImageResource(R.drawable.ic_file);
+                icon.setColorFilter(ContextCompat.getColor(itemView.getContext(), R.color.text_secondary));
             }
         }
     }

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/menu_toggle_project"
+        android:title="Project"
+        android:checkable="true"
+        android:checked="true" />
+
+    <item
+        android:id="@+id/menu_toggle_terminal"
+        android:title="Output"
+        android:checkable="true"
+        android:checked="true" />
+
+    <item
+        android:id="@+id/menu_expand_editor"
+        android:title="Maximize Editor"
+        android:checkable="true" />
+</menu>
