@@ -14,7 +14,6 @@ import android.os.Looper;
 import android.content.SharedPreferences;
 import android.text.InputType;
 import android.util.Log;
-import android.view.Gravity;
 import android.view.DragEvent;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -442,8 +441,8 @@ public class MainActivity extends AppCompatActivity
     }
 
     @Override
-    public void onFileLongClick(FileNode node) {
-        showFileContextMenu(node);
+    public void onFileMoreClick(FileNode node, View anchor) {
+        showFileContextMenu(node, anchor);
     }
 
     private void setupFileTreeDragAndDrop() {
@@ -467,10 +466,6 @@ public class MainActivity extends AppCompatActivity
                     return true;
                 case DragEvent.ACTION_DRAG_ENDED:
                     clearDropHighlight();
-                    FileNode dragged = fileTreeAdapter.getDraggedNode();
-                    if (!dropHandled && dragged != null) {
-                        showFileContextMenu(dragged);
-                    }
                     dropHandled = false;
                     fileTreeAdapter.setDraggedNode(null);
                     return true;
@@ -522,6 +517,11 @@ public class MainActivity extends AppCompatActivity
             new ProjectManager.OnFileOperationCallback() {
                 @Override
                 public void onSuccess(File file) {
+                    if (file.getAbsolutePath().equals(source.getPath())) {
+                        runOnUiThread(() ->
+                            Toast.makeText(MainActivity.this, "Already in this folder", Toast.LENGTH_SHORT).show());
+                        return;
+                    }
                     updateOpenFilesAfterMove(source.getPath(), file.getAbsolutePath());
                     runOnUiThread(() -> {
                         statusText.setText("Moved: " + file.getName() + " -> " + file.getParentFile().getName());
@@ -946,8 +946,8 @@ public class MainActivity extends AppCompatActivity
         builder.show();
     }
 
-    private void showFileContextMenu(FileNode node) {
-        PopupMenu popup = new PopupMenu(this, findViewById(android.R.id.content), Gravity.CENTER);
+    private void showFileContextMenu(FileNode node, View anchor) {
+        PopupMenu popup = new PopupMenu(this, anchor);
         popup.getMenu().add(node.getName()).setEnabled(false);
 
         if (node.getType() == FileNode.Type.DIRECTORY) {

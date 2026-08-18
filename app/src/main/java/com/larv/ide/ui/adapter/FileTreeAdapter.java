@@ -28,7 +28,7 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
 
     public interface OnFileClickListener {
         void onFileClick(FileNode node);
-        void onFileLongClick(FileNode node);
+        void onFileMoreClick(FileNode node, View anchor);
     }
 
     public FileTreeAdapter(OnFileClickListener listener) {
@@ -149,6 +149,7 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
             startDrag(holder.itemView, visibleNodes.get(position));
             return true;
         });
+        holder.more.setOnClickListener(v -> listener.onFileMoreClick(node, holder.itemView));
     }
 
     private void startDrag(View view, FileNode node) {
