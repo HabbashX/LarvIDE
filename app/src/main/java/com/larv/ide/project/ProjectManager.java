@@ -228,6 +228,43 @@ public class ProjectManager {
         });
     }
 
+    public void moveFile(File source, File targetDir, OnFileOperationCallback callback) {
+        executor.execute(() -> {
+            try {
+                if (source == null || !source.exists()) {
+                    if (callback != null) callback.onError("Source not found");
+                    return;
+                }
+                if (targetDir == null || !targetDir.exists() || !targetDir.isDirectory()) {
+                    if (callback != null) callback.onError("Invalid target folder");
+                    return;
+                }
+                if (source.getParentFile() != null
+                    && source.getParentFile().getAbsolutePath().equals(targetDir.getAbsolutePath())) {
+                    if (callback != null) callback.onSuccess(source);
+                    return;
+                }
+                if (source.isDirectory() && targetDir.getAbsolutePath().startsWith(source.getAbsolutePath())) {
+                    if (callback != null) callback.onError("Cannot move a folder into itself");
+                    return;
+                }
+                File dest = new File(targetDir, source.getName());
+                if (dest.exists()) {
+                    if (callback != null) callback.onError("A file or folder with that name already exists in the target");
+                    return;
+                }
+                if (source.renameTo(dest)) {
+                    if (callback != null) callback.onSuccess(dest);
+                } else {
+                    if (callback != null) callback.onError("Failed to move");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to move file", e);
+                if (callback != null) callback.onError("Failed to move: " + e.getMessage());
+            }
+        });
+    }
+
     public void readFile(File file, OnFileReadCallback callback) {
         executor.execute(() -> {
             try {

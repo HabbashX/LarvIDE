@@ -61,36 +61,16 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Left Tool Window Bar (Vertical tabs) -->
-        <com.google.android.material.tabs.TabLayout
-            android:id="@+id/leftToolWindowBar"
-            android:layout_width="36dp"
-            android:layout_height="0dp"
-            android:background="@color/background"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"
-            app:tabGravity="fill"
-            app:tabMode="fixed"
-            app:tabIndicator="@null"
-            app:tabInlineLabel="false"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
-
         <!-- Left Tool Window Content (Project, Structure, etc.) -->
         <FrameLayout
             android:id="@+id/leftToolWindowContent"
             android:layout_width="200dp"
             android:layout_height="0dp"
-            android:background="@drawable/island_background"
-            android:padding="4dp"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="4dp"
-            android:layout_marginEnd="4dp"
+            android:background="@color/surface"
             android:visibility="visible"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toEndOf="@id/leftToolWindowBar">
+            app:layout_constraintStart_toStartOf="parent">
 
             <!-- Project Tool Window -->
             <FrameLayout
@@ -273,7 +253,6 @@
                         android:background="@drawable/bg_run_button"
                         android:contentDescription="@string/run_code"
                         android:src="@drawable/ic_run"
-                        android:tint="@color/text_on_primary"
                         android:scaleType="centerInside" />
 
                     <ImageButton

@@ -6,19 +6,19 @@
     <color name="primary_light">#70AEFF</color>
     <color name="secondary">#F2C55C</color>
 
-    <!-- Background Colors (JetBrains Islands Dark) -->
-    <color name="background">#2B2B2B</color>
-    <color name="editor_background">#3C3F41</color>
-    <color name="surface">#3C3F41</color>
-    <color name="surface_variant">#4C5052</color>
-    <color name="sidebar_background">#3C3F41</color>
-    <color name="toolbar_background">#2B2B2B</color>
-    <color name="tab_bar_background">#3C3F41</color>
-    <color name="status_bar_background">#2B2B2B</color>
+    <!-- Background Colors (JetBrains Islands Dark: unified #191A1C + #2B2D30 borders) -->
+    <color name="background">#191A1C</color>
+    <color name="editor_background">#191A1C</color>
+    <color name="surface">#191A1C</color>
+    <color name="surface_variant">#27282B</color>
+    <color name="sidebar_background">#191A1C</color>
+    <color name="toolbar_background">#191A1C</color>
+    <color name="tab_bar_background">#191A1C</color>
+    <color name="status_bar_background">#191A1C</color>
 
     <!-- Text Colors -->
     <color name="text_primary">#BCBEC4</color>
-    <color name="text_secondary">#A9ABB0</color>
+    <color name="text_secondary">#9DA0A8</color>
     <color name="text_disabled">#6F737A</color>
     <color name="text_on_primary">#FFFFFF</color>
 
@@ -29,44 +29,48 @@
     <color name="info">#56A8F5</color>
 
     <!-- UI Colors -->
-    <color name="divider">#2B2B2B</color>
-    <color name="border">#4C5052</color>
-    <color name="resizer">#3A3D3F</color>
-    <color name="selection">#2B445D</color>
-    <color name="hover">#464A4C</color>
+    <color name="divider">#2B2D30</color>
+    <color name="border">#2B2D30</color>
+    <color name="resizer">#2B2D30</color>
+    <color name="selection">#2B2D30</color>
+    <color name="hover">#2B2D30</color>
 
     <!-- Editor Colors -->
-    <color name="editor_line_number">#6F737A</color>
-    <color name="editor_line_highlight">#3A3C3E</color>
-    <color name="editor_selection">#2B445D</color>
-    <color name="editor_search_match">#4B5A3C</color>
-    <color name="editor_bracket_match">#F2C55C</color>
+    <color name="editor_line_number">#4B5059</color>
+    <color name="editor_line_highlight">#1F2024</color>
+    <color name="editor_selection">#373B39</color>
+    <color name="editor_search_match">#2D543F</color>
+    <color name="editor_bracket_match">#43454A</color>
 
     <!-- Tab Colors (Islands: selected tab elevated + accent underline) -->
-    <color name="tab_active">#4C5052</color>
-    <color name="tab_inactive">#3C3F41</color>
-    <color name="tab_hover">#464A4C</color>
-    <color name="tab_selected_text">#FFFFFF</color>
-    <color name="tab_unselected_text">#A9ABB0</color>
+    <color name="tab_active">#2B2D30</color>
+    <color name="tab_inactive">#191A1C</color>
+    <color name="tab_hover">#2B2D30</color>
+    <color name="tab_selected_text">#DFE1E5</color>
+    <color name="tab_unselected_text">#6F737A</color>
 
-    <!-- Syntax Highlighting (IntelliJ Dark scheme) -->
-    <color name="accent_keyword">#CC7832</color>
-    <color name="accent_string">#6A8759</color>
-    <color name="accent_comment">#7D7F85</color>
-    <color name="accent_number">#6897BB</color>
-    <color name="accent_type">#4EC9B0</color>
-    <color name="accent_function">#DCDCAA</color>
-    <color name="accent_variable">#9876AA</color>
-    <color name="accent_constant">#4FC1FF</color>
-    <color name="accent_annotation">#BBB529</color>
+    <!-- Syntax Highlighting (Islands Dark scheme) -->
+    <color name="accent_keyword">#CF8E6D</color>
+    <color name="accent_string">#6AAB73</color>
+    <color name="accent_comment">#7A7E85</color>
+    <color name="accent_number">#2AACB8</color>
+    <color name="accent_type">#16BAAC</color>
+    <color name="accent_function">#56A8F5</color>
+    <color name="accent_variable">#C77DBB</color>
+    <color name="accent_constant">#C77DBB</color>
+    <color name="accent_annotation">#B3AE60</color>
     <color name="accent_punctuation">#BCBEC4</color>
 
     <!-- Tool Window Colors -->
-    <color name="tool_window_header">#4C5052</color>
-    <color name="tool_window_button">#4C5052</color>
-    <color name="tool_window_button_hover">#5A5E60</color>
+    <color name="tool_window_header">#191A1C</color>
+    <color name="tool_window_button">#191A1C</color>
+    <color name="tool_window_button_hover">#2B2D30</color>
 
     <!-- Action Colors -->
     <color name="run_green">#4FB74A</color>
     <color name="java_blue">#5382A1</color>
+    <color name="accent_blue">#56A8F5</color>
+
+    <!-- Launcher Icon -->
+    <color name="ic_launcher_background">#FBA71E</color>
 </resources>

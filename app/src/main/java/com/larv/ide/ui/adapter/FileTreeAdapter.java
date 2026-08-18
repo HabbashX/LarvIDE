@@ -1,5 +1,7 @@
 package com.larv.ide.ui.adapter;
 
+import android.content.ClipData;
+import android.os.Build;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -22,6 +24,7 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
     private final List<FileNode> rootNodes = new ArrayList<>();
     private final OnFileClickListener listener;
     private String selectedPath = null;
+    private FileNode draggedNode = null;
 
     public interface OnFileClickListener {
         void onFileClick(FileNode node);
@@ -143,9 +146,28 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
             listener.onFileClick(node);
         });
         holder.itemView.setOnLongClickListener(v -> {
-            listener.onFileLongClick(node);
+            startDrag(holder.itemView, visibleNodes.get(position));
             return true;
         });
+    }
+
+    private void startDrag(View view, FileNode node) {
+        draggedNode = node;
+        ClipData data = ClipData.newPlainText("larvide_path", node.getPath());
+        View.DragShadowBuilder shadow = new View.DragShadowBuilder(view);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            view.startDragAndDrop(data, shadow, node, 0);
+        } else {
+            view.startDrag(data, shadow, node, 0);
+        }
+    }
+
+    public FileNode getDraggedNode() {
+        return draggedNode;
+    }
+
+    public void setDraggedNode(FileNode draggedNode) {
+        this.draggedNode = draggedNode;
     }
 
     @Override
@@ -153,19 +175,25 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
         return visibleNodes.size();
     }
 
-    static class FileViewHolder extends RecyclerView.ViewHolder {
+    public static class FileViewHolder extends RecyclerView.ViewHolder {
         private final ImageView icon;
         private final TextView name;
         private final ImageView more;
+        private FileNode node;
 
-        FileViewHolder(@NonNull View itemView) {
+        public FileViewHolder(@NonNull View itemView) {
             super(itemView);
             icon = itemView.findViewById(R.id.fileIcon);
             name = itemView.findViewById(R.id.fileName);
             more = itemView.findViewById(R.id.fileMore);
         }
 
+        public FileNode getNode() {
+            return node;
+        }
+
         void bind(@NonNull FileNode node) {
+            this.node = node;
             name.setText(node.getName());
             
             int indent = node.getDepth() * 24;

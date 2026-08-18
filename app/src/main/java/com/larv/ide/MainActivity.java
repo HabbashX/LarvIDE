@@ -15,6 +15,7 @@ import android.content.SharedPreferences;
 import android.text.InputType;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.DragEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
@@ -33,6 +34,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.FragmentManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.material.tabs.TabLayout;
@@ -40,6 +42,7 @@ import com.google.android.material.tabs.TabLayoutMediator;
 import com.larv.ide.compiler.Dexer;
 import com.larv.ide.compiler.JavaCompiler;
 import com.larv.ide.compiler.JavaRunner;
+import com.larv.ide.compiler.TerminalInput;
 import com.larv.ide.completion.CompletionItem;
 import com.larv.ide.completion.ProjectIndexer;
 import com.larv.ide.model.FileNode;
@@ -128,6 +131,10 @@ public class MainActivity extends AppCompatActivity
     private boolean leftWindowVisible = true;
     private boolean bottomWindowVisible = true;
     private boolean editorMaximized = false;
+    private TerminalInput activeInput = null;
+    private View highlightedDropView = null;
+    private android.graphics.drawable.Drawable highlightedOriginalBackground = null;
+    private boolean dropHandled = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -218,9 +225,15 @@ public class MainActivity extends AppCompatActivity
         fileTreeAdapter = new FileTreeAdapter(this);
         fileTreeRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         fileTreeRecyclerView.setAdapter(fileTreeAdapter);
+        setupFileTreeDragAndDrop();
 
         // Bottom panel adapter
         bottomPanelAdapter = new BottomPanelAdapter(this);
+        bottomPanelAdapter.getOutputFragment().setInputListener(line -> {
+            if (activeInput != null) {
+                activeInput.writeLine(line);
+            }
+        });
         bottomViewPager.setAdapter(bottomPanelAdapter);
         bottomViewPager.setOffscreenPageLimit(2);
 
@@ -433,6 +446,116 @@ public class MainActivity extends AppCompatActivity
         showFileContextMenu(node);
     }
 
+    private void setupFileTreeDragAndDrop() {
+        fileTreeRecyclerView.setOnDragListener((v, event) -> {
+            switch (event.getAction()) {
+                case DragEvent.ACTION_DRAG_STARTED:
+                    return true;
+                case DragEvent.ACTION_DRAG_LOCATION:
+                    updateDropHighlight(event);
+                    return true;
+                case DragEvent.ACTION_DROP:
+                    FileNode target = findDropTarget(event);
+                    if (target != null) {
+                        FileNode source = fileTreeAdapter.getDraggedNode();
+                        if (source != null) {
+                            performFileMove(source, target);
+                            dropHandled = true;
+                        }
+                    }
+                    clearDropHighlight();
+                    return true;
+                case DragEvent.ACTION_DRAG_ENDED:
+                    clearDropHighlight();
+                    FileNode dragged = fileTreeAdapter.getDraggedNode();
+                    if (!dropHandled && dragged != null) {
+                        showFileContextMenu(dragged);
+                    }
+                    dropHandled = false;
+                    fileTreeAdapter.setDraggedNode(null);
+                    return true;
+            }
+            return false;
+        });
+    }
+
+    private FileNode findDropTarget(DragEvent event) {
+        View child = fileTreeRecyclerView.findChildViewUnder(event.getX(), event.getY());
+        if (child == null) return null;
+        RecyclerView.ViewHolder holder = fileTreeRecyclerView.getChildViewHolder(child);
+        if (!(holder instanceof FileTreeAdapter.FileViewHolder)) return null;
+
+        FileNode target = ((FileTreeAdapter.FileViewHolder) holder).getNode();
+        FileNode source = fileTreeAdapter.getDraggedNode();
+        if (target == null || source == null) return null;
+        if (target.getType() != FileNode.Type.DIRECTORY) return null;
+        if (target.getPath().equals(source.getPath())) return null;
+        if (source.getType() == FileNode.Type.DIRECTORY
+            && target.getPath().startsWith(source.getPath() + File.separator)) return null;
+        return target;
+    }
+
+    private void updateDropHighlight(DragEvent event) {
+        FileNode target = findDropTarget(event);
+        View newTarget = target != null
+            ? fileTreeRecyclerView.findChildViewUnder(event.getX(), event.getY())
+            : null;
+        if (newTarget == highlightedDropView) return;
+        clearDropHighlight();
+        highlightedDropView = newTarget;
+        if (highlightedDropView != null) {
+            highlightedOriginalBackground = highlightedDropView.getBackground();
+            highlightedDropView.setBackgroundResource(R.drawable.drop_highlight);
+        }
+    }
+
+    private void clearDropHighlight() {
+        if (highlightedDropView != null) {
+            highlightedDropView.setBackground(highlightedOriginalBackground);
+            highlightedDropView = null;
+            highlightedOriginalBackground = null;
+        }
+    }
+
+    private void performFileMove(FileNode source, FileNode targetDir) {
+        projectManager.moveFile(new File(source.getPath()), new File(targetDir.getPath()),
+            new ProjectManager.OnFileOperationCallback() {
+                @Override
+                public void onSuccess(File file) {
+                    updateOpenFilesAfterMove(source.getPath(), file.getAbsolutePath());
+                    runOnUiThread(() -> {
+                        statusText.setText("Moved: " + file.getName() + " -> " + file.getParentFile().getName());
+                        projectManager.refreshFileTree();
+                    });
+                }
+
+                @Override
+                public void onError(String error) {
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this, error, Toast.LENGTH_SHORT).show());
+                }
+            });
+    }
+
+    private void updateOpenFilesAfterMove(String oldPath, String newPath) {
+        for (int i = 0; i < openFiles.size(); i++) {
+            OpenFile f = openFiles.get(i);
+            String fp = f.getFilePath();
+            if (fp.equals(oldPath) || fp.startsWith(oldPath + File.separator)) {
+                String updated = newPath + fp.substring(oldPath.length());
+                f.setFilePath(updated);
+                EditorFragment fragment = editorFragments.remove(fp);
+                if (fragment != null) editorFragments.put(updated, fragment);
+                if (currentEditorFile.equals(fp)) currentEditorFile = updated;
+                TabLayout.Tab tab = tabLayout.getTabAt(i);
+                if (tab != null) tab.setText((f.isModified() ? "* " : "") + f.getFileName());
+            }
+        }
+        if (!selectedDirectory.isEmpty()
+            && (selectedDirectory.equals(oldPath) || selectedDirectory.startsWith(oldPath + File.separator))) {
+            selectedDirectory = currentProject != null ? currentProject.getPath() : "";
+        }
+    }
+
 
     @Override
     public void onContentChange(String file, String content) {
@@ -631,10 +754,9 @@ public class MainActivity extends AppCompatActivity
                 android.util.Log.d("MainActivity", "RAW COMPILER OUTPUT:\n" + compileResult.getRawOutput());
             }
 
-            runOnUiThread(() -> {
-                bottomPanelAdapter.getErrorsFragment().setErrors(compileResult.getDiagnostics());
-
-                if (!compileResult.isSuccess()) {
+            if (!compileResult.isSuccess()) {
+                runOnUiThread(() -> {
+                    bottomPanelAdapter.getErrorsFragment().setErrors(compileResult.getDiagnostics());
                     isCompiling = false;
                     statusText.setText("Compilation failed");
                     if (compileResult.getRawOutput() != null && !compileResult.getRawOutput().isEmpty()) {
@@ -643,52 +765,59 @@ public class MainActivity extends AppCompatActivity
                         }
                     }
                     bottomViewPager.setCurrentItem(1);
-                    return;
-                }
+                });
+                return;
+            }
 
-                bottomPanelAdapter.getOutputFragment().addLine("Compilation successful");
+            runOnUiThread(() ->
+                bottomPanelAdapter.getOutputFragment().addLine("Compilation successful"));
 
-                Dexer.DexResult dexResult = dexer.dex(compileResult.getClassFiles(), null);
-
-                if (!dexResult.isSuccess()) {
+            Dexer.DexResult dexResult = dexer.dex(compileResult.getClassFiles(), null);
+            if (!dexResult.isSuccess()) {
+                runOnUiThread(() -> {
                     bottomPanelAdapter.getOutputFragment().addLine("Dex error: " + dexResult.getError());
                     isCompiling = false;
                     statusText.setText("Dex error");
-                    return;
-                }
+                });
+                return;
+            }
 
-                bottomPanelAdapter.getOutputFragment().addLine("Dex successful, running...");
-
-                String mainClass = findMainClass(openFiles);
-                if (mainClass == null) {
+            String mainClass = findMainClass(openFiles);
+            if (mainClass == null) {
+                runOnUiThread(() -> {
                     bottomPanelAdapter.getOutputFragment().addLine("Error: No main class found");
                     isCompiling = false;
                     statusText.setText("No main class");
-                    return;
-                }
-
-                JavaRunner.RunResult runResult = javaRunner.run(dexResult.getDexFile(), mainClass, new String[]{});
-
-                runOnUiThread(() -> {
-                    if (runResult.isSuccess()) {
-                        bottomPanelAdapter.getOutputFragment().addLine("Program finished (exit code 0)");
-                        if (!runResult.getOutput().isEmpty()) {
-                            for (String line : runResult.getOutput().split("\n")) {
-                                bottomPanelAdapter.getOutputFragment().addLine(line);
-                            }
-                        }
-                    } else {
-                        bottomPanelAdapter.getOutputFragment().addLine("Runtime error: " + runResult.getError());
-                        if (!runResult.getErrorOutput().isEmpty()) {
-                            for (String line : runResult.getErrorOutput().split("\n")) {
-                                bottomPanelAdapter.getOutputFragment().addLine(line);
-                            }
-                        }
-                    }
-
-                    isCompiling = false;
-                    statusText.setText("Done");
                 });
+                return;
+            }
+
+            TerminalInput stdin = new TerminalInput();
+            activeInput = stdin;
+            runOnUiThread(() -> {
+                bottomPanelAdapter.getOutputFragment().addLine("Dex successful, running " + mainClass + "...");
+                bottomPanelAdapter.getOutputFragment().showInput();
+            });
+
+            JavaRunner.LineListener outListener = line ->
+                runOnUiThread(() -> bottomPanelAdapter.getOutputFragment().addLine(line));
+            JavaRunner.LineListener errListener = line ->
+                runOnUiThread(() -> bottomPanelAdapter.getOutputFragment().addLine(line));
+
+            JavaRunner.RunResult runResult = javaRunner.run(
+                dexResult.getDexFile(), mainClass, new String[]{}, outListener, errListener, stdin);
+
+            runOnUiThread(() -> {
+                activeInput = null;
+                bottomPanelAdapter.getOutputFragment().hideInput();
+                if (runResult.getError() != null) {
+                    bottomPanelAdapter.getOutputFragment().addLine(runResult.getError());
+                }
+                if (runResult.isSuccess()) {
+                    bottomPanelAdapter.getOutputFragment().addLine("Program finished (exit code 0)");
+                }
+                isCompiling = false;
+                statusText.setText(runResult.isSuccess() ? "Done" : "Program finished with error");
             });
         });
     }
