@@ -28,6 +28,8 @@ import java.util.List;
 
 public class EditorFragment extends Fragment {
 
+    private static final Gson GSON = new Gson();
+
     private WebView webView;
     private EditorListener listener;
     private String currentFile;
@@ -123,8 +125,7 @@ public class EditorFragment extends Fragment {
 
     public void showDiagnostics(List<Diagnostic> diagnostics) {
         if (isReady && webView != null) {
-            Gson gson = new Gson();
-            String json = gson.toJson(diagnostics);
+            String json = GSON.toJson(diagnostics);
             webView.evaluateJavascript("window.showDiagnostics(" + json + ");", null);
         }
     }
@@ -179,8 +180,7 @@ public class EditorFragment extends Fragment {
             if (listener != null) {
                 listener.onCompletionsRequested(file, line, column, completions -> {
                     if (isReady && webView != null) {
-                        Gson gson = new Gson();
-                        String json = gson.toJson(completions);
+                        String json = GSON.toJson(completions);
                         webView.post(() -> webView.evaluateJavascript(
                             "window.monacoCompletionCallback && window.monacoCompletionCallback(" + json + ");", null));
                     }

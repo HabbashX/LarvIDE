@@ -33,6 +33,7 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
 
     public FileTreeAdapter(OnFileClickListener listener) {
         this.listener = listener;
+        setHasStableIds(true);
     }
 
     public void setRootNodes(List<FileNode> rootNodes) {
@@ -141,8 +142,14 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
         holder.itemView.setSelected(node.getPath().equals(selectedPath));
 
         holder.itemView.setOnClickListener(v -> {
+            String prevSelected = selectedPath;
             selectedPath = node.getPath();
-            notifyDataSetChanged();
+            if (node.getType() != FileNode.Type.DIRECTORY) {
+                int prevPos = indexOfPath(prevSelected);
+                int curPos = indexOfPath(selectedPath);
+                if (prevPos >= 0) notifyItemChanged(prevPos);
+                if (curPos >= 0) notifyItemChanged(curPos);
+            }
             listener.onFileClick(node);
         });
         holder.itemView.setOnLongClickListener(v -> {
@@ -174,6 +181,19 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
     @Override
     public int getItemCount() {
         return visibleNodes.size();
+    }
+
+    @Override
+    public long getItemId(int position) {
+        return visibleNodes.get(position).getPath().hashCode();
+    }
+
+    private int indexOfPath(String path) {
+        if (path == null) return -1;
+        for (int i = 0; i < visibleNodes.size(); i++) {
+            if (visibleNodes.get(i).getPath().equals(path)) return i;
+        }
+        return -1;
     }
 
     public static class FileViewHolder extends RecyclerView.ViewHolder {

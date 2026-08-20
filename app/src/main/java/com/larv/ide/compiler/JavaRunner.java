@@ -10,31 +10,24 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.nio.charset.Charset;
 
 public class JavaRunner {
     private static final String TAG = "JavaRunner";
     private final Context context;
-
-    public interface LineListener {
-        void onLine(String line);
-    }
 
     public JavaRunner(Context context) {
         this.context = context;
     }
 
     public RunResult run(File dexFile, String mainClassName, String[] args,
-                         LineListener outListener, LineListener errListener,
+                         OutputStream stdout, OutputStream stderr,
                          InputStream stdin) {
         PrintStream originalOut = System.out;
         PrintStream originalErr = System.err;
         InputStream originalIn = System.in;
 
-        PrintStream streamOut = new PrintStream(
-            new LineOutputStream(outListener), true, Charset.forName("UTF-8"));
-        PrintStream streamErr = new PrintStream(
-            new LineOutputStream(errListener), true, Charset.forName("UTF-8"));
+        PrintStream streamOut = createPrintStream(stdout);
+        PrintStream streamErr = createPrintStream(stderr);
 
         System.setOut(streamOut);
         System.setErr(streamErr);
@@ -89,6 +82,14 @@ public class JavaRunner {
         return new RunResult(exitCode == 0, error, duration);
     }
 
+    private PrintStream createPrintStream(OutputStream stream) {
+        try {
+            return new PrintStream(stream, true, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return new PrintStream(stream, true);
+        }
+    }
+
     private ClassLoader createClassLoader(File dexFile) throws Exception {
         File optimizedDir = new File(context.getCacheDir(), "dexopt");
         optimizedDir.mkdirs();
@@ -97,39 +98,6 @@ public class JavaRunner {
             dexFile.getAbsolutePath(),
             ClassLoader.getSystemClassLoader()
         );
-    }
-
-    private static class LineOutputStream extends OutputStream {
-        private final LineListener listener;
-        private final StringBuilder buffer = new StringBuilder();
-
-        LineOutputStream(LineListener listener) {
-            this.listener = listener;
-        }
-
-        @Override
-        public void write(int b) {
-            if (b == '\n') {
-                emit();
-            } else if (b != '\r') {
-                buffer.append((char) b);
-            }
-        }
-
-        @Override
-        public void flush() {
-            emit();
-        }
-
-        private void emit() {
-            if (buffer.length() > 0) {
-                String line = buffer.toString();
-                buffer.setLength(0);
-                if (listener != null) {
-                    listener.onLine(line);
-                }
-            }
-        }
     }
 
     public static class RunResult {

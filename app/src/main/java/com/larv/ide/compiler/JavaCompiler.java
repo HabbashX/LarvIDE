@@ -8,8 +8,15 @@ import androidx.annotation.NonNull;
 import com.larv.ide.model.Diagnostic;
 import com.larv.ide.model.OpenFile;
 
+import org.eclipse.jdt.core.compiler.CategorizedProblem;
+import org.eclipse.jdt.internal.compiler.DefaultErrorHandlingPolicies;
+import org.eclipse.jdt.internal.compiler.ast.CompilationUnitDeclaration;
 import org.eclipse.jdt.internal.compiler.batch.Main;
+import org.eclipse.jdt.internal.compiler.env.ICompilationUnit;
 import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
+import org.eclipse.jdt.internal.compiler.parser.Parser;
+import org.eclipse.jdt.internal.compiler.problem.DefaultProblemFactory;
+import org.eclipse.jdt.internal.compiler.problem.ProblemReporter;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -20,12 +27,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class JavaCompiler {
     private static final String TAG = "JavaCompiler";
     private final Context context;
     private final File cacheDir;
     private final File outputDir;
+    private final Map<String, String> lastCheckedContents = new ConcurrentHashMap<>();
 
     public JavaCompiler(@NonNull Context context) {
         this.context = context;
@@ -146,6 +155,110 @@ public class JavaCompiler {
     }
 
     public CompilationResult typeCheck(List<OpenFile> openFiles) {
+        return typeCheckCompile(openFiles);
+    }
+
+    public boolean needsCheck(List<OpenFile> openFiles) {
+        if (openFiles.isEmpty()) return false;
+        for (OpenFile openFile : openFiles) {
+            String previous = lastCheckedContents.get(openFile.getFilePath());
+            if (previous == null || !previous.equals(openFile.getContent())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean hasChanges(OpenFile openFile) {
+        String previous = lastCheckedContents.get(openFile.getFilePath());
+        return previous == null || !previous.equals(openFile.getContent());
+    }
+
+    public void resetCheckState() {
+        lastCheckedContents.clear();
+    }
+
+    /**
+     * Fast syntax-only diagnostics using ECJ's parser (no binding resolution).
+     * Milliseconds instead of hundreds of milliseconds, so it can run on every
+     * edit pause without causing editor jank.
+     */
+    public List<Diagnostic> syntaxCheck(OpenFile openFile) {
+        long start = System.currentTimeMillis();
+        String fileName = openFile.getFileName();
+        final char[] source = openFile.getContent().toCharArray();
+        try {
+            ICompilationUnit unit = new ICompilationUnit() {
+                public char[] getFileName() {
+                    return fileName.toCharArray();
+                }
+                public char[] getContents() {
+                    return source;
+                }
+                public char[] getMainTypeName() {
+                    int dot = fileName.lastIndexOf('.');
+                    return (dot > 0 ? fileName.substring(0, dot) : fileName).toCharArray();
+                }
+                public char[][] getPackageName() {
+                    return null;
+                }
+                public boolean ignoreOptionalProblems() {
+                    return false;
+                }
+            };
+
+            CompilerOptions options = new CompilerOptions();
+            long java16 = CompilerOptions.versionToJdkLevel(CompilerOptions.VERSION_16);
+            options.sourceLevel = java16;
+            options.targetJDK = java16;
+
+            DefaultProblemFactory problemFactory = new DefaultProblemFactory();
+            org.eclipse.jdt.internal.compiler.CompilationResult result =
+                new org.eclipse.jdt.internal.compiler.CompilationResult(unit.getFileName(), 1, 1, 20);
+            ProblemReporter problemReporter = new ProblemReporter(
+                DefaultErrorHandlingPolicies.proceedWithAllProblems(), options, problemFactory);
+
+            Parser parser = new Parser(problemReporter, true);
+            CompilationUnitDeclaration unitDecl = parser.parse(unit, result);
+
+            CategorizedProblem[] problems = unitDecl.compilationResult.getAllProblems();
+            List<Diagnostic> diagnostics = new ArrayList<>();
+            if (problems != null) {
+                for (CategorizedProblem problem : problems) {
+                    if (!problem.isError() && !problem.isWarning()) continue;
+                    Diagnostic diagnostic = new Diagnostic();
+                    diagnostic.setFilePath(openFile.getFilePath());
+                    diagnostic.setLine(problem.getSourceLineNumber());
+                    diagnostic.setColumn(computeColumn(source, problem.getSourceStart()));
+                    diagnostic.setMessage(problem.getMessage());
+                    diagnostic.setSeverity(problem.isError()
+                        ? Diagnostic.Severity.ERROR : Diagnostic.Severity.WARNING);
+                    diagnostics.add(diagnostic);
+                }
+            }
+            Log.d(TAG, "syntaxCheck(" + fileName + ") -> " + diagnostics.size()
+                + " problems in " + (System.currentTimeMillis() - start) + "ms");
+            return diagnostics;
+        } catch (Exception e) {
+            Log.e(TAG, "syntaxCheck failed for " + fileName, e);
+            return List.of();
+        }
+    }
+
+    private int computeColumn(char[] source, int offset) {
+        if (offset < 0 || offset >= source.length) return 1;
+        int column = 1;
+        for (int i = 0; i < offset; i++) {
+            if (source[i] == '\n') {
+                column = 1;
+            } else {
+                column++;
+            }
+        }
+        return column;
+    }
+
+    private CompilationResult typeCheckCompile(List<OpenFile> openFiles) {
         List<File> sourceFiles = new ArrayList<>();
         Map<String, String> fileContents = new java.util.HashMap<>();
 
@@ -160,7 +273,12 @@ public class JavaCompiler {
             fileContents.put(openFile.getFileName(), openFile.getContent());
         }
 
-        return compileFiles(sourceFiles, fileContents);
+        CompilationResult result = compileFiles(sourceFiles, fileContents);
+        lastCheckedContents.clear();
+        for (OpenFile openFile : openFiles) {
+            lastCheckedContents.put(openFile.getFilePath(), openFile.getContent());
+        }
+        return result;
     }
 
     private CompilationResult runCompiler(String[] args, Map<String, String> fileContents) {

@@ -31,7 +31,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.fragment.app.FragmentManager;
+
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
@@ -41,20 +41,26 @@ import com.google.android.material.tabs.TabLayoutMediator;
 import com.larv.ide.compiler.Dexer;
 import com.larv.ide.compiler.JavaCompiler;
 import com.larv.ide.compiler.JavaRunner;
-import com.larv.ide.compiler.TerminalInput;
 import com.larv.ide.completion.CompletionItem;
 import com.larv.ide.completion.ProjectIndexer;
 import com.larv.ide.model.FileNode;
+import com.larv.ide.model.Diagnostic;
 import com.larv.ide.model.OpenFile;
 import com.larv.ide.model.Project;
 import com.larv.ide.project.ProjectManager;
 import com.larv.ide.ui.adapter.BottomPanelAdapter;
 import com.larv.ide.ui.adapter.FileTreeAdapter;
 import com.larv.ide.ui.fragment.EditorFragment;
+import com.larv.ide.ui.fragment.OutputFragment;
 
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -115,8 +121,15 @@ public class MainActivity extends AppCompatActivity
     private androidx.recyclerview.widget.RecyclerView fileTreeRecyclerView;
     private FileTreeAdapter fileTreeAdapter;
 
-    private final Map<String, EditorFragment> editorFragments = new HashMap<>();
+    private EditorFragment editorFragment;
     private String currentEditorFile = "";
+    private final java.util.concurrent.atomic.AtomicBoolean typeCheckRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private int lastStatusLine = -1;
+    private int lastStatusColumn = -1;
+
+    private final Handler typeCheckHandler = new Handler(Looper.getMainLooper());
+    private final Runnable syntaxCheckRunnable = this::runSyntaxCheck;
+    private final Runnable typeCheckRunnable = this::runTypeCheck;
     private ProjectManager projectManager;
     private JavaCompiler javaCompiler;
     private Dexer dexer;
@@ -130,7 +143,6 @@ public class MainActivity extends AppCompatActivity
     private boolean leftWindowVisible = true;
     private boolean bottomWindowVisible = true;
     private boolean editorMaximized = false;
-    private TerminalInput activeInput = null;
     private View highlightedDropView = null;
     private android.graphics.drawable.Drawable highlightedOriginalBackground = null;
     private boolean dropHandled = false;
@@ -228,11 +240,6 @@ public class MainActivity extends AppCompatActivity
 
         // Bottom panel adapter
         bottomPanelAdapter = new BottomPanelAdapter(this);
-        bottomPanelAdapter.getOutputFragment().setInputListener(line -> {
-            if (activeInput != null) {
-                activeInput.writeLine(line);
-            }
-        });
         bottomViewPager.setAdapter(bottomPanelAdapter);
         bottomViewPager.setOffscreenPageLimit(2);
 
@@ -397,7 +404,16 @@ public class MainActivity extends AppCompatActivity
     public void onProjectClosed() {
         currentProject = null;
         openFiles.clear();
-        editorFragments.clear();
+        javaCompiler.resetCheckState();
+        typeCheckHandler.removeCallbacksAndMessages(null);
+        if (editorFragment != null) {
+            if (editorFragment.isAdded()) {
+                getSupportFragmentManager().beginTransaction()
+                    .remove(editorFragment)
+                    .commitAllowingStateLoss();
+            }
+            editorFragment = null;
+        }
         currentEditorFile = "";
         selectedDirectory = "";
         if (prefs != null) {
@@ -543,9 +559,12 @@ public class MainActivity extends AppCompatActivity
             if (fp.equals(oldPath) || fp.startsWith(oldPath + File.separator)) {
                 String updated = newPath + fp.substring(oldPath.length());
                 f.setFilePath(updated);
-                EditorFragment fragment = editorFragments.remove(fp);
-                if (fragment != null) editorFragments.put(updated, fragment);
-                if (currentEditorFile.equals(fp)) currentEditorFile = updated;
+                if (currentEditorFile.equals(fp)) {
+                    currentEditorFile = updated;
+                    if (editorFragment != null) {
+                        editorFragment.setContent(updated, f.getContent());
+                    }
+                }
                 TabLayout.Tab tab = tabLayout.getTabAt(i);
                 if (tab != null) tab.setText((f.isModified() ? "* " : "") + f.getFileName());
             }
@@ -584,7 +603,11 @@ public class MainActivity extends AppCompatActivity
             openFile.setCursorLine(line);
             openFile.setCursorColumn(column);
         }
-        runOnUiThread(() -> statusPosition.setText("Ln " + line + ", Col " + column));
+        if (lastStatusLine != line || lastStatusColumn != column) {
+            lastStatusLine = line;
+            lastStatusColumn = column;
+            runOnUiThread(() -> statusPosition.setText("Ln " + line + ", Col " + column));
+        }
     }
 
     @Override
@@ -597,11 +620,8 @@ public class MainActivity extends AppCompatActivity
     public void onEditorReady() {
         if (!currentEditorFile.isEmpty()) {
             OpenFile openFile = findOpenFile(currentEditorFile);
-            if (openFile != null) {
-                EditorFragment fragment = editorFragments.get(currentEditorFile);
-                if (fragment != null) {
-                    fragment.setContent(currentEditorFile, openFile.getContent());
-                }
+            if (openFile != null && editorFragment != null) {
+                editorFragment.setContent(currentEditorFile, openFile.getContent());
             }
         }
     }
@@ -626,15 +646,7 @@ public class MainActivity extends AppCompatActivity
                     TabLayout.Tab tab = tabLayout.newTab().setText(file.getName());
                     tabLayout.addTab(tab, index, true);
 
-                    EditorFragment fragment = new EditorFragment();
-                    fragment.setListener(MainActivity.this);
-                    editorFragments.put(filePath, fragment);
-
-                    FragmentManager fm = getSupportFragmentManager();
-                    fm.beginTransaction()
-                        .add(R.id.editorContainer, fragment, "editor_" + index)
-                        .commit();
-
+                    ensureEditorFragment();
                     tabLayout.selectTab(tab);
                     noEditorPlaceholder.setVisibility(View.GONE);
                     welcomeView.setVisibility(View.GONE);
@@ -650,21 +662,27 @@ public class MainActivity extends AppCompatActivity
         });
     }
 
+    private void ensureEditorFragment() {
+        if (editorFragment == null) {
+            editorFragment = new EditorFragment();
+            editorFragment.setListener(this);
+        }
+        if (editorFragment.isAdded()) return;
+        getSupportFragmentManager().beginTransaction()
+            .replace(R.id.editorContainer, editorFragment, "editor")
+            .commit();
+    }
+
     private void switchToEditorTab(int index) {
         if (index < 0 || index >= openFiles.size()) return;
 
         String filePath = openFiles.get(index).getFilePath();
         currentEditorFile = filePath;
 
-        FragmentManager fm = getSupportFragmentManager();
-        for (EditorFragment fragment : editorFragments.values()) {
-            fm.beginTransaction().hide(fragment).commit();
-        }
-
-        EditorFragment fragment = editorFragments.get(filePath);
-        if (fragment != null) {
-            fm.beginTransaction().show(fragment).commit();
-            fragment.setContent(filePath, findOpenFile(filePath).getContent());
+        ensureEditorFragment();
+        OpenFile openFile = findOpenFile(filePath);
+        if (openFile != null) {
+            editorFragment.setContent(filePath, openFile.getContent());
         }
         if (openFiles.isEmpty()) {
             noEditorPlaceholder.setVisibility(View.VISIBLE);
@@ -679,11 +697,6 @@ public class MainActivity extends AppCompatActivity
 
         projectIndexer.removeFile(openFile.getFileName());
 
-        EditorFragment fragment = editorFragments.remove(filePath);
-        if (fragment != null) {
-            getSupportFragmentManager().beginTransaction().remove(fragment).commit();
-        }
-
         openFiles.remove(index);
         tabLayout.removeTabAt(index);
 
@@ -692,6 +705,9 @@ public class MainActivity extends AppCompatActivity
             tabLayout.selectTab(tabLayout.getTabAt(newIndex));
         } else {
             currentEditorFile = "";
+            if (editorFragment != null) {
+                editorFragment.setContent("", "");
+            }
             noEditorPlaceholder.setVisibility(View.VISIBLE);
         }
     }
@@ -725,9 +741,8 @@ public class MainActivity extends AppCompatActivity
         }
         return null;
     }
-
-    // ============ Compilation & Execution ============
-
+    
+    @SuppressLint("SetTextI18n")
     private void compileAndRun() {
         if (openFiles.isEmpty()) {
             Toast.makeText(this, "Open a file first", Toast.LENGTH_SHORT).show();
@@ -736,9 +751,24 @@ public class MainActivity extends AppCompatActivity
         if (isCompiling) return;
 
         isCompiling = true;
+
+        OutputFragment outputFragment = bottomPanelAdapter.getOutputFragment();
+
+        PipedInputStream programOutputIn = new PipedInputStream(64 * 1024);
+        PipedOutputStream programOutputOut = new PipedOutputStream();
+        PipedInputStream programInputIn = new PipedInputStream(64 * 1024);
+        PipedOutputStream programInputOut = new PipedOutputStream();
+        try {
+            programOutputOut.connect(programOutputIn);
+            programInputOut.connect(programInputIn);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to create program pipes", e);
+        }
+
         runOnUiThread(() -> {
             statusText.setText("Compiling...");
-            bottomPanelAdapter.getOutputFragment().clear();
+            outputFragment.clear();
+            outputFragment.startProgram(programOutputIn, programInputOut);
             bottomPanelAdapter.getErrorsFragment().setErrors(new ArrayList<>());
             bottomViewPager.setCurrentItem(0);
             bottomWindowVisible = true;
@@ -755,71 +785,83 @@ public class MainActivity extends AppCompatActivity
             }
 
             if (!compileResult.isSuccess()) {
+                if (compileResult.getRawOutput() != null && !compileResult.getRawOutput().isEmpty()) {
+                    writeTerm(programOutputOut, compileResult.getRawOutput());
+                }
                 runOnUiThread(() -> {
                     bottomPanelAdapter.getErrorsFragment().setErrors(compileResult.getDiagnostics());
                     isCompiling = false;
                     statusText.setText("Compilation failed");
-                    if (compileResult.getRawOutput() != null && !compileResult.getRawOutput().isEmpty()) {
-                        for (String line : compileResult.getRawOutput().split("\n")) {
-                            bottomPanelAdapter.getOutputFragment().addLine(line);
-                        }
-                    }
                     bottomViewPager.setCurrentItem(1);
                 });
+                closeTermStreams(programOutputOut, programInputOut);
                 return;
             }
 
-            runOnUiThread(() ->
-                bottomPanelAdapter.getOutputFragment().addLine("Compilation successful"));
+            writeTerm(programOutputOut, "Compilation successful");
 
             Dexer.DexResult dexResult = dexer.dex(compileResult.getClassFiles(), null);
             if (!dexResult.isSuccess()) {
+                writeTerm(programOutputOut, "Dex error: " + dexResult.getError());
                 runOnUiThread(() -> {
-                    bottomPanelAdapter.getOutputFragment().addLine("Dex error: " + dexResult.getError());
                     isCompiling = false;
                     statusText.setText("Dex error");
                 });
+                closeTermStreams(programOutputOut, programInputOut);
                 return;
             }
 
             String mainClass = findMainClass(openFiles);
             if (mainClass == null) {
+                writeTerm(programOutputOut, "Error: No main class found");
                 runOnUiThread(() -> {
-                    bottomPanelAdapter.getOutputFragment().addLine("Error: No main class found");
                     isCompiling = false;
                     statusText.setText("No main class");
                 });
+                closeTermStreams(programOutputOut, programInputOut);
                 return;
             }
 
-            TerminalInput stdin = new TerminalInput();
-            activeInput = stdin;
-            runOnUiThread(() -> {
-                bottomPanelAdapter.getOutputFragment().addLine("Dex successful, running " + mainClass + "...");
-                bottomPanelAdapter.getOutputFragment().showInput();
-            });
-
-            JavaRunner.LineListener outListener = line ->
-                runOnUiThread(() -> bottomPanelAdapter.getOutputFragment().addLine(line));
-            JavaRunner.LineListener errListener = line ->
-                runOnUiThread(() -> bottomPanelAdapter.getOutputFragment().addLine(line));
+            writeTerm(programOutputOut, "Dex successful, running " + mainClass + "...");
 
             JavaRunner.RunResult runResult = javaRunner.run(
-                dexResult.getDexFile(), mainClass, new String[]{}, outListener, errListener, stdin);
+                dexResult.getDexFile(), mainClass, new String[]{},
+                programOutputOut, programOutputOut, programInputIn);
+
+            if (runResult.getError() != null) {
+                writeTerm(programOutputOut, runResult.getError());
+            }
+            if (runResult.isSuccess()) {
+                writeTerm(programOutputOut, "Program finished (exit code 0)");
+            }
+
+            closeTermStreams(programOutputOut, programInputOut);
 
             runOnUiThread(() -> {
-                activeInput = null;
-                bottomPanelAdapter.getOutputFragment().hideInput();
-                if (runResult.getError() != null) {
-                    bottomPanelAdapter.getOutputFragment().addLine(runResult.getError());
-                }
-                if (runResult.isSuccess()) {
-                    bottomPanelAdapter.getOutputFragment().addLine("Program finished (exit code 0)");
-                }
                 isCompiling = false;
                 statusText.setText(runResult.isSuccess() ? "Done" : "Program finished with error");
             });
         });
+    }
+
+    private void writeTerm(OutputStream out, String text) {
+        if (out == null || text == null) return;
+        try {
+            out.write(text.replace("\n", "\r\n").getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private void closeTermStreams(OutputStream programOutputOut, OutputStream programInputOut) {
+        try {
+            programOutputOut.close();
+        } catch (IOException ignored) {
+        }
+        try {
+            programInputOut.close();
+        } catch (IOException ignored) {
+        }
     }
 
     private String findMainClass(List<OpenFile> files) {
@@ -834,25 +876,45 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void scheduleTypeCheck() {
-        compilerExecutor.execute(() -> {
-            try {
-                Thread.sleep(400);
-            } catch (InterruptedException e) {
-                return;
-            }
+        typeCheckHandler.removeCallbacksAndMessages(null);
+        if (isCompiling) return;
+        typeCheckHandler.postDelayed(syntaxCheckRunnable, 350);
+        typeCheckHandler.postDelayed(typeCheckRunnable, 1400);
+    }
 
+    private void runSyntaxCheck() {
+        String file = currentEditorFile;
+        if (file.isEmpty() || editorFragment == null) return;
+        OpenFile active = findOpenFile(file);
+        if (active == null) return;
+        compilerExecutor.execute(() -> {
+            if (!javaCompiler.hasChanges(active)) return;
+            List<Diagnostic> diagnostics = javaCompiler.syntaxCheck(active);
+            runOnUiThread(() -> {
+                if (editorFragment == null) return;
+                if (!currentEditorFile.equals(active.getFilePath())) return;
+                editorFragment.showDiagnostics(diagnostics);
+            });
+        });
+    }
+
+    private void runTypeCheck() {
+        if (openFiles.isEmpty() || isCompiling) return;
+        if (!typeCheckRunning.compareAndSet(false, true)) return;
+        if (!javaCompiler.needsCheck(openFiles)) {
+            typeCheckRunning.set(false);
+            return;
+        }
+        compilerExecutor.execute(() -> {
+            JavaCompiler.CompilationResult result = javaCompiler.typeCheck(openFiles);
             runOnUiThread(() -> {
                 if (openFiles.isEmpty()) return;
-                JavaCompiler.CompilationResult result = javaCompiler.typeCheck(openFiles);
                 bottomPanelAdapter.getErrorsFragment().setErrors(result.getDiagnostics());
-
-                if (!currentEditorFile.isEmpty()) {
-                    EditorFragment fragment = editorFragments.get(currentEditorFile);
-                    if (fragment != null) {
-                        fragment.showDiagnostics(result.getDiagnostics());
-                    }
+                if (!currentEditorFile.isEmpty() && editorFragment != null) {
+                    editorFragment.showDiagnostics(result.getDiagnostics());
                 }
             });
+            typeCheckRunning.set(false);
         });
     }
 
@@ -1302,11 +1364,8 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void runOnCurrentEditor(java.util.function.Consumer<EditorFragment> action) {
-        if (!currentEditorFile.isEmpty()) {
-            EditorFragment fragment = editorFragments.get(currentEditorFile);
-            if (fragment != null) {
-                action.accept(fragment);
-            }
+        if (!currentEditorFile.isEmpty() && editorFragment != null) {
+            action.accept(editorFragment);
         }
     }
 

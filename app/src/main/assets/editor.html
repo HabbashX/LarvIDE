@@ -208,13 +208,13 @@
                 tabSize: 4,
                 insertSpaces: true,
                 scrollBeyondLastLine: false,
-                renderLineHighlight: 'all',
-                selectionHighlight: true,
-                occurrencesHighlight: true,
-                matchBrackets: 'always',
+                renderLineHighlight: 'gutter',
+                selectionHighlight: false,
+                occurrencesHighlight: false,
+                matchBrackets: 'near',
                 autoIndent: 'full',
-                formatOnPaste: true,
-                formatOnType: true,
+                formatOnPaste: false,
+                formatOnType: false,
                 wordBasedSuggestions: 'off',
                 suggestOnTriggerCharacters: true,
                 quickSuggestions: {
@@ -224,34 +224,50 @@
                 },
                 snippetSuggestions: 'inline',
                 tabCompletion: 'on',
-                parameterHints: { enabled: true },
-                hover: { enabled: true },
+                parameterHints: { enabled: false },
+                hover: { enabled: false },
                 lightbulb: { enabled: false },
                 codeLens: false,
                 folding: true,
-                renderIndentGuides: true,
+                renderIndentGuides: false,
                 renderWhitespace: 'selection',
-                cursorBlinking: 'smooth',
-                cursorSmoothCaretAnimation: 'on',
-                smoothScrolling: true,
-                experimental: {
-                    enableSnippetInlineCompletion: true
-                }
+                cursorBlinking: 'blink',
+                cursorSmoothCaretAnimation: 'off',
+                smoothScrolling: false
             });
+
+            let positions = {};
+            let pendingFile = null;
+            let pendingContent = null;
+
+            function flushPending() {
+                if (pendingFile != null && window.LarvIDE) {
+                    let f = pendingFile, c = pendingContent;
+                    pendingFile = null;
+                    pendingContent = null;
+                    clearTimeout(debounceTimer);
+                    window.LarvIDE.onContentChange(f, c);
+                }
+            }
 
             // Listen for content changes
             editor.onDidChangeModelContent(function(e) {
                 currentContent = editor.getValue();
+                if (currentFile) {
+                    pendingFile = currentFile;
+                    pendingContent = currentContent;
+                }
                 clearTimeout(debounceTimer);
                 debounceTimer = setTimeout(function() {
-                    if (window.LarvIDE) {
-                        window.LarvIDE.onContentChange(currentFile, currentContent);
-                    }
+                    flushPending();
                 }, 300);
             });
 
             // Listen for cursor position changes
             editor.onDidChangeCursorPosition(function(e) {
+                if (currentFile) {
+                    positions[currentFile] = { lineNumber: e.position.lineNumber, column: e.position.column };
+                }
                 if (window.LarvIDE) {
                     window.LarvIDE.onCursorChange(e.position.lineNumber, e.position.column);
                 }
@@ -276,10 +292,21 @@
 
         // JavaScript interface functions
         window.setContent = function(file, content) {
+            flushPending();
+            if (currentFile && currentFile !== file && editor) {
+                positions[currentFile] = editor.getPosition();
+            }
             currentFile = file;
             currentContent = content;
+            pendingFile = null;
+            pendingContent = null;
             if (editor) {
                 editor.setValue(content);
+                let p = positions[file];
+                if (p) {
+                    editor.setPosition({ lineNumber: p.lineNumber, column: p.column });
+                    editor.revealLineInCenterIfOutsideViewport(p.lineNumber);
+                }
             }
         };
 

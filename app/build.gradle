@@ -92,4 +92,9 @@ dependencies {
     
     // Commons IO
     implementation 'commons-io:commons-io:2.15.1'
+    
+    // Real terminal emulator (jackpal emulatorview).
+    // Pure-Java VT100 emulator: TermSession accepts custom in/out streams,
+    // so no subprocess/PTY is required for in-process program execution.
+    implementation 'com.github.jackpal.Android-Terminal-Emulator:emulatorview:v1.0.70'
 }
