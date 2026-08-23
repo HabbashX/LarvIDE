@@ -39,6 +39,7 @@ import androidx.viewpager2.widget.ViewPager2;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 import com.google.gson.Gson;
+import com.larv.ide.build.DependencyResolver;
 import com.larv.ide.compiler.Dexer;
 import com.larv.ide.compiler.JavaCompiler;
 import com.larv.ide.compiler.JavaRunner;
@@ -134,6 +135,7 @@ public class MainActivity extends AppCompatActivity
     private ProjectManager projectManager;
     private JavaCompiler javaCompiler;
     private Dexer dexer;
+    private DependencyResolver dependencyResolver;
     private JavaRunner javaRunner;
     private ProjectIndexer projectIndexer;
     private final ExecutorService compilerExecutor = Executors.newSingleThreadExecutor();
@@ -253,6 +255,7 @@ public class MainActivity extends AppCompatActivity
 
         javaCompiler = new JavaCompiler(getApplicationContext());
         dexer = new Dexer(getApplicationContext());
+        dependencyResolver = new DependencyResolver(new File(getFilesDir(), "m2"));
         javaRunner = new JavaRunner(getApplicationContext());
         projectIndexer = new ProjectIndexer();
     }
@@ -603,9 +606,11 @@ public class MainActivity extends AppCompatActivity
     }
 
     @Override
-    public void onCompletionsRequested(String file, int line, int column, @NonNull EditorFragment.CompletionCallback callback) {
+    public void onCompletionsRequested(String file, int line, int column, String prefix,
+                                       int requestId, @NonNull EditorFragment.CompletionCallback callback) {
         indexerExecutor.execute(() -> {
-            List<CompletionItem> completions = projectIndexer.getCompletions("", file, line, column);
+            List<CompletionItem> completions = projectIndexer.getCompletions(
+                prefix == null ? "" : prefix, file, line, column);
             callback.onCompletions(completions);
         });
     }
@@ -765,7 +770,45 @@ public class MainActivity extends AppCompatActivity
         });
 
         compilerExecutor.execute(() -> {
-            JavaCompiler.CompilationResult compileResult = javaCompiler.compile(openFiles);
+            List<File> dependencyJars = new ArrayList<>();
+            DependencyResolver.BuildSpec buildSpec = null;
+            if (currentProject != null) {
+                File larvJson = new File(currentProject.getRootDir(), "larv.json");
+                if (larvJson.exists()) {
+                    try {
+                        buildSpec = DependencyResolver.readBuildSpec(larvJson);
+                        if (!buildSpec.dependencies.isEmpty()) {
+                            writeTerm(programOutputOut, "Resolving " + buildSpec.dependencies.size()
+                                + " dependencies from larv.json...");
+                            DependencyResolver.ResolveResult resolveResult = dependencyResolver.resolve(
+                                buildSpec.dependencies, buildSpec.repositories,
+                                msg -> writeTerm(programOutputOut, "  " + msg));
+                            dependencyJars.addAll(resolveResult.jars);
+                            if (!resolveResult.success) {
+                                writeTerm(programOutputOut, "Dependency error: " + resolveResult.error);
+                                runOnUiThread(() -> {
+                                    isCompiling = false;
+                                    statusText.setText("Dependency resolution failed");
+                                });
+                                closeTermStreams(programOutputOut, programInputOut);
+                                return;
+                            }
+                            writeTerm(programOutputOut, "Dependencies ready ("
+                                + dependencyJars.size() + " jars)");
+                        }
+                    } catch (Exception e) {
+                        writeTerm(programOutputOut, "larv.json error: " + e.getMessage());
+                        runOnUiThread(() -> {
+                            isCompiling = false;
+                            statusText.setText("Invalid larv.json");
+                        });
+                        closeTermStreams(programOutputOut, programInputOut);
+                        return;
+                    }
+                }
+            }
+
+            JavaCompiler.CompilationResult compileResult = javaCompiler.compile(openFiles, dependencyJars);
             android.util.Log.d("MainActivity", "compile success=" + compileResult.isSuccess()
                 + " diagnostics=" + compileResult.getDiagnostics().size());
             if (!compileResult.isSuccess() && compileResult.getRawOutput() != null) {
@@ -788,7 +831,7 @@ public class MainActivity extends AppCompatActivity
 
             writeTerm(programOutputOut, "Compilation successful");
 
-            Dexer.DexResult dexResult = dexer.dex(compileResult.getClassFiles(), null);
+            Dexer.DexResult dexResult = dexer.dex(compileResult.getClassFiles(), dependencyJars, null);
             if (!dexResult.isSuccess()) {
                 writeTerm(programOutputOut, "Dex error: " + dexResult.getError());
                 runOnUiThread(() -> {
@@ -800,6 +843,10 @@ public class MainActivity extends AppCompatActivity
             }
 
             String mainClass = findMainClass(openFiles);
+            if (mainClass == null && buildSpec != null && buildSpec.mainClass != null
+                && !buildSpec.mainClass.isEmpty()) {
+                mainClass = buildSpec.mainClass;
+            }
             if (mainClass == null) {
                 writeTerm(programOutputOut, "Error: No main class found");
                 runOnUiThread(() -> {
@@ -927,10 +974,8 @@ public class MainActivity extends AppCompatActivity
         builder.setTitle("New Java File");
         builder.setMessage("In: " + new File(parentPath).getName());
 
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT);
-        input.setHint("File name (e.g., MyClass)");
-        builder.setView(input);
+        EditText input = createIdeInput("File name (e.g., MyClass)");
+        builder.setView(wrapDialogView(input));
 
         builder.setPositiveButton("Create", (dialog, which) -> {
             String fileName = input.getText().toString().trim();
@@ -965,10 +1010,8 @@ public class MainActivity extends AppCompatActivity
         builder.setTitle("New Folder");
         builder.setMessage("In: " + new File(parentPath).getName());
 
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT);
-        input.setHint("Folder name");
-        builder.setView(input);
+        EditText input = createIdeInput("Folder name");
+        builder.setView(wrapDialogView(input));
 
         builder.setPositiveButton("Create", (dialog, which) -> {
             String folderName = input.getText().toString().trim();
@@ -1074,9 +1117,10 @@ public class MainActivity extends AppCompatActivity
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Rename");
 
-        EditText input = new EditText(this);
+        EditText input = createIdeInput(null);
         input.setText(node.getName());
-        builder.setView(input);
+        input.setSelection(input.getText().length());
+        builder.setView(wrapDialogView(input));
 
         builder.setPositiveButton("Rename", (dialog, which) -> {
             String newName = input.getText().toString().trim();
@@ -1138,9 +1182,8 @@ public class MainActivity extends AppCompatActivity
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("New Project");
 
-        EditText input = new EditText(this);
-        input.setHint("Project name");
-        builder.setView(input);
+        EditText input = createIdeInput("Project name");
+        builder.setView(wrapDialogView(input));
 
         builder.setPositiveButton("Create", (dialog, which) -> {
             String name = input.getText().toString().trim();
@@ -1388,6 +1431,37 @@ public class MainActivity extends AppCompatActivity
     private void clearBuildOutput() {
         javaCompiler.clearOutputDirectory();
         statusText.setText("Build output cleared");
+    }
+
+    @NonNull
+    private EditText createIdeInput(String hint) {
+        EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        if (hint != null) {
+            input.setHint(hint);
+        }
+        input.setTextSize(14);
+        input.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        input.setHintTextColor(ContextCompat.getColor(this, R.color.text_disabled));
+        input.setBackground(ContextCompat.getDrawable(this, R.drawable.edittext_ide));
+        int p = dp(12);
+        input.setPadding(p, dp(10), p, dp(10));
+        return input;
+    }
+
+    @NonNull
+    private View wrapDialogView(View view) {
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding(dp(24), dp(4), dp(24), dp(8));
+        box.addView(view, new android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+        return box;
+    }
+
+    private int dp(int v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
     }
 
     private void showAboutDialog() {

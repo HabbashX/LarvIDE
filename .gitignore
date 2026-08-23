@@ -27,3 +27,9 @@ Thumbs.db
 
 # Project specific
 app/src/main/assets/editor.html.map
+# Release signing (never commit credentials or keystores)
+keystore/
+keystore.properties
+
+# Build-tool source package is code, not build output
+!app/src/main/java/com/larv/ide/build/

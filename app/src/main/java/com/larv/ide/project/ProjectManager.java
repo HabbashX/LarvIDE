@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -80,9 +81,24 @@ public class ProjectManager {
                 File mainFile = new File(projectDir, "Main.java");
                 String template = context.getString(com.larv.ide.R.string.java_file_template);
                 try (FileOutputStream fos = new FileOutputStream(mainFile)) {
-                    fos.write(String.format(template, "Main").getBytes("UTF-8"));
+                    fos.write(String.format(template, "Main").getBytes(StandardCharsets.UTF_8));
                 } catch (IOException e) {
                     Log.e(TAG, "Failed to create Main.java", e);
+                }
+
+                File buildFile = new File(projectDir, "larv.json");
+                String buildTemplate = "{\n"
+                    + "  \"main\": \"Main\",\n"
+                    + "  \"dependencies\": [\n"
+                    + "  ],\n"
+                    + "  \"repositories\": [\n"
+                    + "    \"https://repo1.maven.org/maven2\"\n"
+                    + "  ]\n"
+                    + "}\n";
+                try (FileOutputStream fos = new FileOutputStream(buildFile)) {
+                    fos.write(buildTemplate.getBytes(StandardCharsets.UTF_8));
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to create larv.json", e);
                 }
 
                 Project project = new Project(projectDir.getName(), projectDir.getAbsolutePath());

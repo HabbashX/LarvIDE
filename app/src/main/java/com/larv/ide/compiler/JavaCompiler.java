@@ -79,6 +79,10 @@ public class JavaCompiler {
     }
 
     public CompilationResult compile(@NonNull List<OpenFile> openFiles) {
+        return compile(openFiles, null);
+    }
+
+    public CompilationResult compile(@NonNull List<OpenFile> openFiles, List<File> libraryJars) {
         List<File> sourceFiles = new ArrayList<>();
         Map<String, String> fileContents = new java.util.HashMap<>();
 
@@ -100,15 +104,22 @@ public class JavaCompiler {
             fileContents.put(openFile.getFileName(), openFile.getContent());
         }
 
-        return compileFiles(sourceFiles, fileContents);
+        return compileFiles(sourceFiles, fileContents, libraryJars);
     }
 
     private File getSourceFile(String filePath) {
-        String name = Integer.toHexString(filePath.hashCode()) + ".java";
-        return new File(cacheDir, name);
+        String originalName = new File(filePath).getName();
+        File dir = new File(new File(cacheDir, "src"), Integer.toHexString(filePath.hashCode()));
+        dir.mkdirs();
+        return new File(dir, originalName);
     }
 
     public CompilationResult compileFiles(List<File> sourceFiles, Map<String, String> fileContents) {
+        return compileFiles(sourceFiles, fileContents, null);
+    }
+
+    public CompilationResult compileFiles(List<File> sourceFiles, Map<String, String> fileContents,
+                                          List<File> libraryJars) {
         List<String> args = new ArrayList<>();
 
         clearDirectory(outputDir);
@@ -126,11 +137,23 @@ public class JavaCompiler {
 
         awaitBootClasspath();
         File bootJar = new File(cacheDir, "android.jar");
+
+        List<String> classpath = new ArrayList<>();
         if (bootJar.exists()) {
-            args.add("-classpath");
-            args.add(bootJar.getAbsolutePath());
+            classpath.add(bootJar.getAbsolutePath());
         } else {
             Log.w(TAG, "bootclasspath/android.jar missing, ECJ will have no java.* types!");
+        }
+        if (libraryJars != null) {
+            for (File jar : libraryJars) {
+                if (jar != null && jar.exists()) {
+                    classpath.add(jar.getAbsolutePath());
+                }
+            }
+        }
+        if (!classpath.isEmpty()) {
+            args.add("-classpath");
+            args.add(String.join(File.pathSeparator, classpath));
         }
 
         args.add("-proceedOnError");

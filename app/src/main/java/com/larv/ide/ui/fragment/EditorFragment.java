@@ -3,7 +3,6 @@ package com.larv.ide.ui.fragment;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -31,7 +30,8 @@ public class EditorFragment extends Fragment {
     public interface EditorListener {
         void onContentChange(String file, String content);
         void onCursorChange(int line, int column);
-        void onCompletionsRequested(String file, int line, int column, CompletionCallback callback);
+        void onCompletionsRequested(String file, int line, int column, String prefix,
+                                    int requestId, CompletionCallback callback);
         void onEditorReady();
     }
     public interface CompletionCallback { void onCompletions(List<CompletionItem> completions);}
@@ -56,7 +56,7 @@ public class EditorFragment extends Fragment {
         return view;
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint({"SetJavaScriptEnabled", "ClickableViewAccessibility"})
     private void setupWebView() {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -222,15 +222,16 @@ public class EditorFragment extends Fragment {
         }
 
         @JavascriptInterface
-        public void requestCompletions(String file, int line, int column) {
+        public void requestCompletions(String file, int line, int column, final int requestId, final String prefix) {
             if (listener != null) {
-                listener.onCompletionsRequested(file, line, column, completions -> {
-                    if (isReady && webView != null) {
-                        String json = GSON.toJson(completions);
-                        webView.post(() -> webView.evaluateJavascript(
-                            "window.monacoCompletionCallback && window.monacoCompletionCallback(" + json + ");", null));
-                    }
-                });
+                listener.onCompletionsRequested(file, line, column, prefix == null ? "" : prefix, requestId,
+                    completions -> {
+                        if (isReady && webView != null) {
+                            String json = GSON.toJson(completions);
+                            final String js = "window.__larvDeliverCompletions(" + requestId + "," + json + ");";
+                            webView.post(() -> webView.evaluateJavascript(js, null));
+                        }
+                    });
             }
         }
 

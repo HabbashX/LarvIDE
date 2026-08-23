@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="dialog_background">#1E1F22</color>
+    <color name="input_background">#2B2D30</color>
+    <color name="input_stroke">#43454A</color>
+    <color name="ide_accent">#3574F0</color>
     <!-- Primary Colors (JetBrains Islands Dark accent) -->
     <color name="primary">#56A8F5</color>
     <color name="primary_dark">#4C86F4</color>

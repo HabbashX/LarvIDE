@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class FileNode implements Serializable {
+
     public enum Type {
         FILE, DIRECTORY
     }

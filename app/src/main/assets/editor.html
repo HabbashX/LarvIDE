@@ -215,7 +215,7 @@
                 autoIndent: 'full',
                 formatOnPaste: false,
                 formatOnType: false,
-                wordBasedSuggestions: 'off',
+                wordBasedSuggestions: 'currentDocument',
                 suggestOnTriggerCharacters: true,
                 quickSuggestions: {
                     other: true,
@@ -273,16 +273,83 @@
                 }
             });
 
-            // Register completion provider
+            // Register completion provider (async via LarvIDE bridge)
+            let completionSeq = 0;
+            let pendingCompletions = new Map();
+
+            function monacoKindFor(kind) {
+                const K = monaco.languages.CompletionItemKind;
+                switch (kind) {
+                    case 'CLASS': return K.Class;
+                    case 'INTERFACE': return K.Interface;
+                    case 'ENUM': return K.Enum;
+                    case 'RECORD': return K.Struct;
+                    case 'ANNOTATION': return K.Property;
+                    case 'METHOD': return K.Method;
+                    case 'FIELD': return K.Field;
+                    case 'PARAMETER': return K.Variable;
+                    case 'LOCAL_VARIABLE': return K.Variable;
+                    case 'PACKAGE': return K.Module;
+                    case 'KEYWORD': return K.Keyword;
+                    case 'SNIPPET': return K.Snippet;
+                    default: return K.Text;
+                }
+            }
+
+            function toMonacoSuggestions(items, range) {
+                return (items || []).map(function(item) {
+                    let sortText = String(item.sortPriority || 9999).padStart(5, '0') + (item.label || '');
+                    return {
+                        label: item.label,
+                        kind: monacoKindFor(item.kind),
+                        detail: item.detail || '',
+                        documentation: item.documentation || '',
+                        insertText: item.insertText || item.label,
+                        insertTextRules: item.insertText && item.insertText.indexOf('$') >= 0
+                            ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+                        filterText: item.filterText || item.label,
+                        sortText: sortText,
+                        range: range
+                    };
+                });
+            }
+
             completionProvider = monaco.languages.registerCompletionItemProvider('java', {
-                triggerCharacters: ['.', '(', '"', '\'', '@', '<', ' ', '\t'],
+                triggerCharacters: ['.', '@'],
                 provideCompletionItems: function(model, position) {
-                    if (window.LarvIDE) {
-                        return window.LarvIDE.requestCompletions(currentFile, position.lineNumber, position.column);
+                    if (!window.LarvIDE) {
+                        return { suggestions: [] };
                     }
-                    return { suggestions: [] };
+                    return new Promise(function(resolve) {
+                        const id = ++completionSeq;
+                        const word = model.getWordUntilPosition(position);
+                        const range = {
+                            startLineNumber: position.lineNumber,
+                            endLineNumber: position.lineNumber,
+                            startColumn: word.startColumn,
+                            endColumn: word.endColumn
+                        };
+                        pendingCompletions.set(id, function(items) {
+                            resolve({ suggestions: toMonacoSuggestions(items, range) });
+                        });
+                        setTimeout(function() {
+                            if (pendingCompletions.has(id)) {
+                                pendingCompletions.delete(id);
+                                resolve({ suggestions: [] });
+                            }
+                        }, 1500);
+                        window.LarvIDE.requestCompletions(currentFile, position.lineNumber, position.column, id, word.word);
+                    });
                 }
             });
+
+            window.__larvDeliverCompletions = function(id, items) {
+                const cb = pendingCompletions.get(id);
+                if (cb) {
+                    pendingCompletions.delete(id);
+                    cb(items);
+                }
+            };
 
             // Notify ready
             if (window.LarvIDE) {

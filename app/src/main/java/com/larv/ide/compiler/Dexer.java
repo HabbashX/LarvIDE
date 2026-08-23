@@ -30,6 +30,11 @@ public class Dexer {
 
     @SuppressLint("NewApi")
     public DexResult dex(List<File> classFiles, File outputDir) {
+        return dex(classFiles, null, outputDir);
+    }
+
+    @SuppressLint("NewApi")
+    public DexResult dex(List<File> classFiles, List<File> programArchives, File outputDir) {
         File dexOutputDir = outputDir != null ? outputDir : this.outputDir;
         dexOutputDir.mkdirs();
 
@@ -40,6 +45,13 @@ public class Dexer {
             builder.setMinApiLevel(21);
             for (File classFile : classFiles) {
                 builder.addProgramFiles(classFile.toPath());
+            }
+            if (programArchives != null) {
+                for (File archive : programArchives) {
+                    if (archive != null && archive.exists()) {
+                        builder.addProgramFiles(archive.toPath());
+                    }
+                }
             }
 
             D8.run(builder.build());
