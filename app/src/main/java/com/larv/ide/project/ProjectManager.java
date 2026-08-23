@@ -3,6 +3,8 @@ package com.larv.ide.project;
 import android.content.Context;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+
 import com.larv.ide.model.FileNode;
 import com.larv.ide.model.Project;
 
@@ -72,7 +74,7 @@ public class ProjectManager {
                     i++;
                 }
             }
-            
+
             boolean success = projectDir.mkdirs();
             if (success) {
                 File mainFile = new File(projectDir, "Main.java");
@@ -82,7 +84,7 @@ public class ProjectManager {
                 } catch (IOException e) {
                     Log.e(TAG, "Failed to create Main.java", e);
                 }
-                
+
                 Project project = new Project(projectDir.getName(), projectDir.getAbsolutePath());
                 if (callback != null) {
                     callback.onCreated(project);
@@ -212,7 +214,7 @@ public class ProjectManager {
     public void renameFile(File file, String newName, OnFileOperationCallback callback) {
         executor.execute(() -> {
             final String finalName = (!newName.endsWith(".java") && file.isFile()) ? newName + ".java" : newName;
-            
+
             File newFile = new File(file.getParent(), finalName);
             if (newFile.exists()) {
                 if (callback != null) callback.onError("File already exists");
@@ -313,7 +315,8 @@ public class ProjectManager {
         }
     }
 
-    private List<FileNode> buildFileTree(File root) {
+    @NonNull
+    private List<FileNode> buildFileTree(@NonNull File root) {
         List<FileNode> nodes = new ArrayList<>();
         File[] files = root.listFiles();
         if (files != null) {
@@ -332,6 +335,7 @@ public class ProjectManager {
         return nodes;
     }
 
+    @NonNull
     private FileNode buildNode(File file, int depth) {
         FileNode node = FileNode.fromFile(file, depth);
         if (file.isDirectory()) {

@@ -28,23 +28,20 @@ import java.util.List;
 
 public class EditorFragment extends Fragment {
 
-    private static final Gson GSON = new Gson();
-
-    private WebView webView;
-    private EditorListener listener;
-    private String currentFile;
-    private boolean isReady = false;
-
     public interface EditorListener {
         void onContentChange(String file, String content);
         void onCursorChange(int line, int column);
         void onCompletionsRequested(String file, int line, int column, CompletionCallback callback);
         void onEditorReady();
     }
+    public interface CompletionCallback { void onCompletions(List<CompletionItem> completions);}
 
-    public interface CompletionCallback {
-        void onCompletions(List<CompletionItem> completions);
-    }
+    private static final Gson GSON = new Gson();
+
+    private WebView webView;
+    private EditorListener listener;
+    private boolean isReady = false;
+
 
     public void setListener(EditorListener listener) {
         this.listener = listener;
@@ -76,7 +73,6 @@ public class EditorFragment extends Fragment {
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
 
-        // Ensure tapping the editor opens the soft keyboard
         webView.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 v.requestFocus();
@@ -107,7 +103,6 @@ public class EditorFragment extends Fragment {
     }
 
     public void setContent(String file, String content) {
-        currentFile = file;
         if (isReady && webView != null) {
             webView.post(() -> {
                 String escaped = escapeForJs(content);
@@ -118,7 +113,6 @@ public class EditorFragment extends Fragment {
 
     public String getContent() {
         if (isReady && webView != null) {
-            // This would be async, use callback instead
         }
         return "";
     }

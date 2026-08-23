@@ -33,10 +33,10 @@ public class ErrorsFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-        
+
         emptyView = view.findViewById(R.id.emptyErrors);
         recyclerView = view.findViewById(R.id.errorsRecyclerView);
-        
+
         adapter = new ErrorAdapter();
         recyclerView.setLayoutManager(new LinearLayoutManager(requireContext()));
         recyclerView.setAdapter(adapter);

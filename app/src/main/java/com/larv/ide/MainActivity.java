@@ -197,7 +197,6 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void initViews() {
-        // Menu bar
         menuFile = findViewById(R.id.menuFile);
         menuEdit = findViewById(R.id.menuEdit);
         menuSearch = findViewById(R.id.menuSearch);
@@ -205,7 +204,6 @@ public class MainActivity extends AppCompatActivity
         menuBuild = findViewById(R.id.menuBuild);
         menuSettings = findViewById(R.id.menuSettings);
 
-        // Left tool window
         leftToolWindowContent = findViewById(R.id.leftToolWindowContent);
         projectToolWindow = findViewById(R.id.projectToolWindow);
         btnNewFile = findViewById(R.id.btnNewFile);
@@ -215,7 +213,6 @@ public class MainActivity extends AppCompatActivity
         btnCloseProjectWindow = findViewById(R.id.btnCloseProjectWindow);
         leftResizer = findViewById(R.id.leftResizer);
 
-        // Editor
         editorContainer = findViewById(R.id.editorContainer);
         noEditorPlaceholder = findViewById(R.id.noEditorPlaceholder);
         welcomeView = findViewById(R.id.welcomeView);
@@ -224,25 +221,21 @@ public class MainActivity extends AppCompatActivity
         btnSplitEditor = findViewById(R.id.btnSplitEditor);
         btnRun = findViewById(R.id.btnRun);
 
-        // Bottom tool window
         bottomToolWindow = findViewById(R.id.bottomToolWindow);
         bottomTabLayout = findViewById(R.id.bottomTabLayout);
         bottomViewPager = findViewById(R.id.bottomViewPager);
         btnCloseBottomWindow = findViewById(R.id.btnCloseBottomWindow);
         bottomResizer = findViewById(R.id.bottomResizer);
 
-        // Status bar
         statusText = findViewById(R.id.statusText);
         statusPosition = findViewById(R.id.statusPosition);
 
-        // File tree
         fileTreeRecyclerView = findViewById(R.id.fileTreeRecyclerView);
         fileTreeAdapter = new FileTreeAdapter(this);
         fileTreeRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         fileTreeRecyclerView.setAdapter(fileTreeAdapter);
         setupFileTreeDragAndDrop();
 
-        // Bottom panel adapter
         bottomPanelAdapter = new BottomPanelAdapter(this);
         bottomViewPager.setAdapter(bottomPanelAdapter);
         bottomViewPager.setOffscreenPageLimit(2);
@@ -266,7 +259,6 @@ public class MainActivity extends AppCompatActivity
 
     @SuppressLint("ClickableViewAccessibility")
     private void setupListeners() {
-        // Tool window buttons
         btnNewFile.setOnClickListener(v -> {
             if (currentProject == null) {
                 Toast.makeText(this, "Open a project first", Toast.LENGTH_SHORT).show();
@@ -296,11 +288,9 @@ public class MainActivity extends AppCompatActivity
         btnCloseProjectWindow.setOnClickListener(v -> closeLeftWindow());
         btnCloseBottomWindow.setOnClickListener(v -> closeBottomWindow());
 
-        // Welcome screen buttons
         findViewById(R.id.btnWelcomeNewProject).setOnClickListener(v -> showNewProjectDialog());
         findViewById(R.id.btnWelcomeOpenProject).setOnClickListener(v -> showOpenProjectDialog());
 
-        // Menu bar
         menuFile.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_file, this::onMenuBarItemSelected, null));
         menuEdit.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_edit, this::onMenuBarItemSelected, null));
         menuSearch.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_search, this::onMenuBarItemSelected, null));
@@ -309,7 +299,6 @@ public class MainActivity extends AppCompatActivity
         menuBuild.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_build, this::onMenuBarItemSelected, null));
         menuSettings.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_settings, this::onMenuBarItemSelected, null));
 
-        // Editor tabs
         tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
             @Override
             public void onTabSelected(TabLayout.Tab tab) {
@@ -335,7 +324,6 @@ public class MainActivity extends AppCompatActivity
             public void onTabReselected(TabLayout.Tab tab) {}
         });
 
-        // Left resizer
         leftResizer.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_MOVE) {
                 float x = event.getRawX();
@@ -349,7 +337,6 @@ public class MainActivity extends AppCompatActivity
             return false;
         });
 
-        // Bottom resizer
         bottomResizer.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_MOVE) {
                 float y = event.getRawY();

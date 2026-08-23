@@ -32,7 +32,7 @@ public class FileNode implements Serializable {
     }
 
     public static FileNode fromFile(File file, int depth) {
-        FileNode node = new FileNode(file.getName(), file.getAbsolutePath(), 
+        FileNode node = new FileNode(file.getName(), file.getAbsolutePath(),
             file.isDirectory() ? Type.DIRECTORY : Type.FILE);
         node.depth = depth;
         return node;

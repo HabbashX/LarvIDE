@@ -2,12 +2,12 @@ package com.larv.ide.completion;
 
 import android.os.Build;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
 import com.larv.ide.model.OpenFile;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -23,17 +23,17 @@ public class ProjectIndexer {
         "(?:public\\s+|private\\s+|protected\\s+|static\\s+|final\\s+|abstract\\s+)*" +
         "(?:class|interface|enum|record|@interface)\\s+(\\w+)"
     );
-    
+
     private static final Pattern METHOD_PATTERN = Pattern.compile(
         "(?:public\\s+|private\\s+|protected\\s+|static\\s+|final\\s+|abstract\\s+|synchronized\\s+|native\\s+|strictfp\\s+)*" +
         "(?:<[^>]+>\\s+)?(\\w+(?:<[^>]+>)?)\\s+(\\w+)\\s*\\([^)]*\\)"
     );
-    
+
     private static final Pattern FIELD_PATTERN = Pattern.compile(
         "(?:public\\s+|private\\s+|protected\\s+|static\\s+|final\\s+|transient\\s+|volatile\\s+)*" +
         "(?:\\w+(?:<[^>]+>)?)\\s+(\\w+)\\s*[=;]"
     );
-    
+
     private static final Pattern IMPORT_PATTERN = Pattern.compile("import\\s+([\\w.]+);");
     private static final Pattern PACKAGE_PATTERN = Pattern.compile("package\\s+([\\w.]+);");
 
@@ -72,7 +72,7 @@ public class ProjectIndexer {
     public void indexFile(OpenFile openFile) {
         String content = openFile.getContent();
         String fileName = openFile.getFileName();
-        
+
         FileSymbols symbols = new FileSymbols();
         symbols.fileName = fileName;
         symbols.packageName = extractPackage(content);
@@ -80,7 +80,7 @@ public class ProjectIndexer {
         symbols.classes = extractClasses(content);
         symbols.methods = extractMethods(content);
         symbols.fields = extractFields(content);
-        
+
         fileIndex.put(fileName, symbols);
     }
 
@@ -93,7 +93,7 @@ public class ProjectIndexer {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
-    public List<CompletionItem> getCompletions(String prefix, String currentFile, int line, int column) {
+    public List<CompletionItem> getCompletions(@NonNull String prefix, String currentFile, int line, int column) {
         List<CompletionItem> completions = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         String prefixLower = prefix.toLowerCase();
@@ -101,12 +101,10 @@ public class ProjectIndexer {
         FileSymbols currentSymbols = fileIndex.get(currentFile);
         Set<String> currentImports = currentSymbols != null ? currentSymbols.imports : new HashSet<>();
 
-        // 1. Local symbols from current file
         if (currentSymbols != null) {
             addCompletionsFromSymbols(completions, seen, currentSymbols, prefixLower, true);
         }
 
-        // 2. Symbols from other open files (respecting imports)
         for (Map.Entry<String, FileSymbols> entry : fileIndex.entrySet()) {
             if (!entry.getKey().equals(currentFile)) {
                 addCompletionsFromSymbols(completions, seen, entry.getValue(), prefixLower,
@@ -114,13 +112,10 @@ public class ProjectIndexer {
             }
         }
 
-        // 3. Stdlib completions (filtered by imports)
         addStdlibCompletions(completions, seen, currentImports, prefixLower);
 
-        // 4. Keywords and snippets
         addKeywordsAndSnippets(completions, prefixLower);
-        
-        // Sort by priority
+
         completions.sort((a, b) -> {
             int priorityDiff = Integer.compare(a.getSortPriority(), b.getSortPriority());
             if (priorityDiff != 0) return priorityDiff;
@@ -130,10 +125,10 @@ public class ProjectIndexer {
         return completions;
     }
 
-    private void addCompletionsFromSymbols(List<CompletionItem> completions, Set<String> seen, 
+    private void addCompletionsFromSymbols(List<CompletionItem> completions, Set<String> seen,
             FileSymbols symbols, String prefixLower, boolean accessible) {
         if (!accessible) return;
-        
+
         for (ClassSymbol cls : symbols.classes) {
             if (cls.name.toLowerCase().startsWith(prefixLower) && seen.add(cls.name)) {
                 CompletionItem item = new CompletionItem(cls.name, CompletionItem.Kind.CLASS);
@@ -142,7 +137,7 @@ public class ProjectIndexer {
                 completions.add(item);
             }
         }
-        
+
         for (MethodSymbol method : symbols.methods) {
             if (method.name.toLowerCase().startsWith(prefixLower) && seen.add(method.name)) {
                 CompletionItem item = new CompletionItem(method.name, CompletionItem.Kind.METHOD);
@@ -152,7 +147,7 @@ public class ProjectIndexer {
                 completions.add(item);
             }
         }
-        
+
         for (FieldSymbol field : symbols.fields) {
             if (field.name.toLowerCase().startsWith(prefixLower) && seen.add(field.name)) {
                 CompletionItem item = new CompletionItem(field.name, CompletionItem.Kind.FIELD);
@@ -168,15 +163,15 @@ public class ProjectIndexer {
                                       Set<String> imports, String prefixLower) {
         for (Map.Entry<String, List<CompletionItem>> entry : stdlibIndex.entrySet()) {
             String packageName = entry.getKey();
-            
-            boolean importMatches = imports.stream().anyMatch(imp -> 
+
+            boolean importMatches = imports.stream().anyMatch(imp ->
                 imp.equals(packageName) || imp.equals(packageName + ".*") || imp.startsWith(packageName + ".")
             );
-            
+
             if (!importMatches && !packageName.startsWith("java.lang")) {
                 continue;
             }
-            
+
             for (CompletionItem item : entry.getValue()) {
                 if (item.getLabel().toLowerCase().startsWith(prefixLower) && seen.add(item.getLabel())) {
                     CompletionItem copy = new CompletionItem(item.getLabel(), item.getKind());
@@ -206,7 +201,7 @@ public class ProjectIndexer {
 
     private boolean isAccessible(FileSymbols symbols, Set<String> imports) {
         if (symbols.packageName == null || symbols.packageName.isEmpty()) {
-            return true; // Default package
+            return true;
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -244,7 +239,7 @@ public class ProjectIndexer {
             else if (keyword.contains("enum")) type = "enum";
             else if (keyword.contains("record")) type = "record";
             else if (keyword.contains("@interface")) type = "annotation";
-            
+
             classes.add(new ClassSymbol(m.group(1), type));
         }
         return classes;
@@ -276,8 +271,7 @@ public class ProjectIndexer {
     }
 
     private void buildStdlibIndex() {
-        // java.lang
-        addStdlibClass("java.lang", "String", "class", "java.lang.String", 
+        addStdlibClass("java.lang", "String", "class", "java.lang.String",
             "String text = \"hello\";");
         addStdlibClass("java.lang", "Object", "class", "java.lang.Object");
         addStdlibClass("java.lang", "System", "class", "java.lang.System");
@@ -294,12 +288,11 @@ public class ProjectIndexer {
         addStdlibClass("java.lang", "Comparable", "interface", "java.lang.Comparable");
         addStdlibClass("java.lang", "StringBuilder", "class", "java.lang.StringBuilder");
         addStdlibClass("java.lang", "StringBuffer", "class", "java.lang.StringBuffer");
-        
-        // java.util
-        addStdlibClass("java.util", "ArrayList", "class", "java.util.ArrayList", 
+
+        addStdlibClass("java.util", "ArrayList", "class", "java.util.ArrayList",
             "List<String> list = new ArrayList<>();");
         addStdlibClass("java.util", "LinkedList", "class", "java.util.LinkedList");
-        addStdlibClass("java.util", "HashMap", "class", "java.util.HashMap", 
+        addStdlibClass("java.util", "HashMap", "class", "java.util.HashMap",
             "Map<String, Integer> map = new HashMap<>();");
         addStdlibClass("java.util", "HashSet", "class", "java.util.HashSet");
         addStdlibClass("java.util", "TreeSet", "class", "java.util.TreeSet");
@@ -317,16 +310,15 @@ public class ProjectIndexer {
         addStdlibClass("java.util", "Random", "class", "java.util.Random");
         addStdlibClass("java.util", "UUID", "class", "java.util.UUID");
         addStdlibClass("java.util", "Properties", "class", "java.util.Properties");
-        
-        // java.io
-        addStdlibClass("java.io", "File", "class", "java.io.File", 
+
+        addStdlibClass("java.io", "File", "class", "java.io.File",
             "File file = new File(\"path\");");
         addStdlibClass("java.io", "FileInputStream", "class", "java.io.FileInputStream");
         addStdlibClass("java.io", "FileOutputStream", "class", "java.io.FileOutputStream");
         addStdlibClass("java.io", "FileReader", "class", "java.io.FileReader");
-        addStdlibClass("java.io", "FileWriter", "class", "java.io.FileWriter", 
+        addStdlibClass("java.io", "FileWriter", "class", "java.io.FileWriter",
             "try (FileWriter w = new FileWriter(file)) { w.write(text); }");
-        addStdlibClass("java.io", "BufferedReader", "class", "java.io.BufferedReader", 
+        addStdlibClass("java.io", "BufferedReader", "class", "java.io.BufferedReader",
             "try (BufferedReader r = new BufferedReader(new FileReader(file))) { String line; }");
         addStdlibClass("java.io", "BufferedWriter", "class", "java.io.BufferedWriter");
         addStdlibClass("java.io", "InputStream", "class", "java.io.InputStream");
@@ -336,27 +328,24 @@ public class ProjectIndexer {
         addStdlibClass("java.io", "PrintWriter", "class", "java.io.PrintWriter");
         addStdlibClass("java.io", "Serializable", "interface", "java.io.Serializable");
         addStdlibClass("java.io", "IOException", "class", "java.io.IOException");
-        
-        // java.nio
-        addStdlibClass("java.nio.file", "Files", "class", "java.nio.file.Files", 
+
+        addStdlibClass("java.nio.file", "Files", "class", "java.nio.file.Files",
             "Files.writeString(path, text);");
-        addStdlibClass("java.nio.file", "Paths", "class", "java.nio.file.Paths", 
+        addStdlibClass("java.nio.file", "Paths", "class", "java.nio.file.Paths",
             "Path path = Paths.get(\"file.txt\");");
         addStdlibClass("java.nio.file", "Path", "interface", "java.nio.file.Path");
         addStdlibClass("java.nio.file", "StandardOpenOption", "enum", "java.nio.file.StandardOpenOption");
         addStdlibClass("java.nio.charset", "StandardCharsets", "class", "java.nio.charset.StandardCharsets");
-        
-        // java.net
+
         addStdlibClass("java.net", "URL", "class", "java.net.URL");
         addStdlibClass("java.net", "URI", "class", "java.net.URI");
         addStdlibClass("java.net", "HttpURLConnection", "class", "java.net.HttpURLConnection");
         addStdlibClass("java.net", "Socket", "class", "java.net.Socket");
-        addStdlibClass("java.net", "ServerSocket", "class", "java.net.ServerSocket", 
+        addStdlibClass("java.net", "ServerSocket", "class", "java.net.ServerSocket",
             "ServerSocket server = new ServerSocket(8080);");
         addStdlibClass("java.net", "InetAddress", "class", "java.net.InetAddress");
         addStdlibClass("java.net", "DatagramSocket", "class", "java.net.DatagramSocket");
-        
-        // java.time
+
         addStdlibClass("java.time", "LocalDate", "class", "java.time.LocalDate");
         addStdlibClass("java.time", "LocalTime", "class", "java.time.LocalTime");
         addStdlibClass("java.time", "LocalDateTime", "class", "java.time.LocalDateTime");
@@ -365,8 +354,7 @@ public class ProjectIndexer {
         addStdlibClass("java.time", "Period", "class", "java.time.Period");
         addStdlibClass("java.time", "ZoneId", "class", "java.time.ZoneId");
         addStdlibClass("java.time", "DateTimeFormatter", "class", "java.time.format.DateTimeFormatter");
-        
-        // java.util.concurrent
+
         addStdlibClass("java.util.concurrent", "ExecutorService", "interface", "java.util.concurrent.ExecutorService");
         addStdlibClass("java.util.concurrent", "Executors", "class", "java.util.concurrent.Executors");
         addStdlibClass("java.util.concurrent", "Future", "interface", "java.util.concurrent.Future");
@@ -379,8 +367,7 @@ public class ProjectIndexer {
         addStdlibClass("java.util.concurrent", "LinkedBlockingQueue", "class", "java.util.concurrent.LinkedBlockingQueue");
         addStdlibClass("java.util.concurrent", "ThreadPoolExecutor", "class", "java.util.concurrent.ThreadPoolExecutor");
         addStdlibClass("java.util.concurrent", "TimeUnit", "enum", "java.util.concurrent.TimeUnit");
-        
-        // java.util.function
+
         addStdlibClass("java.util.function", "Function", "interface", "java.util.function.Function");
         addStdlibClass("java.util.function", "Predicate", "interface", "java.util.function.Predicate");
         addStdlibClass("java.util.function", "Consumer", "interface", "java.util.function.Consumer");
@@ -398,14 +385,14 @@ public class ProjectIndexer {
             "enum".equals(type) ? CompletionItem.Kind.ENUM :
             "annotation".equals(type) ? CompletionItem.Kind.ANNOTATION :
             CompletionItem.Kind.CLASS;
-        
+
         CompletionItem item = new CompletionItem(className, kind);
         item.setDetail(detail);
         if (snippet != null) {
             item.setInsertText(snippet);
         }
         item.setSortPriority(50);
-        
+
         stdlibIndex.computeIfAbsent(packageName, k -> new ArrayList<>()).add(item);
     }
 

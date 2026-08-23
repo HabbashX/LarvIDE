@@ -54,7 +54,6 @@ public class Dexer {
             Log.w(TAG, "D8 failed, using fallback: " + e.getMessage(), e);
         }
 
-        // Fallback: create a simple JAR with class files for ClassLoader
         File jarFile = new File(dexOutputDir, "classes.jar");
         try {
             createJarFromClassFiles(classFiles, jarFile);

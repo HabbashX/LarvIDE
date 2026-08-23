@@ -57,12 +57,6 @@ public class OutputFragment extends Fragment {
         }
     }
 
-    /**
-     * Attach a new terminal session fed by the given streams and show it.
-     * programOutput is read from and shown in the terminal; bytes written to
-     * programInput are delivered to the running program's stdin.
-     * Must be called on the main thread.
-     */
     public void startProgram(InputStream programOutput, OutputStream programInput) {
         if (terminalContainer == null) {
             pendingProgramOutput = programOutput;

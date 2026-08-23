@@ -91,7 +91,7 @@ public class JavaCompiler {
                 } catch (Exception e) {
                     Log.e(TAG, "Failed to write source file", e);
                     return new CompilationResult(false, List.of(), List.of(
-                        new Diagnostic(openFile.getFilePath(), 0, 0, 
+                        new Diagnostic(openFile.getFilePath(), 0, 0,
                             "Failed to write source file: " + e.getMessage(), Diagnostic.Severity.ERROR)
                     ), "Failed to write source file: " + e.getMessage());
                 }
@@ -110,27 +110,20 @@ public class JavaCompiler {
 
     public CompilationResult compileFiles(List<File> sourceFiles, Map<String, String> fileContents) {
         List<String> args = new ArrayList<>();
-        
-        // Clean previous outputs so stale class files never linger
+
         clearDirectory(outputDir);
-        
-        // Output directory
+
         args.add("-d");
         args.add(outputDir.getAbsolutePath());
-        
-        // Source/target version (16 is the max supported by ECJ 3.27, the last
-        // version that runs on a Java 8 runtime / Android < API 33)
+
         args.add("-source");
         args.add("16");
         args.add("-target");
         args.add("16");
-        
-        // Encoding
+
         args.add("-encoding");
         args.add("UTF-8");
-        
-        // Android's java.* implementation. ECJ rejects -bootclasspath at
-        // compliance level 9+, so android.jar goes on the regular classpath.
+
         awaitBootClasspath();
         File bootJar = new File(cacheDir, "android.jar");
         if (bootJar.exists()) {
@@ -139,18 +132,13 @@ public class JavaCompiler {
         } else {
             Log.w(TAG, "bootclasspath/android.jar missing, ECJ will have no java.* types!");
         }
-        
-        // Continue on error to collect all errors
+
         args.add("-proceedOnError");
-        
-        // No warnings as errors
+
         args.add("-nowarn");
-        
-        // Disable annotation processing (its dispatch classes require
-        // javax.lang.model which is not available on Android)
+
         args.add("-proc:none");
-        
-        // Source files
+
         for (File f : sourceFiles) {
             args.add(f.getAbsolutePath());
         }
@@ -199,11 +187,6 @@ public class JavaCompiler {
         lastCheckedContents.clear();
     }
 
-    /**
-     * Fast syntax-only diagnostics using ECJ's parser (no binding resolution).
-     * Milliseconds instead of hundreds of milliseconds, so it can run on every
-     * edit pause without causing editor jank.
-     */
     public List<Diagnostic> syntaxCheck(OpenFile openFile) {
         long start = System.currentTimeMillis();
         String fileName = openFile.getFileName();
@@ -324,20 +307,20 @@ public class JavaCompiler {
     private CompilationResult runCompiler(String[] args, Map<String, String> fileContents) {
         ByteArrayOutputStream outStream = new ByteArrayOutputStream();
         ByteArrayOutputStream errStream = new ByteArrayOutputStream();
-        
+
         PrintWriter out = new PrintWriter(outStream);
         PrintWriter err = new PrintWriter(errStream);
 
         try {
             Main compiler = new Main(out, err, false, null, null);
             boolean success = compiler.compile(args);
-            
+
             out.flush();
             err.flush();
-            
+
             String output = outStream.toString("UTF-8");
             String errors = errStream.toString("UTF-8");
-            
+
             String rawOutput = "=== ECJ stdout ===\n" + output + "\n=== ECJ stderr ===\n" + errors;
 
             Log.d(TAG, "ECJ compile() returned success=" + success);
@@ -345,7 +328,7 @@ public class JavaCompiler {
             if (!errors.isEmpty()) {
                 Log.e(TAG, "ECJ stderr:\n" + errors);
             }
-            
+
             List<Diagnostic> diagnostics = parseDiagnostics(errors, fileContents);
             if (!diagnostics.isEmpty()) {
                 for (Diagnostic d : diagnostics) {
@@ -354,7 +337,7 @@ public class JavaCompiler {
             } else if (!success) {
                 Log.e(TAG, "Compilation failed but no diagnostics were parsed. Raw output:\n" + rawOutput);
             }
-            
+
             if (success && diagnostics.isEmpty()) {
                 List<File> classFiles = collectClassFiles(outputDir);
                 Log.d(TAG, "Compilation OK, class files: " + classFiles.size());
@@ -382,18 +365,18 @@ public class JavaCompiler {
     @NonNull
     private List<Diagnostic> parseDiagnostics(@NonNull String compilerOutput, Map<String, String> fileContents) {
         List<Diagnostic> diagnostics = new ArrayList<>();
-        
+
         String[] lines = compilerOutput.split("\n");
         for (String line : lines) {
             line = line.trim();
             if (line.isEmpty()) continue;
-            
+
             Diagnostic diagnostic = parseDiagnosticLine(line);
             if (diagnostic != null) {
                 diagnostics.add(diagnostic);
             }
         }
-        
+
         if (!diagnostics.isEmpty()) return diagnostics;
 
         return parseEcjProblems(compilerOutput);
@@ -442,24 +425,23 @@ public class JavaCompiler {
 
         int firstColon = line.indexOf(':');
         if (firstColon == -1) return null;
-        
+
         String filePath = line.substring(0, firstColon).trim();
         String remainder = line.substring(firstColon + 1).trim();
-        
+
         int secondColon = remainder.indexOf(':');
         if (secondColon == -1) return null;
-        
+
         String lineStr = remainder.substring(0, secondColon).trim();
         remainder = remainder.substring(secondColon + 1).trim();
-        
+
         int lineNum;
         try {
             lineNum = Integer.parseInt(lineStr);
         } catch (NumberFormatException e) {
             return null;
         }
-        
-        // Determine severity
+
         Diagnostic.Severity severity = Diagnostic.Severity.ERROR;
         if (remainder.startsWith("warning:")) {
             severity = Diagnostic.Severity.WARNING;
@@ -471,14 +453,14 @@ public class JavaCompiler {
             severity = Diagnostic.Severity.INFO;
             remainder = remainder.substring(5).trim();
         }
-        
+
         Diagnostic diagnostic = new Diagnostic();
         diagnostic.setFilePath(filePath);
         diagnostic.setLine(lineNum);
         diagnostic.setColumn(0);
         diagnostic.setMessage(remainder);
         diagnostic.setSeverity(severity);
-        
+
         return diagnostic;
     }
 
@@ -491,7 +473,7 @@ public class JavaCompiler {
     private void collectClassFilesRecursive(File dir, List<File> classFiles) {
         File[] files = dir.listFiles();
         if (files == null) return;
-        
+
         for (File f : files) {
             if (f.isDirectory()) {
                 collectClassFilesRecursive(f, classFiles);

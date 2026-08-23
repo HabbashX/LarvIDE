@@ -39,8 +39,6 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
     public void setRootNodes(List<FileNode> rootNodes) {
         this.rootNodes.clear();
         this.rootNodes.addAll(rootNodes);
-        // No notifyDataSetChanged here: the caller (onFileTreeUpdated) follows
-        // this with expandPath(), which performs the single full refresh.
     }
 
     private void refreshVisibleNodes() {
@@ -60,7 +58,7 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
         }
     }
 
-    public void toggleExpansion(FileNode node) {
+    public void toggleExpansion(@NonNull FileNode node) {
         if (node.getType() == FileNode.Type.DIRECTORY) {
             node.setExpanded(!node.isExpanded());
             refreshVisibleNodes();
@@ -77,7 +75,7 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
         refreshVisibleNodes();
     }
 
-    private void collapseRecursive(List<FileNode> nodes) {
+    private void collapseRecursive(@NonNull List<FileNode> nodes) {
         for (FileNode node : nodes) {
             if (node.getType() == FileNode.Type.DIRECTORY) {
                 node.setExpanded(false);
@@ -217,9 +215,9 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
         void bind(@NonNull FileNode node) {
             this.node = node;
             name.setText(node.getName());
-            
+
             int indent = node.getDepth() * 24;
-            itemView.setPadding(indent, itemView.getPaddingTop(), 
+            itemView.setPadding(indent, itemView.getPaddingTop(),
                 itemView.getPaddingRight(), itemView.getPaddingBottom());
 
             if (node.getType() == FileNode.Type.DIRECTORY) {
