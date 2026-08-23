@@ -268,11 +268,20 @@ public class ProjectManager {
     public void readFile(File file, OnFileReadCallback callback) {
         executor.execute(() -> {
             try {
-                byte[] bytes = new byte[(int) file.length()];
-                try (FileInputStream fis = new FileInputStream(file)) {
-                    fis.read(bytes);
+                long length = file.length();
+                if (length > Integer.MAX_VALUE) {
+                    throw new IOException("File too large to read");
                 }
-                String content = new String(bytes, "UTF-8");
+                byte[] bytes = new byte[(int) length];
+                try (FileInputStream fis = new FileInputStream(file)) {
+                    int total = 0;
+                    while (total < bytes.length) {
+                        int read = fis.read(bytes, total, bytes.length - total);
+                        if (read == -1) break;
+                        total += read;
+                    }
+                }
+                String content = new String(bytes, 0, bytes.length, "UTF-8");
                 if (callback != null) callback.onContent(content);
             } catch (IOException e) {
                 Log.e(TAG, "Failed to read file", e);

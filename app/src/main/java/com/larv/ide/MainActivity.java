@@ -38,6 +38,7 @@ import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
+import com.google.gson.Gson;
 import com.larv.ide.compiler.Dexer;
 import com.larv.ide.compiler.JavaCompiler;
 import com.larv.ide.compiler.JavaRunner;
@@ -136,9 +137,12 @@ public class MainActivity extends AppCompatActivity
     private JavaRunner javaRunner;
     private ProjectIndexer projectIndexer;
     private final ExecutorService compilerExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService indexerExecutor = Executors.newSingleThreadExecutor();
     private Project currentProject;
     private final List<OpenFile> openFiles = new ArrayList<>();
-    private boolean isCompiling = false;
+    private final Map<String, OpenFile> openFilesByPath = new HashMap<>();
+    private static final Gson GSON = new Gson();
+    private volatile boolean isCompiling = false;
     private String selectedDirectory = "";
     private boolean leftWindowVisible = true;
     private boolean bottomWindowVisible = true;
@@ -251,12 +255,12 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void initServices() {
-        projectManager = new ProjectManager(this);
+        projectManager = new ProjectManager(getApplicationContext());
         projectManager.setListener(this);
 
-        javaCompiler = new JavaCompiler(this);
-        dexer = new Dexer(this);
-        javaRunner = new JavaRunner(this);
+        javaCompiler = new JavaCompiler(getApplicationContext());
+        dexer = new Dexer(getApplicationContext());
+        javaRunner = new JavaRunner(getApplicationContext());
         projectIndexer = new ProjectIndexer();
     }
 
@@ -404,6 +408,7 @@ public class MainActivity extends AppCompatActivity
     public void onProjectClosed() {
         currentProject = null;
         openFiles.clear();
+        openFilesByPath.clear();
         javaCompiler.resetCheckState();
         typeCheckHandler.removeCallbacksAndMessages(null);
         if (editorFragment != null) {
@@ -435,9 +440,7 @@ public class MainActivity extends AppCompatActivity
     public void onFileTreeUpdated(List<FileNode> rootNodes) {
         runOnUiThread(() -> {
             fileTreeAdapter.setRootNodes(rootNodes);
-            if (!selectedDirectory.isEmpty()) {
-                fileTreeAdapter.expandPath(selectedDirectory);
-            }
+            fileTreeAdapter.expandPath(selectedDirectory);
         });
     }
 
@@ -559,6 +562,8 @@ public class MainActivity extends AppCompatActivity
             if (fp.equals(oldPath) || fp.startsWith(oldPath + File.separator)) {
                 String updated = newPath + fp.substring(oldPath.length());
                 f.setFilePath(updated);
+                openFilesByPath.remove(fp);
+                openFilesByPath.put(updated, f);
                 if (currentEditorFile.equals(fp)) {
                     currentEditorFile = updated;
                     if (editorFragment != null) {
@@ -612,8 +617,10 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void onCompletionsRequested(String file, int line, int column, @NonNull EditorFragment.CompletionCallback callback) {
-        List<CompletionItem> completions = projectIndexer.getCompletions("", file, line, column);
-        callback.onCompletions(completions);
+        indexerExecutor.execute(() -> {
+            List<CompletionItem> completions = projectIndexer.getCompletions("", file, line, column);
+            callback.onCompletions(completions);
+        });
     }
 
     @Override
@@ -641,6 +648,7 @@ public class MainActivity extends AppCompatActivity
                 runOnUiThread(() -> {
                     OpenFile openFile = new OpenFile(filePath, content);
                     openFiles.add(openFile);
+                    openFilesByPath.put(filePath, openFile);
 
                     int index = openFiles.size() - 1;
                     TabLayout.Tab tab = tabLayout.newTab().setText(file.getName());
@@ -650,7 +658,7 @@ public class MainActivity extends AppCompatActivity
                     tabLayout.selectTab(tab);
                     noEditorPlaceholder.setVisibility(View.GONE);
                     welcomeView.setVisibility(View.GONE);
-                    projectIndexer.indexFile(openFile);
+                    indexerExecutor.execute(() -> projectIndexer.indexFile(openFile));
                     statusText.setText(file.getName() + " - Loading");
                 });
             }
@@ -698,6 +706,7 @@ public class MainActivity extends AppCompatActivity
         projectIndexer.removeFile(openFile.getFileName());
 
         openFiles.remove(index);
+        openFilesByPath.remove(filePath);
         tabLayout.removeTabAt(index);
 
         if (!openFiles.isEmpty()) {
@@ -724,24 +733,15 @@ public class MainActivity extends AppCompatActivity
     }
 
     private int indexOfOpenFile(String filePath) {
-        for (int i = 0; i < openFiles.size(); i++) {
-            if (openFiles.get(i).getFilePath().equals(filePath)) {
-                return i;
-            }
-        }
-        return -1;
+        OpenFile openFile = openFilesByPath.get(filePath);
+        return openFile != null ? openFiles.indexOf(openFile) : -1;
     }
 
     @Nullable
     private OpenFile findOpenFile(String filePath) {
-        for (OpenFile f : openFiles) {
-            if (f.getFilePath().equals(filePath)) {
-                return f;
-            }
-        }
-        return null;
+        return filePath != null ? openFilesByPath.get(filePath) : null;
     }
-    
+
     @SuppressLint("SetTextI18n")
     private void compileAndRun() {
         if (openFiles.isEmpty()) {
@@ -751,6 +751,7 @@ public class MainActivity extends AppCompatActivity
         if (isCompiling) return;
 
         isCompiling = true;
+        typeCheckHandler.removeCallbacksAndMessages(null);
 
         OutputFragment outputFragment = bottomPanelAdapter.getOutputFragment();
 
@@ -884,16 +885,17 @@ public class MainActivity extends AppCompatActivity
 
     private void runSyntaxCheck() {
         String file = currentEditorFile;
-        if (file.isEmpty() || editorFragment == null) return;
+        if (file.isEmpty() || editorFragment == null || isCompiling) return;
         OpenFile active = findOpenFile(file);
         if (active == null) return;
         compilerExecutor.execute(() -> {
             if (!javaCompiler.hasChanges(active)) return;
             List<Diagnostic> diagnostics = javaCompiler.syntaxCheck(active);
+            String json = GSON.toJson(diagnostics);
             runOnUiThread(() -> {
                 if (editorFragment == null) return;
                 if (!currentEditorFile.equals(active.getFilePath())) return;
-                editorFragment.showDiagnostics(diagnostics);
+                editorFragment.showDiagnosticsJson(json);
             });
         });
     }
@@ -907,11 +909,12 @@ public class MainActivity extends AppCompatActivity
         }
         compilerExecutor.execute(() -> {
             JavaCompiler.CompilationResult result = javaCompiler.typeCheck(openFiles);
+            String json = GSON.toJson(result.getDiagnostics());
             runOnUiThread(() -> {
                 if (openFiles.isEmpty()) return;
                 bottomPanelAdapter.getErrorsFragment().setErrors(result.getDiagnostics());
                 if (!currentEditorFile.isEmpty() && editorFragment != null) {
-                    editorFragment.showDiagnostics(result.getDiagnostics());
+                    editorFragment.showDiagnosticsJson(json);
                 }
             });
             typeCheckRunning.set(false);
@@ -1215,8 +1218,19 @@ public class MainActivity extends AppCompatActivity
     private void saveAllFiles() {
         for (OpenFile openFile : openFiles) {
             if (openFile.isModified()) {
-                projectManager.writeFile(new File(openFile.getFilePath()), openFile.getContent(), null);
-                openFile.setModified(false);
+                String filePath = openFile.getFilePath();
+                projectManager.writeFile(new File(filePath), openFile.getContent(),
+                    new ProjectManager.OnFileOperationCallback() {
+                        @Override
+                        public void onSuccess(File file) {
+                            openFile.setModified(false);
+                            runOnUiThread(() -> updateTabModified(filePath, false));
+                        }
+                        @Override
+                        public void onError(String error) {
+                            Log.w(TAG, "Save failed for " + filePath + ": " + error);
+                        }
+                    });
             }
         }
         statusText.setText("All files saved");
@@ -1451,6 +1465,8 @@ public class MainActivity extends AppCompatActivity
     protected void onDestroy() {
         super.onDestroy();
         compilerExecutor.shutdown();
+        indexerExecutor.shutdown();
+        typeCheckHandler.removeCallbacksAndMessages(null);
         if (projectIndexer != null) {
             projectIndexer.clear();
         }

@@ -37,6 +37,31 @@ public class ProjectIndexer {
     private static final Pattern IMPORT_PATTERN = Pattern.compile("import\\s+([\\w.]+);");
     private static final Pattern PACKAGE_PATTERN = Pattern.compile("package\\s+([\\w.]+);");
 
+    private static final String[][] KEYWORDS = {
+        {"class", "Class declaration", "class ${1:Name} {\n    ${2}\n}"},
+        {"interface", "Interface declaration", "interface ${1:Name} {\n    ${2}\n}"},
+        {"enum", "Enum declaration", "enum ${1:Name} {\n    ${2}\n}"},
+        {"record", "Record declaration", "record ${1:Name}(${2}) {}"},
+        {"public", "Public modifier", "public "},
+        {"private", "Private modifier", "private "},
+        {"protected", "Protected modifier", "protected "},
+        {"static", "Static modifier", "static "},
+        {"final", "Final modifier", "final "},
+        {"abstract", "Abstract modifier", "abstract "},
+        {"if", "If statement", "if (${1:condition}) {\n    ${2}\n}"},
+        {"else", "Else block", "else {\n    ${1}\n}"},
+        {"for", "For loop", "for (${1:int i = 0; i < n; i++}) {\n    ${2}\n}"},
+        {"foreach", "For-each loop", "for (${1:Type} ${2:item} : ${3:collection}) {\n    ${4}\n}"},
+        {"while", "While loop", "while (${1:condition}) {\n    ${2}\n}"},
+        {"try", "Try-catch", "try {\n    ${1}\n} catch (${2:Exception} e) {\n    ${3}\n}"},
+        {"switch", "Switch expression", "switch (${1:expr}) {\n    case ${2} -> ${3};\n    default -> ${4};\n}"},
+        {"return", "Return statement", "return ${1;};"},
+        {"new", "New instance", "new ${1:ClassName}(${2})"},
+        {"var", "Local variable type inference", "var ${1:name} = ${2:value};"},
+        {"System.out.println", "Print line", "System.out.println(${1});"},
+        {"main", "Main method", "public static void main(String[] args) {\n    ${1}\n}"}
+    };
+
     private final Map<String, FileSymbols> fileIndex = new ConcurrentHashMap<>();
     private final Map<String, List<CompletionItem>> stdlibIndex = new ConcurrentHashMap<>();
 
@@ -71,28 +96,29 @@ public class ProjectIndexer {
     public List<CompletionItem> getCompletions(String prefix, String currentFile, int line, int column) {
         List<CompletionItem> completions = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        
+        String prefixLower = prefix.toLowerCase();
+
         FileSymbols currentSymbols = fileIndex.get(currentFile);
         Set<String> currentImports = currentSymbols != null ? currentSymbols.imports : new HashSet<>();
-        
+
         // 1. Local symbols from current file
         if (currentSymbols != null) {
-            addCompletionsFromSymbols(completions, seen, currentSymbols, prefix, true);
+            addCompletionsFromSymbols(completions, seen, currentSymbols, prefixLower, true);
         }
-        
+
         // 2. Symbols from other open files (respecting imports)
         for (Map.Entry<String, FileSymbols> entry : fileIndex.entrySet()) {
             if (!entry.getKey().equals(currentFile)) {
-                addCompletionsFromSymbols(completions, seen, entry.getValue(), prefix, 
+                addCompletionsFromSymbols(completions, seen, entry.getValue(), prefixLower,
                     isAccessible(entry.getValue(), currentImports));
             }
         }
-        
+
         // 3. Stdlib completions (filtered by imports)
-        addStdlibCompletions(completions, seen, currentImports, prefix);
-        
+        addStdlibCompletions(completions, seen, currentImports, prefixLower);
+
         // 4. Keywords and snippets
-        addKeywordsAndSnippets(completions, prefix);
+        addKeywordsAndSnippets(completions, prefixLower);
         
         // Sort by priority
         completions.sort((a, b) -> {
@@ -105,11 +131,11 @@ public class ProjectIndexer {
     }
 
     private void addCompletionsFromSymbols(List<CompletionItem> completions, Set<String> seen, 
-            FileSymbols symbols, String prefix, boolean accessible) {
+            FileSymbols symbols, String prefixLower, boolean accessible) {
         if (!accessible) return;
         
         for (ClassSymbol cls : symbols.classes) {
-            if (cls.name.toLowerCase().startsWith(prefix.toLowerCase()) && seen.add(cls.name)) {
+            if (cls.name.toLowerCase().startsWith(prefixLower) && seen.add(cls.name)) {
                 CompletionItem item = new CompletionItem(cls.name, CompletionItem.Kind.CLASS);
                 item.setDetail(cls.type + " in " + symbols.fileName);
                 item.setSortPriority(10);
@@ -118,7 +144,7 @@ public class ProjectIndexer {
         }
         
         for (MethodSymbol method : symbols.methods) {
-            if (method.name.toLowerCase().startsWith(prefix.toLowerCase()) && seen.add(method.name)) {
+            if (method.name.toLowerCase().startsWith(prefixLower) && seen.add(method.name)) {
                 CompletionItem item = new CompletionItem(method.name, CompletionItem.Kind.METHOD);
                 item.setDetail(method.signature);
                 item.setInsertText(method.name + "()");
@@ -128,7 +154,7 @@ public class ProjectIndexer {
         }
         
         for (FieldSymbol field : symbols.fields) {
-            if (field.name.toLowerCase().startsWith(prefix.toLowerCase()) && seen.add(field.name)) {
+            if (field.name.toLowerCase().startsWith(prefixLower) && seen.add(field.name)) {
                 CompletionItem item = new CompletionItem(field.name, CompletionItem.Kind.FIELD);
                 item.setDetail(field.type + " in " + symbols.fileName);
                 item.setSortPriority(30);
@@ -139,7 +165,7 @@ public class ProjectIndexer {
 
     @RequiresApi(api = Build.VERSION_CODES.N)
     private void addStdlibCompletions(List<CompletionItem> completions, Set<String> seen,
-                                      Set<String> imports, String prefix) {
+                                      Set<String> imports, String prefixLower) {
         for (Map.Entry<String, List<CompletionItem>> entry : stdlibIndex.entrySet()) {
             String packageName = entry.getKey();
             
@@ -152,7 +178,7 @@ public class ProjectIndexer {
             }
             
             for (CompletionItem item : entry.getValue()) {
-                if (item.getLabel().toLowerCase().startsWith(prefix.toLowerCase()) && seen.add(item.getLabel())) {
+                if (item.getLabel().toLowerCase().startsWith(prefixLower) && seen.add(item.getLabel())) {
                     CompletionItem copy = new CompletionItem(item.getLabel(), item.getKind());
                     copy.setDetail(item.getDetail());
                     copy.setDocumentation(item.getDocumentation());
@@ -165,33 +191,10 @@ public class ProjectIndexer {
     }
 
     private void addKeywordsAndSnippets(List<CompletionItem> completions, String prefix) {
-        String[][] keywords = {
-            {"class", "Class declaration", "class ${1:Name} {\n    ${2}\n}"},
-            {"interface", "Interface declaration", "interface ${1:Name} {\n    ${2}\n}"},
-            {"enum", "Enum declaration", "enum ${1:Name} {\n    ${2}\n}"},
-            {"record", "Record declaration", "record ${1:Name}(${2}) {}"},
-            {"public", "Public modifier", "public "},
-            {"private", "Private modifier", "private "},
-            {"protected", "Protected modifier", "protected "},
-            {"static", "Static modifier", "static "},
-            {"final", "Final modifier", "final "},
-            {"abstract", "Abstract modifier", "abstract "},
-            {"if", "If statement", "if (${1:condition}) {\n    ${2}\n}"},
-            {"else", "Else block", "else {\n    ${1}\n}"},
-            {"for", "For loop", "for (${1:int i = 0; i < n; i++}) {\n    ${2}\n}"},
-            {"foreach", "For-each loop", "for (${1:Type} ${2:item} : ${3:collection}) {\n    ${4}\n}"},
-            {"while", "While loop", "while (${1:condition}) {\n    ${2}\n}"},
-            {"try", "Try-catch", "try {\n    ${1}\n} catch (${2:Exception} e) {\n    ${3}\n}"},
-            {"switch", "Switch expression", "switch (${1:expr}) {\n    case ${2} -> ${3};\n    default -> ${4};\n}"},
-            {"return", "Return statement", "return ${1;};"},
-            {"new", "New instance", "new ${1:ClassName}(${2})"},
-            {"var", "Local variable type inference", "var ${1:name} = ${2:value};"},
-            {"System.out.println", "Print line", "System.out.println(${1});"},
-            {"main", "Main method", "public static void main(String[] args) {\n    ${1}\n}"}
-        };
+        String prefixLower = prefix.toLowerCase();
 
-        for (String[] kw : keywords) {
-            if (kw[0].toLowerCase().startsWith(prefix.toLowerCase())) {
+        for (String[] kw : KEYWORDS) {
+            if (kw[0].toLowerCase().startsWith(prefixLower)) {
                 CompletionItem item = new CompletionItem(kw[0], CompletionItem.Kind.SNIPPET);
                 item.setDetail(kw[1]);
                 item.setInsertText(kw[2]);

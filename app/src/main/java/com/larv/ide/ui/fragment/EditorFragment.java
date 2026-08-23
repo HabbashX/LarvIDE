@@ -126,6 +126,12 @@ public class EditorFragment extends Fragment {
     public void showDiagnostics(List<Diagnostic> diagnostics) {
         if (isReady && webView != null) {
             String json = GSON.toJson(diagnostics);
+            showDiagnosticsJson(json);
+        }
+    }
+
+    public void showDiagnosticsJson(String json) {
+        if (isReady && webView != null) {
             webView.evaluateJavascript("window.showDiagnostics(" + json + ");", null);
         }
     }
@@ -148,16 +154,62 @@ public class EditorFragment extends Fragment {
         }
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (webView != null) {
+            webView.onResume();
+        }
+    }
+
+    @Override
+    public void onPause() {
+        if (webView != null) {
+            webView.onPause();
+        }
+        super.onPause();
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (webView != null) {
+            webView.onPause();
+            ViewGroup parent = (ViewGroup) webView.getParent();
+            if (parent != null) {
+                parent.removeView(webView);
+            }
+            webView.removeAllViews();
+            webView.destroy();
+            webView = null;
+        }
+        isReady = false;
+        super.onDestroyView();
+    }
+
     @NonNull
     private String escapeForJs(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("'", "\\'")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t")
-                .replace("</", "<\\/");
+        StringBuilder sb = new StringBuilder(s.length() + 16);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '\'': sb.append("\\'"); break;
+                case '"': sb.append("\\\""); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                case '/':
+                    if (i + 1 < s.length() && s.charAt(i + 1) == '<') {
+                        sb.append("\\/");
+                    } else {
+                        sb.append(c);
+                    }
+                    break;
+                default: sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     private class EditorBridge {

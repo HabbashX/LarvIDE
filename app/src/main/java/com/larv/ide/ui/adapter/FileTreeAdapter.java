@@ -39,7 +39,8 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
     public void setRootNodes(List<FileNode> rootNodes) {
         this.rootNodes.clear();
         this.rootNodes.addAll(rootNodes);
-        refreshVisibleNodes();
+        // No notifyDataSetChanged here: the caller (onFileTreeUpdated) follows
+        // this with expandPath(), which performs the single full refresh.
     }
 
     private void refreshVisibleNodes() {

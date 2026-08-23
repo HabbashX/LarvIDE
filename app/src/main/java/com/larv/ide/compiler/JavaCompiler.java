@@ -35,6 +35,8 @@ public class JavaCompiler {
     private final File cacheDir;
     private final File outputDir;
     private final Map<String, String> lastCheckedContents = new ConcurrentHashMap<>();
+    private final java.util.concurrent.CountDownLatch bootClasspathReady =
+        new java.util.concurrent.CountDownLatch(1);
 
     public JavaCompiler(@NonNull Context context) {
         this.context = context;
@@ -42,7 +44,7 @@ public class JavaCompiler {
         this.outputDir = new File(context.getCacheDir(), "javaoutput");
         this.cacheDir.mkdirs();
         this.outputDir.mkdirs();
-        extractBootClasspath();
+        new Thread(this::extractBootClasspath, "bootclasspath-extract").start();
     }
 
     private void extractBootClasspath() {
@@ -63,6 +65,16 @@ public class JavaCompiler {
             Log.d(TAG, "Boot classpath extracted: " + bootJar.length() + " bytes at " + bootJar.getAbsolutePath());
         } catch (Exception e) {
             Log.e(TAG, "Failed to extract boot classpath", e);
+        } finally {
+            bootClasspathReady.countDown();
+        }
+    }
+
+    private void awaitBootClasspath() {
+        try {
+            bootClasspathReady.await(60, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -71,21 +83,29 @@ public class JavaCompiler {
         Map<String, String> fileContents = new java.util.HashMap<>();
 
         for (OpenFile openFile : openFiles) {
-            File sourceFile = new File(cacheDir, openFile.getFileName());
-            try (FileOutputStream fos = new FileOutputStream(sourceFile)) {
-                fos.write(openFile.getContent().getBytes(StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to write source file", e);
-                return new CompilationResult(false, List.of(), List.of(
-                    new Diagnostic(openFile.getFilePath(), 0, 0, 
-                        "Failed to write source file: " + e.getMessage(), Diagnostic.Severity.ERROR)
-                ), "Failed to write source file: " + e.getMessage());
+            File sourceFile = getSourceFile(openFile.getFilePath());
+            String previous = lastCheckedContents.get(openFile.getFilePath());
+            if (previous == null || !previous.equals(openFile.getContent())) {
+                try (FileOutputStream fos = new FileOutputStream(sourceFile)) {
+                    fos.write(openFile.getContent().getBytes(StandardCharsets.UTF_8));
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to write source file", e);
+                    return new CompilationResult(false, List.of(), List.of(
+                        new Diagnostic(openFile.getFilePath(), 0, 0, 
+                            "Failed to write source file: " + e.getMessage(), Diagnostic.Severity.ERROR)
+                    ), "Failed to write source file: " + e.getMessage());
+                }
             }
             sourceFiles.add(sourceFile);
             fileContents.put(openFile.getFileName(), openFile.getContent());
         }
 
         return compileFiles(sourceFiles, fileContents);
+    }
+
+    private File getSourceFile(String filePath) {
+        String name = Integer.toHexString(filePath.hashCode()) + ".java";
+        return new File(cacheDir, name);
     }
 
     public CompilationResult compileFiles(List<File> sourceFiles, Map<String, String> fileContents) {
@@ -111,6 +131,7 @@ public class JavaCompiler {
         
         // Android's java.* implementation. ECJ rejects -bootclasspath at
         // compliance level 9+, so android.jar goes on the regular classpath.
+        awaitBootClasspath();
         File bootJar = new File(cacheDir, "android.jar");
         if (bootJar.exists()) {
             args.add("-classpath");
@@ -222,6 +243,7 @@ public class JavaCompiler {
             CompilationUnitDeclaration unitDecl = parser.parse(unit, result);
 
             CategorizedProblem[] problems = unitDecl.compilationResult.getAllProblems();
+            int[] lineStarts = buildLineStarts(source);
             List<Diagnostic> diagnostics = new ArrayList<>();
             if (problems != null) {
                 for (CategorizedProblem problem : problems) {
@@ -229,7 +251,7 @@ public class JavaCompiler {
                     Diagnostic diagnostic = new Diagnostic();
                     diagnostic.setFilePath(openFile.getFilePath());
                     diagnostic.setLine(problem.getSourceLineNumber());
-                    diagnostic.setColumn(computeColumn(source, problem.getSourceStart()));
+                    diagnostic.setColumn(computeColumn(problem.getSourceStart(), lineStarts));
                     diagnostic.setMessage(problem.getMessage());
                     diagnostic.setSeverity(problem.isError()
                         ? Diagnostic.Severity.ERROR : Diagnostic.Severity.WARNING);
@@ -245,17 +267,33 @@ public class JavaCompiler {
         }
     }
 
-    private int computeColumn(char[] source, int offset) {
-        if (offset < 0 || offset >= source.length) return 1;
-        int column = 1;
-        for (int i = 0; i < offset; i++) {
-            if (source[i] == '\n') {
-                column = 1;
+    private int computeColumn(int offset, int[] lineStarts) {
+        int lo = 0, hi = lineStarts.length - 1;
+        while (lo <= hi) {
+            int mid = (lo + hi) >>> 1;
+            if (lineStarts[mid] <= offset) {
+                lo = mid + 1;
             } else {
-                column++;
+                hi = mid - 1;
             }
         }
-        return column;
+        int lineStart = hi >= 0 ? lineStarts[hi] : 0;
+        return offset - lineStart + 1;
+    }
+
+    private int[] buildLineStarts(char[] source) {
+        java.util.ArrayList<Integer> starts = new java.util.ArrayList<>();
+        starts.add(0);
+        for (int i = 0; i < source.length; i++) {
+            if (source[i] == '\n') {
+                starts.add(i + 1);
+            }
+        }
+        int[] lineStarts = new int[starts.size()];
+        for (int i = 0; i < lineStarts.length; i++) {
+            lineStarts[i] = starts.get(i);
+        }
+        return lineStarts;
     }
 
     private CompilationResult typeCheckCompile(List<OpenFile> openFiles) {
@@ -263,11 +301,13 @@ public class JavaCompiler {
         Map<String, String> fileContents = new java.util.HashMap<>();
 
         for (OpenFile openFile : openFiles) {
-            File sourceFile = new File(cacheDir, openFile.getFileName());
-            try (FileOutputStream fos = new FileOutputStream(sourceFile)) {
-                fos.write(openFile.getContent().getBytes(StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to write source file for type check", e);
+            File sourceFile = getSourceFile(openFile.getFilePath());
+            if (hasChanges(openFile)) {
+                try (FileOutputStream fos = new FileOutputStream(sourceFile)) {
+                    fos.write(openFile.getContent().getBytes(StandardCharsets.UTF_8));
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to write source file for type check", e);
+                }
             }
             sourceFiles.add(sourceFile);
             fileContents.put(openFile.getFileName(), openFile.getContent());

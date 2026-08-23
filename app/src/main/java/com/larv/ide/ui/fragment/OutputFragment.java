@@ -14,12 +14,12 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.larv.ide.R;
+import com.larv.ide.ui.view.SafeEmulatorView;
 
 import java.io.InputStream;
 import java.io.OutputStream;
 
 import jackpal.androidterm.emulatorview.ColorScheme;
-import jackpal.androidterm.emulatorview.EmulatorView;
 import jackpal.androidterm.emulatorview.TermSession;
 
 public class OutputFragment extends Fragment {
@@ -33,7 +33,7 @@ public class OutputFragment extends Fragment {
 
     private FrameLayout terminalContainer;
     private TextView emptyView;
-    private EmulatorView terminalView;
+    private SafeEmulatorView terminalView;
     private TermSession currentSession;
 
     private InputStream pendingProgramOutput;
@@ -76,25 +76,14 @@ public class OutputFragment extends Fragment {
         }
         terminalContainer.setVisibility(View.VISIBLE);
 
-        if (currentSession != null) {
-            try {
-                if (currentSession.isRunning()) {
-                    currentSession.finish();
-                }
-            } catch (Exception ignored) {
-            }
-            currentSession = null;
-        }
-        if (terminalView != null && terminalView.getParent() != null) {
-            ((ViewGroup) terminalView.getParent()).removeView(terminalView);
-        }
+        finishCurrentSession();
 
-        TermSession session = new TermSession(true);
+        TermSession session = new TermSession(false);
         session.setTermIn(programOutput);
         session.setTermOut(programInput);
         session.setDefaultUTF8Mode(true);
 
-        EmulatorView view = new EmulatorView(requireContext(), session, getResources().getDisplayMetrics());
+        SafeEmulatorView view = new SafeEmulatorView(requireContext(), session, getResources().getDisplayMetrics());
         view.setTextSize(13);
         view.setUseCookedIME(true);
         view.setColorScheme(DARK_SCHEME);
@@ -116,12 +105,36 @@ public class OutputFragment extends Fragment {
     }
 
     public void clear() {
+        finishCurrentSession();
+        releasePendingStreams();
         if (emptyView != null) {
             emptyView.setVisibility(View.VISIBLE);
         }
         if (terminalContainer != null) {
             terminalContainer.setVisibility(View.GONE);
         }
+    }
+
+    private void finishCurrentSession() {
+        if (terminalView != null && terminalView.getParent() != null) {
+            ((ViewGroup) terminalView.getParent()).removeView(terminalView);
+        }
+        terminalView = null;
+        if (currentSession != null) {
+            try {
+                if (currentSession.isRunning()) {
+                    currentSession.finish();
+                }
+            } catch (Exception ignored) {
+            }
+            currentSession = null;
+        }
+    }
+
+    private void releasePendingStreams() {
+        pendingProgramOutput = null;
+        pendingProgramInput = null;
+        startPending = false;
     }
 
     @Override
@@ -142,16 +155,8 @@ public class OutputFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
-        if (currentSession != null) {
-            try {
-                if (currentSession.isRunning()) {
-                    currentSession.finish();
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        currentSession = null;
-        terminalView = null;
+        finishCurrentSession();
+        releasePendingStreams();
         super.onDestroyView();
     }
 }
