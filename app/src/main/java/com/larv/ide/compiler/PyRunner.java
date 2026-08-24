@@ -13,6 +13,7 @@ public class PyRunner {
     private static final String TAG = "PyRunner";
     private Object pythonInstance;
     private boolean initialized = false;
+    private String[] pendingArgs;
 
     public static class RunResult {
         public final boolean success;
@@ -54,6 +55,12 @@ public class PyRunner {
 
     public RunResult run(String source, List<File> pyPackageDirs,
                          OutputStream stdout, OutputStream stderr) {
+        return run(source, pyPackageDirs, stdout, stderr, null);
+    }
+
+    public RunResult run(String source, List<File> pyPackageDirs,
+                         OutputStream stdout, OutputStream stderr, String[] programArgs) {
+        this.pendingArgs = programArgs;
         long start = System.currentTimeMillis();
         tryInitialize();
         if (pythonInstance == null) {

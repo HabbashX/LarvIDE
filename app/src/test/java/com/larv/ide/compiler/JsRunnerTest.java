@@ -46,6 +46,17 @@ public class JsRunnerTest {
     }
 
     @Test
+    public void programArgumentsExposedAsGlobal() {
+        JsRunner runner = new JsRunner();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        JsRunner.RunResult r = runner.run("print(arguments.join('|'));", "args.js",
+            null, out, out, new String[]{"alpha", "beta"});
+        assertTrue(r.success);
+        String output = new String(out.toByteArray(), StandardCharsets.UTF_8);
+        assertTrue(output.contains("alpha|beta"));
+    }
+
+    @Test
     public void syntaxErrorsAreReportedNotThrown() {
         JsRunner runner = new JsRunner();
         ByteArrayOutputStream out = new ByteArrayOutputStream();

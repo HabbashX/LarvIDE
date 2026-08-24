@@ -150,12 +150,29 @@ public class EditorFragment extends Fragment {
     }
 
     public void applyEditorSettings(int fontSize, int tabSize, boolean lineNumbers, boolean wordWrap) {
+        applyEditorSettings(fontSize, tabSize, lineNumbers, wordWrap,
+            false, true, true, "jetbrains");
+    }
+
+    public void applyEditorSettings(int fontSize, int tabSize, boolean lineNumbers, boolean wordWrap,
+                                    boolean minimap, boolean indentGuides, boolean highlightLine,
+                                    String fontFamily) {
         if (!isReady || webView == null) return;
         String js = "window.applyEditorSettings({fontSize:" + fontSize
             + ",tabSize:" + tabSize
             + ",lineNumbers:" + lineNumbers
-            + ",wordWrap:" + wordWrap + "});";
+            + ",wordWrap:" + wordWrap
+            + ",minimap:" + minimap
+            + ",indentGuides:" + indentGuides
+            + ",highlightLine:" + highlightLine
+            + ",fontFamily:'" + fontFamily.replace("'", "") + "'});";
         webView.evaluateJavascript(js, null);
+    }
+
+    public void applyEditorTheme(String themeId) {
+        if (!isReady || webView == null || themeId == null || themeId.isEmpty()) return;
+        final String safe = themeId.replaceAll("[^a-zA-Z0-9\\-]", "");
+        webView.evaluateJavascript("window.setEditorTheme('" + safe + "');", null);
     }
 
     public void setCursorPositions(String positionsJson) {

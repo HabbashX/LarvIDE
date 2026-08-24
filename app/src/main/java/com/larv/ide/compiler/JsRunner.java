@@ -29,6 +29,11 @@ public class JsRunner {
 
     public RunResult run(String source, String sourceName, List<File> preloadScripts,
                          OutputStream stdout, OutputStream stderr) {
+        return run(source, sourceName, preloadScripts, stdout, stderr, null);
+    }
+
+    public RunResult run(String source, String sourceName, List<File> preloadScripts,
+                         OutputStream stdout, OutputStream stderr, String[] programArgs) {
         long start = System.currentTimeMillis();
         Context cx = Context.enter();
         try {
@@ -37,6 +42,14 @@ public class JsRunner {
 
             ImporterTopLevel scope = new ImporterTopLevel(cx);
             ScriptableObjectHelper.bindConsole(scope, stdout, stderr);
+            if (programArgs != null && programArgs.length > 0) {
+                Object[] converted = new Object[programArgs.length];
+                for (int i = 0; i < programArgs.length; i++) {
+                    converted[i] = programArgs[i];
+                }
+                scope.put("arguments", scope,
+                    cx.newArray(scope, converted));
+            }
 
             if (preloadScripts != null) {
                 for (File script : preloadScripts) {

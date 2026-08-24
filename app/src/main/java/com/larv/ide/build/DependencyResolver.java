@@ -48,9 +48,11 @@ public class DependencyResolver {
     public static class BuildSpec {
         public final List<String> dependencies = new ArrayList<>();
         public final List<String> repositories = new ArrayList<>();
+        public final List<String> runArgs = new ArrayList<>();
         public String mainClass = null;
         public String language = null;
         public String entry = null;
+        public String stdinFile = null;
     }
 
     public static class ResolveResult {
@@ -82,6 +84,22 @@ public class DependencyResolver {
         spec.mainClass = root.optString("main", null);
         spec.language = root.optString("language", null);
         spec.entry = root.optString("entry", null);
+        JSONObject run = root.optJSONObject("run");
+        if (run != null) {
+            JSONArray args = run.optJSONArray("args");
+            if (args != null) {
+                for (int i = 0; i < args.length(); i++) {
+                    String a = args.getString(i).trim();
+                    if (!a.isEmpty()) {
+                        spec.runArgs.add(a);
+                    }
+                }
+            }
+            String stdin = run.optString("stdin", "");
+            if (!stdin.isEmpty()) {
+                spec.stdinFile = stdin;
+            }
+        }
         JSONArray deps = root.optJSONArray("dependencies");
         if (deps != null) {
             for (int i = 0; i < deps.length(); i++) {

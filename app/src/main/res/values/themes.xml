@@ -63,7 +63,7 @@
     </style>
 
     <style name="Widget.LarvIDE.DialogButton.Positive" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
-        <item name="android:textColor">@color/ide_accent</item>
+        <item name="android:textColor">?attr/colorPrimary</item>
         <item name="android:textStyle">bold</item>
         <item name="rippleColor">@color/hover</item>
     </style>
@@ -81,6 +81,42 @@
     <style name="Widget.LarvIDE.PopupMenu.ListPopupWindow" parent="Widget.MaterialComponents.PopupMenu.ListPopupWindow">
         <item name="android:popupBackground">@drawable/popup_menu_background</item>
         <item name="android:textColor">@color/text_primary</item>
+    </style>
+
+    <style name="Theme.LarvIDE.AccentBlue" parent="Theme.LarvIDE">
+        <item name="colorPrimary">#3574F0</item>
+        <item name="colorPrimaryVariant">#4C86F4</item>
+        <item name="colorSecondary">#3574F0</item>
+    </style>
+
+    <style name="Theme.LarvIDE.AccentPurple" parent="Theme.LarvIDE">
+        <item name="colorPrimary">#B189F5</item>
+        <item name="colorPrimaryVariant">#9F6FF2</item>
+        <item name="colorSecondary">#B189F5</item>
+    </style>
+
+    <style name="Theme.LarvIDE.AccentGreen" parent="Theme.LarvIDE">
+        <item name="colorPrimary">#57965C</item>
+        <item name="colorPrimaryVariant">#4CAF50</item>
+        <item name="colorSecondary">#57965C</item>
+    </style>
+
+    <style name="Theme.LarvIDE.AccentOrange" parent="Theme.LarvIDE">
+        <item name="colorPrimary">#E08855</item>
+        <item name="colorPrimaryVariant">#F2A03D</item>
+        <item name="colorSecondary">#E08855</item>
+    </style>
+
+    <style name="Theme.LarvIDE.AccentPink" parent="Theme.LarvIDE">
+        <item name="colorPrimary">#DB5C88</item>
+        <item name="colorPrimaryVariant">#E9578F</item>
+        <item name="colorSecondary">#DB5C88</item>
+    </style>
+
+    <style name="Theme.LarvIDE.AccentCyan" parent="Theme.LarvIDE">
+        <item name="colorPrimary">#16BAAC</item>
+        <item name="colorPrimaryVariant">#2AACB8</item>
+        <item name="colorSecondary">#16BAAC</item>
     </style>
 
     <!-- Editor Tab Layout -->

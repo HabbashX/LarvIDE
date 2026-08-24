@@ -171,6 +171,8 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        applySelectedTheme();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -178,7 +180,6 @@ public class MainActivity extends AppCompatActivity
         initServices();
         setupListeners();
         checkPermissions();
-        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
         handleIntent(getIntent());
         restoreLastProject();
@@ -827,6 +828,32 @@ public class MainActivity extends AppCompatActivity
         return projectIndexer.findImportCandidates(className);
     }
 
+    private void applySelectedTheme() {
+        switch (prefs.getString("appAccent", "blue")) {
+            case "purple": setTheme(R.style.Theme_LarvIDE_AccentPurple); break;
+            case "green": setTheme(R.style.Theme_LarvIDE_AccentGreen); break;
+            case "orange": setTheme(R.style.Theme_LarvIDE_AccentOrange); break;
+            case "pink": setTheme(R.style.Theme_LarvIDE_AccentPink); break;
+            case "cyan": setTheme(R.style.Theme_LarvIDE_AccentCyan); break;
+            case "blue":
+            default: setTheme(R.style.Theme_LarvIDE_AccentBlue); break;
+        }
+    }
+
+    private int themeColor(int attr) {
+        android.util.TypedValue tv = new android.util.TypedValue();
+        getTheme().resolveAttribute(attr, tv, true);
+        return tv.data;
+    }
+
+    private int themeColorOrFallback(int attr, int fallbackRes) {
+        android.util.TypedValue tv = new android.util.TypedValue();
+        if (getTheme().resolveAttribute(attr, tv, true)) {
+            return tv.data;
+        }
+        return ContextCompat.getColor(this, fallbackRes);
+    }
+
     @Override
     public void onEditorReady() {
         if (editorFragment != null) {
@@ -838,7 +865,12 @@ public class MainActivity extends AppCompatActivity
                 prefs.getInt("editorFontSize", 14),
                 prefs.getInt("editorTabSize", 4),
                 prefs.getBoolean("editorLineNumbers", true),
-                prefs.getBoolean("editorWordWrap", false));
+                prefs.getBoolean("editorWordWrap", false),
+                prefs.getBoolean("editorMinimap", false),
+                prefs.getBoolean("editorIndentGuides", true),
+                prefs.getBoolean("editorHighlightLine", true),
+                prefs.getString("editorFontFamily", "jetbrains"));
+            editorFragment.applyEditorTheme(prefs.getString("editorTheme", "islands-dark"));
         }
         if (!currentEditorFile.isEmpty()) {
             OpenFile openFile = findOpenFile(currentEditorFile);
@@ -1134,9 +1166,15 @@ public class MainActivity extends AppCompatActivity
 
             writeTerm(rs.programOut, "\n");
 
+            String[] programArgs = spec != null
+                ? spec.runArgs.toArray(new String[0]) : new String[0];
+            if (programArgs.length > 0) {
+                writeTerm(rs.programOut, "Arguments: " + String.join(" ", programArgs) + "\n");
+            }
+
             if (python) {
                 PyRunner.RunResult result = pyRunner.run(source, pyDirs,
-                    rs.programOut, rs.programOut);
+                    rs.programOut, rs.programOut, programArgs);
                 if (result.error != null && !"Python execution requires the native runtime module."
                     .equals(result.error)) {
                     writeTerm(rs.programOut, result.error + "\n");
@@ -1149,7 +1187,7 @@ public class MainActivity extends AppCompatActivity
                 });
             } else {
                 JsRunner.RunResult result = jsRunner.run(source, entryFile.getName(),
-                    preloads, rs.programOut, rs.programOut);
+                    preloads, rs.programOut, rs.programOut, programArgs);
                 if (result.error != null) {
                     writeTerm(rs.programOut, result.error + "\n");
                 }
@@ -1342,8 +1380,19 @@ public class MainActivity extends AppCompatActivity
 
             writeTerm(rs.programOut, "Dex successful, running " + mainClass + "...");
 
+            String[] programArgs = buildSpec != null
+                ? buildSpec.runArgs.toArray(new String[0]) : new String[0];
+            if (programArgs.length > 0) {
+                writeTerm(rs.programOut, "Arguments: " + String.join(" ", programArgs));
+            }
+
+            boolean stdinClosed = pushStdinFile(rs, buildSpec);
+            if (stdinClosed) {
+                writeTerm(rs.programOut, "stdin: " + buildSpec.stdinFile);
+            }
+
             JavaRunner.RunResult runResult = javaRunner.run(
-                dexResult.getDexFile(), mainClass, new String[]{},
+                dexResult.getDexFile(), mainClass, programArgs,
                 rs.programOut, rs.programOut, rs.stdinIn);
 
             if (runResult.getError() != null) {
@@ -1362,8 +1411,32 @@ public class MainActivity extends AppCompatActivity
         });
     }
 
-    private void writeTerm(OutputStream out, String text) {
-        if (out == null || text == null) return;
+    private boolean pushStdinFile(RunStreams rs, DependencyResolver.BuildSpec spec) {
+        if (spec == null || spec.stdinFile == null || currentProject == null) return false;
+        File stdinSource = new File(currentProject.getRootDir(), spec.stdinFile);
+        if (!stdinSource.exists()) {
+            writeTerm(rs.programOut, "stdin file not found: " + spec.stdinFile);
+            return false;
+        }
+        final byte[] data = readFileString(stdinSource).getBytes(StandardCharsets.UTF_8);
+        Thread feeder = new Thread(() -> {
+            try {
+                rs.stdinOut.write(data);
+                rs.stdinOut.flush();
+            } catch (IOException ignored) {
+            } finally {
+                try {
+                    rs.stdinOut.close();
+                } catch (IOException ignored) {
+                }
+            }
+        }, "stdin-feeder");
+        feeder.setDaemon(true);
+        feeder.start();
+        return true;
+    }
+
+    private void writeTerm(OutputStream out, String text) {        if (out == null || text == null) return;
         try {
             out.write(text.replace("\n", "\r\n").getBytes(StandardCharsets.UTF_8));
             out.flush();
@@ -1650,26 +1723,51 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void showSettingsDialog() {
+        android.widget.ScrollView scroller = new android.widget.ScrollView(this);
         android.widget.LinearLayout root = new android.widget.LinearLayout(this);
         root.setOrientation(android.widget.LinearLayout.VERTICAL);
         int pad = dp(24);
         root.setPadding(pad, dp(8), pad, dp(8));
+        scroller.addView(root);
 
-        android.widget.TextView fontLabel = new android.widget.TextView(this);
-        fontLabel.setText("Editor font size");
-        fontLabel.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
-        fontLabel.setTextSize(12);
-        root.addView(fontLabel);
+        final String savedAccent = prefs.getString("appAccent", "blue");
+        final String[] accentKeys = {"blue", "purple", "green", "orange", "pink", "cyan"};
+        final String[] accentNames = {"Blue", "Purple", "Green", "Orange", "Pink", "Cyan"};
+        root.addView(dialogLabel("Accent color"));
+        final android.widget.Spinner accentSpinner = dialogSpinner(accentNames,
+            java.util.Arrays.asList(accentNames).indexOf(savedAccent));
+        root.addView(accentSpinner);
 
+        root.addView(dialogLabel("Editor theme", true));
+        final String savedTheme = prefs.getString("editorTheme", "islands-dark");
+        final String[] themeIds = {"islands-dark", "vscode-dark-plus", "monokai",
+            "larv-light", "solarized-light"};
+        final String[] themeNames = {"Islands Dark", "VS Dark+", "Monokai",
+            "Light", "Solarized Light"};
+        final android.widget.Spinner themeSpinner = dialogSpinner(themeNames,
+            java.util.Arrays.asList(themeIds).indexOf(savedTheme));
+        root.addView(themeSpinner);
+
+        root.addView(dialogLabel("Font family", true));
+        final String savedFamily = prefs.getString("editorFontFamily", "jetbrains");
+        final String[] familyKeys = {"jetbrains", "fira", "roboto", "mono", "system"};
+        final String[] familyNames = {"JetBrains Mono", "Fira Code", "Roboto Mono",
+            "Monospace", "System sans-serif"};
+        final android.widget.Spinner familySpinner = dialogSpinner(familyNames,
+            java.util.Arrays.asList(familyKeys).indexOf(savedFamily));
+        root.addView(familySpinner);
+
+        root.addView(dialogLabel("Editor font size", true));
         final android.widget.SeekBar fontSeek = new android.widget.SeekBar(this);
         final int savedFont = prefs.getInt("editorFontSize", 14);
         fontSeek.setMin(10);
         fontSeek.setMax(24);
         fontSeek.setProgress(savedFont);
+        int accentColor = themeColorOrFallback(com.google.android.material.R.attr.colorPrimary, R.color.ide_accent);
         fontSeek.getProgressDrawable().setColorFilter(
-            ContextCompat.getColor(this, R.color.ide_accent), android.graphics.PorterDuff.Mode.SRC_IN);
+            accentColor, android.graphics.PorterDuff.Mode.SRC_IN);
         fontSeek.getThumb().setColorFilter(
-            ContextCompat.getColor(this, R.color.ide_accent), android.graphics.PorterDuff.Mode.SRC_IN);
+            accentColor, android.graphics.PorterDuff.Mode.SRC_IN);
         root.addView(fontSeek);
 
         final android.widget.TextView fontValue = new android.widget.TextView(this);
@@ -1689,65 +1787,86 @@ public class MainActivity extends AppCompatActivity
             (buttonView, isChecked) -> prefs.edit().putBoolean("editorWordWrap", isChecked).apply()));
         root.addView(settingSwitch("Show line numbers", prefs.getBoolean("editorLineNumbers", true),
             (buttonView, isChecked) -> prefs.edit().putBoolean("editorLineNumbers", isChecked).apply()));
+        root.addView(settingSwitch("Minimap", prefs.getBoolean("editorMinimap", false),
+            (buttonView, isChecked) -> prefs.edit().putBoolean("editorMinimap", isChecked).apply()));
+        root.addView(settingSwitch("Indent guides", prefs.getBoolean("editorIndentGuides", true),
+            (buttonView, isChecked) -> prefs.edit().putBoolean("editorIndentGuides", isChecked).apply()));
+        root.addView(settingSwitch("Highlight current line", prefs.getBoolean("editorHighlightLine", true),
+            (buttonView, isChecked) -> prefs.edit().putBoolean("editorHighlightLine", isChecked).apply()));
         root.addView(settingSwitch("Auto save", prefs.getBoolean("autosaveEnabled", true),
             (buttonView, isChecked) -> prefs.edit().putBoolean("autosaveEnabled", isChecked).apply()));
 
-        android.widget.TextView tabLabel = new android.widget.TextView(this);
-        tabLabel.setText("Tab size");
-        tabLabel.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
-        tabLabel.setTextSize(12);
-        tabLabel.setPadding(0, dp(12), 0, dp(4));
-        root.addView(tabLabel);
-
+        root.addView(dialogLabel("Tab size", true));
         final String[] tabSizes = {"2", "4", "8"};
         final int savedTab = prefs.getInt("editorTabSize", 4);
-        final android.widget.Spinner tabSpinner = new android.widget.Spinner(this);
-        android.widget.ArrayAdapter<String> tabAdapter = new android.widget.ArrayAdapter<>(this,
-            android.R.layout.simple_spinner_item, tabSizes);
-        tabAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        tabSpinner.setAdapter(tabAdapter);
-        tabSpinner.setSelection(Math.max(0, java.util.Arrays.asList(tabSizes).indexOf(String.valueOf(savedTab))));
+        final android.widget.Spinner tabSpinner = dialogSpinner(tabSizes,
+            Math.max(0, java.util.Arrays.asList(tabSizes).indexOf(String.valueOf(savedTab))));
         root.addView(tabSpinner);
 
-        android.widget.TextView levelLabel = new android.widget.TextView(this);
-        levelLabel.setText("Java language level");
-        levelLabel.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
-        levelLabel.setTextSize(12);
-        levelLabel.setPadding(0, dp(12), 0, dp(4));
-        root.addView(levelLabel);
-
+        root.addView(dialogLabel("Java language level", true));
         final String[] levels = {"11", "16", "17"};
         final String savedLevel = prefs.getString("javaLevel", "16");
-        final android.widget.Spinner levelSpinner = new android.widget.Spinner(this);
-        android.widget.ArrayAdapter<String> levelAdapter = new android.widget.ArrayAdapter<>(this,
-            android.R.layout.simple_spinner_item, levels);
-        levelAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        levelSpinner.setAdapter(levelAdapter);
-        levelSpinner.setSelection(Math.max(0, java.util.Arrays.asList(levels).indexOf(savedLevel)));
+        final android.widget.Spinner levelSpinner = dialogSpinner(levels,
+            Math.max(0, java.util.Arrays.asList(levels).indexOf(savedLevel)));
         root.addView(levelSpinner);
-
-        android.widget.ScrollView scroller = new android.widget.ScrollView(this);
-        scroller.addView(root);
 
         new AlertDialog.Builder(this)
             .setTitle("Settings")
             .setView(scroller)
             .setPositiveButton("Apply", (dialog, which) -> {
+                String newAccent = accentKeys[accentSpinner.getSelectedItemPosition()];
+                String newTheme = themeIds[themeSpinner.getSelectedItemPosition()];
+                String newFamily = familyKeys[familySpinner.getSelectedItemPosition()];
+                int newSize = fontSeek.getProgress();
+                int newTabSize = Integer.parseInt((String) tabSpinner.getSelectedItem());
                 prefs.edit()
-                    .putInt("editorFontSize", fontSeek.getProgress())
-                    .putInt("editorTabSize", Integer.parseInt((String) tabSpinner.getSelectedItem()))
+                    .putString("appAccent", newAccent)
+                    .putString("editorTheme", newTheme)
+                    .putString("editorFontFamily", newFamily)
+                    .putInt("editorFontSize", newSize)
+                    .putInt("editorTabSize", newTabSize)
                     .putString("javaLevel", (String) levelSpinner.getSelectedItem())
                     .apply();
+                if (!newAccent.equals(savedAccent)) {
+                    recreate();
+                    return;
+                }
                 if (editorFragment != null) {
-                    editorFragment.applyEditorSettings(
-                        fontSeek.getProgress(),
-                        Integer.parseInt((String) tabSpinner.getSelectedItem()),
+                    editorFragment.applyEditorSettings(newSize, newTabSize,
                         prefs.getBoolean("editorLineNumbers", true),
-                        prefs.getBoolean("editorWordWrap", false));
+                        prefs.getBoolean("editorWordWrap", false),
+                        prefs.getBoolean("editorMinimap", false),
+                        prefs.getBoolean("editorIndentGuides", true),
+                        prefs.getBoolean("editorHighlightLine", true),
+                        newFamily);
+                    editorFragment.applyEditorTheme(newTheme);
                 }
             })
             .setNegativeButton("Cancel", null)
             .show();
+    }
+
+    private android.widget.TextView dialogLabel(String text) {
+        return dialogLabel(text, false);
+    }
+
+    private android.widget.TextView dialogLabel(String text, boolean spaced) {
+        android.widget.TextView label = new android.widget.TextView(this);
+        label.setText(text);
+        label.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        label.setTextSize(12);
+        label.setPadding(0, spaced ? dp(14) : dp(6), 0, dp(4));
+        return label;
+    }
+
+    private android.widget.Spinner dialogSpinner(String[] items, int selection) {
+        android.widget.Spinner spinner = new android.widget.Spinner(this);
+        android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(this,
+            android.R.layout.simple_spinner_item, items);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(adapter);
+        spinner.setSelection(Math.max(0, selection));
+        return spinner;
     }
 
     private android.widget.LinearLayout settingSwitch(String label, boolean checked,
@@ -1768,8 +1887,10 @@ public class MainActivity extends AppCompatActivity
         androidx.appcompat.widget.SwitchCompat sw = new androidx.appcompat.widget.SwitchCompat(this);
         sw.setChecked(checked);
         sw.setOnCheckedChangeListener(listener);
+        int accent = themeColorOrFallback(com.google.android.material.R.attr.colorPrimary, R.color.ide_accent);
         sw.getTrackDrawable().setColorFilter(
-            ContextCompat.getColor(this, checked ? R.color.ide_accent : R.color.input_stroke),
+            checked ? accent
+                : ContextCompat.getColor(this, R.color.input_stroke),
             android.graphics.PorterDuff.Mode.SRC_IN);
         row.addView(sw);
         return row;
