@@ -31,7 +31,8 @@ public class EditorFragment extends Fragment {
         void onContentChange(String file, String content);
         void onCursorChange(int line, int column);
         void onCompletionsRequested(String file, int line, int column, String prefix,
-                                    int requestId, CompletionCallback callback);
+                                    String memberOf, int requestId, CompletionCallback callback);
+        String onImportCandidatesRequested(String className);
         void onEditorReady();
     }
     public interface CompletionCallback { void onCompletions(List<CompletionItem> completions);}
@@ -148,6 +149,21 @@ public class EditorFragment extends Fragment {
         }
     }
 
+    public void applyEditorSettings(int fontSize, int tabSize, boolean lineNumbers, boolean wordWrap) {
+        if (!isReady || webView == null) return;
+        String js = "window.applyEditorSettings({fontSize:" + fontSize
+            + ",tabSize:" + tabSize
+            + ",lineNumbers:" + lineNumbers
+            + ",wordWrap:" + wordWrap + "});";
+        webView.evaluateJavascript(js, null);
+    }
+
+    public void setCursorPositions(String positionsJson) {
+        if (!isReady || webView == null) return;
+        String js = "window.setCursorPositions(" + positionsJson + ");";
+        webView.evaluateJavascript(js, null);
+    }
+
     @Override
     public void onResume() {
         super.onResume();
@@ -222,9 +238,11 @@ public class EditorFragment extends Fragment {
         }
 
         @JavascriptInterface
-        public void requestCompletions(String file, int line, int column, final int requestId, final String prefix) {
+        public void requestCompletions(String file, int line, int column, final int requestId,
+                                       final String prefix, final String memberOf) {
             if (listener != null) {
-                listener.onCompletionsRequested(file, line, column, prefix == null ? "" : prefix, requestId,
+                listener.onCompletionsRequested(file, line, column,
+                    prefix == null ? "" : prefix, memberOf == null ? "" : memberOf, requestId,
                     completions -> {
                         if (isReady && webView != null) {
                             String json = GSON.toJson(completions);
@@ -233,6 +251,14 @@ public class EditorFragment extends Fragment {
                         }
                     });
             }
+        }
+
+        @JavascriptInterface
+        public String importCandidates(String className) {
+            if (listener != null) {
+                return listener.onImportCandidatesRequested(className);
+            }
+            return "[]";
         }
 
         @JavascriptInterface

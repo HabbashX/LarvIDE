@@ -49,16 +49,20 @@ public class DependencyResolver {
         public final List<String> dependencies = new ArrayList<>();
         public final List<String> repositories = new ArrayList<>();
         public String mainClass = null;
+        public String language = null;
+        public String entry = null;
     }
 
     public static class ResolveResult {
         public final boolean success;
         public final List<File> jars;
+        public final List<File> pyPackageDirs;
         public final String error;
 
-        ResolveResult(boolean success, List<File> jars, String error) {
+        ResolveResult(boolean success, List<File> jars, List<File> pyDirs, String error) {
             this.success = success;
             this.jars = jars;
+            this.pyPackageDirs = pyDirs;
             this.error = error;
         }
     }
@@ -76,6 +80,8 @@ public class DependencyResolver {
         BuildSpec spec = new BuildSpec();
         JSONObject root = new JSONObject(sb.toString());
         spec.mainClass = root.optString("main", null);
+        spec.language = root.optString("language", null);
+        spec.entry = root.optString("entry", null);
         JSONArray deps = root.optJSONArray("dependencies");
         if (deps != null) {
             for (int i = 0; i < deps.length(); i++) {
@@ -103,14 +109,144 @@ public class DependencyResolver {
             ? DEFAULT_REPOS : repositories;
         LinkedHashMap<String, File> resolved = new LinkedHashMap<>();
         Set<String> visited = new HashSet<>();
+        List<File> pyDirs = new ArrayList<>();
         try {
             for (String coordinate : coordinates) {
-                resolveCoordinate(coordinate.trim(), repos, resolved, visited, 0, listener);
+                String dep = coordinate.trim();
+                if (isNpmCoordinate(dep)) {
+                    resolved.put(dep, fetchNpmPackage(dep, listener));
+                    if (listener != null) {
+                        listener.onProgress("Resolved " + dep);
+                    }
+                } else if (isPypiCoordinate(dep)) {
+                    File dir = resolvePypiPackage(dep, listener);
+                    pyDirs.add(dir);
+                    resolved.put(dep, dir);
+                    if (listener != null) {
+                        listener.onProgress("Installed " + dep);
+                    }
+                } else {
+                    resolveCoordinate(dep, repos, resolved, visited, 0, listener);
+                }
             }
-            return new ResolveResult(true, new ArrayList<>(resolved.values()), null);
+            return new ResolveResult(true, new ArrayList<>(resolved.values()), pyDirs, null);
         } catch (Exception e) {
             Log.e(TAG, "Dependency resolution failed", e);
-            return new ResolveResult(false, new ArrayList<>(resolved.values()), e.getMessage());
+            return new ResolveResult(false,
+                new ArrayList<>(resolved.values()), pyDirs, e.getMessage());
+        }
+    }
+
+    static boolean isNpmCoordinate(String dep) {
+        return dep.indexOf('@', 1) >= 0 && !dep.contains(":");
+    }
+
+    static boolean isPypiCoordinate(String dep) {
+        if (dep.contains(":")) return false;
+        return dep.contains("==") || dep.matches("[A-Za-z0-9_.\\-]+");
+    }
+
+    private File fetchNpmPackage(String dep, ProgressListener listener) throws IOException {
+        int at = dep.indexOf('@', 1);
+        String name = dep.substring(0, at);
+        String rest = dep.substring(at + 1);
+        String version = rest;
+        String subpath = "";
+        int colon = rest.indexOf(':');
+        if (colon >= 0) {
+            version = rest.substring(0, colon);
+            subpath = "/" + rest.substring(colon + 1).replace('.', '/');
+        }
+        String url = "https://cdn.jsdelivr.net/npm/" + name + "@" + version + subpath;
+        String safeName = (name + "-" + version + subpath).replaceAll("[^A-Za-z0-9._-]", "_");
+        File target = new File(cacheRoot, "npm/" + safeName);
+        if (target.exists() && target.length() > 0) {
+            if (listener != null) listener.onProgress("Cached " + dep);
+            return target;
+        }
+        downloadToFile(url, target);
+        return target;
+    }
+
+    private File resolvePypiPackage(String dep, ProgressListener listener) throws IOException {
+        try {
+            return resolvePypiPackageInner(dep, listener);
+        } catch (org.json.JSONException e) {
+            throw new IOException("PyPI metadata error: " + e.getMessage(), e);
+        }
+    }
+
+    private File resolvePypiPackageInner(String dep, ProgressListener listener) throws IOException, org.json.JSONException {
+        String name = dep;
+        String version = null;
+        int eq = dep.indexOf("==");
+        if (eq >= 0) {
+            name = dep.substring(0, eq);
+            version = dep.substring(eq + 2);
+        }
+        File destDir = new File(cacheRoot, "pypackages/" + name
+            + (version == null ? "" : "-" + version));
+        if (destDir.exists()) {
+            return destDir;
+        }
+        String metaUrl = "https://pypi.org/pypi/" + name
+            + (version == null ? "/json" : "/" + version + "/json");
+        File metaFile = new File(cacheRoot, "pypackages/.meta-" + name + "-"
+            + (version == null ? "latest" : version) + ".json");
+        downloadToFile(metaUrl, metaFile);
+
+        StringBuilder sb = new StringBuilder();
+        try (java.io.FileInputStream fis = new java.io.FileInputStream(metaFile)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = fis.read(buf)) > 0) {
+                sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+            }
+        }
+        JSONObject meta = new JSONObject(sb.toString());
+        JSONArray urls = meta.getJSONArray("urls");
+        String wheelUrl = null;
+        for (int i = 0; i < urls.length(); i++) {
+            JSONObject u = urls.getJSONObject(i);
+            String filename = u.optString("filename", "");
+            if ("bdist_wheel".equals(u.optString("packagetype"))
+                && filename.endsWith("-none-any.whl")) {
+                wheelUrl = u.getString("url");
+                break;
+            }
+        }
+        if (wheelUrl == null) {
+            throw new IOException(name + ": no pure-Python wheel available "
+                + "(native packages are not supported)");
+        }
+        File wheelFile = new File(cacheRoot, "pypackages/.wheel-" + name + ".whl");
+        downloadToFile(wheelUrl, wheelFile);
+        unzipWheel(wheelFile, destDir);
+        wheelFile.delete();
+        return destDir;
+    }
+
+    private void unzipWheel(File zip, File destDir) throws IOException {
+        destDir.mkdirs();
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
+            new java.io.FileInputStream(zip))) {
+            byte[] buf = new byte[8192];
+            java.util.zip.ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                File out = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    out.mkdirs();
+                    continue;
+                }
+                out.getParentFile().mkdirs();
+                try (FileOutputStream fos = new FileOutputStream(out)) {
+                    int n;
+                    while ((n = zis.read(buf)) > 0) {
+                        fos.write(buf, 0, n);
+                    }
+                }
+                zis.closeEntry();
+            }
         }
     }
 
@@ -278,13 +414,14 @@ public class DependencyResolver {
         return pom;
     }
 
-    private String second(Deque<String> path) {
+    private String second(@NonNull Deque<String> path) {
         if (path.size() < 2) return "";
         var it = path.iterator();
         it.next();
         return it.next();
     }
 
+    @NonNull
     private String expand(String value, Map<String, String> props, String projectVersion) {
         if (value == null) return "";
         String result = value.trim();

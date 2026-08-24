@@ -86,9 +86,11 @@ public class ProjectManager {
                     Log.e(TAG, "Failed to create Main.java", e);
                 }
 
-                File buildFile = new File(projectDir, "larv.json");
+                File buildFile = new File(projectDir, "larvbuild.json");
                 String buildTemplate = "{\n"
+                    + "  \"language\": \"Java\",\n"
                     + "  \"main\": \"Main\",\n"
+                    + "  \"entry\": \"Main.java\",\n"
                     + "  \"dependencies\": [\n"
                     + "  ],\n"
                     + "  \"repositories\": [\n"
@@ -96,9 +98,9 @@ public class ProjectManager {
                     + "  ]\n"
                     + "}\n";
                 try (FileOutputStream fos = new FileOutputStream(buildFile)) {
-                    fos.write(buildTemplate.getBytes(StandardCharsets.UTF_8));
+                    fos.write(buildTemplate.getBytes("UTF-8"));
                 } catch (IOException e) {
-                    Log.e(TAG, "Failed to create larv.json", e);
+                    Log.e(TAG, "Failed to create larvbuild.json", e);
                 }
 
                 Project project = new Project(projectDir.getName(), projectDir.getAbsolutePath());
@@ -143,16 +145,14 @@ public class ProjectManager {
                 return;
             }
 
-            final String finalFileName = fileName.endsWith(".java") ? fileName : fileName + ".java";
+            final String finalFileName = hasKnownExtension(fileName) ? fileName : fileName + ".java";
             File newFile = new File(parentDir, finalFileName);
             if (newFile.exists()) {
                 if (callback != null) callback.onError("File already exists");
                 return;
             }
 
-            String template = context.getString(com.larv.ide.R.string.java_file_template);
-            String className = finalFileName.replace(".java", "");
-            String content = String.format(template, className);
+            String content = templateFor(finalFileName);
 
             try (FileOutputStream fos = new FileOutputStream(newFile)) {
                 fos.write(content.getBytes("UTF-8"));
@@ -162,6 +162,41 @@ public class ProjectManager {
                 if (callback != null) callback.onError("Failed to create file: " + e.getMessage());
             }
         });
+    }
+
+    private static boolean hasKnownExtension(String name) {
+        String lower = name.toLowerCase();
+        return lower.endsWith(".java") || lower.endsWith(".py") || lower.endsWith(".js")
+            || lower.endsWith(".html") || lower.endsWith(".htm") || lower.endsWith(".css")
+            || lower.endsWith(".json") || lower.endsWith(".xml") || lower.endsWith(".md")
+            || lower.endsWith(".txt");
+    }
+
+    public static String templateFor(String fileName) {
+        String lower = fileName.toLowerCase();
+        String base = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+        if (lower.endsWith(".py")) {
+            return "def main():\n    print(\"Hello from LarvIDE!\")\n\n\nif __name__ == \"__main__\":\n    main()\n";
+        }
+        if (lower.endsWith(".js")) {
+            return "function main() {\n    console.log(\"Hello from LarvIDE!\");\n}\n\nmain();\n";
+        }
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+            return "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"utf-8\">\n"
+                + "    <title>" + base + "</title>\n</head>\n<body>\n    <h1>Hello from LarvIDE!</h1>\n"
+                + "    <p>Edit this page and hit Run.</p>\n</body>\n</html>\n";
+        }
+        if (lower.endsWith(".css")) {
+            return "body {\n    font-family: sans-serif;\n    background: #191a1c;\n    color: #bcbec4;\n}\n";
+        }
+        if (lower.endsWith(".json")) {
+            return "{\n    \n}\n";
+        }
+        if (lower.endsWith(".java")) {
+            return "public class " + base + " {\n    public static void main(String[] args) {\n"
+                + "        System.out.println(\"Hello from LarvIDE!\");\n    }\n}\n";
+        }
+        return "";
     }
 
     public void createFolder(String parentPath, String folderName, OnFileOperationCallback callback) {

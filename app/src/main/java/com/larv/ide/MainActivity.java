@@ -43,6 +43,8 @@ import com.larv.ide.build.DependencyResolver;
 import com.larv.ide.compiler.Dexer;
 import com.larv.ide.compiler.JavaCompiler;
 import com.larv.ide.compiler.JavaRunner;
+import com.larv.ide.compiler.JsRunner;
+import com.larv.ide.compiler.PyRunner;
 import com.larv.ide.completion.CompletionItem;
 import com.larv.ide.completion.ProjectIndexer;
 import com.larv.ide.model.FileNode;
@@ -50,11 +52,18 @@ import com.larv.ide.model.Diagnostic;
 import com.larv.ide.model.OpenFile;
 import com.larv.ide.model.Project;
 import com.larv.ide.project.ProjectManager;
+import com.larv.ide.project.ProjectRecognizer;
 import com.larv.ide.ui.adapter.BottomPanelAdapter;
 import com.larv.ide.ui.adapter.FileTreeAdapter;
 import com.larv.ide.ui.fragment.EditorFragment;
 import com.larv.ide.ui.fragment.OutputFragment;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.io.File;
 import java.io.IOException;
@@ -119,6 +128,8 @@ public class MainActivity extends AppCompatActivity
 
     private final Handler autosaveHandler = new Handler(Looper.getMainLooper());
     private final Runnable autosaveRunnable = this::autoSaveModifiedFiles;
+    private final Handler sessionHandler = new Handler(Looper.getMainLooper());
+    private final Runnable sessionSaveRunnable = this::saveSessionNow;
 
     private androidx.recyclerview.widget.RecyclerView fileTreeRecyclerView;
     private FileTreeAdapter fileTreeAdapter;
@@ -136,6 +147,8 @@ public class MainActivity extends AppCompatActivity
     private JavaCompiler javaCompiler;
     private Dexer dexer;
     private DependencyResolver dependencyResolver;
+    private JsRunner jsRunner;
+    private PyRunner pyRunner;
     private JavaRunner javaRunner;
     private ProjectIndexer projectIndexer;
     private final ExecutorService compilerExecutor = Executors.newSingleThreadExecutor();
@@ -152,6 +165,9 @@ public class MainActivity extends AppCompatActivity
     private View highlightedDropView = null;
     private android.graphics.drawable.Drawable highlightedOriginalBackground = null;
     private boolean dropHandled = false;
+    private String pendingCursorPositions = null;
+    private boolean restoringSession = false;
+    private int restoreRemaining = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -240,10 +256,16 @@ public class MainActivity extends AppCompatActivity
 
         bottomPanelAdapter = new BottomPanelAdapter(this);
         bottomViewPager.setAdapter(bottomPanelAdapter);
-        bottomViewPager.setOffscreenPageLimit(2);
+        bottomViewPager.setOffscreenPageLimit(3);
 
         new TabLayoutMediator(bottomTabLayout, bottomViewPager, (tab, position) -> {
-            tab.setText(position == 0 ? getString(R.string.run_code) : getString(R.string.errors_title));
+            String title;
+            switch (position) {
+                case 1: title = getString(R.string.errors_title); break;
+                case 2: title = "Preview"; break;
+                default: title = getString(R.string.run_code); break;
+            }
+            tab.setText(title);
         }).attach();
 
         noEditorPlaceholder.setVisibility(View.VISIBLE);
@@ -256,6 +278,8 @@ public class MainActivity extends AppCompatActivity
         javaCompiler = new JavaCompiler(getApplicationContext());
         dexer = new Dexer(getApplicationContext());
         dependencyResolver = new DependencyResolver(new File(getFilesDir(), "m2"));
+        jsRunner = new JsRunner();
+        pyRunner = new PyRunner(getApplicationContext());
         javaRunner = new JavaRunner(getApplicationContext());
         projectIndexer = new ProjectIndexer();
     }
@@ -392,11 +416,187 @@ public class MainActivity extends AppCompatActivity
             showWelcomeStatus(true);
             showWelcome(false);
         });
+        restoreSession(project);
+        indexerExecutor.execute(() -> {
+            ProjectRecognizer.Detection detection = ProjectRecognizer.detect(project.getRootDir(), "");
+            if (!detection.languages.isEmpty()) {
+                String joined = String.join(", ", detection.languages);
+                runOnUiThread(() -> statusText.setText("Project: " + joined));
+            }
+        });
+    }
+
+    private File sessionFile(Project project) {
+        File dir = new File(project.getRootDir(), ".larv");
+        return new File(dir, "session.json");
+    }
+
+    private void saveSessionNow() {
+        final Project project = currentProject;
+        if (project == null || openFiles.isEmpty() || restoringSession) return;
+        indexerExecutor.execute(() -> {
+            try {
+                JSONObject root = new JSONObject();
+                JSONArray tabs = new JSONArray();
+                JSONObject cursors = new JSONObject();
+                JSONObject buffers = new JSONObject();
+                for (OpenFile f : openFiles) {
+                    tabs.put(f.getFilePath());
+                    if (f.getCursorLine() > 0) {
+                        cursors.put(f.getFilePath(), new JSONObject()
+                            .put("lineNumber", f.getCursorLine())
+                            .put("column", f.getCursorColumn()));
+                    }
+                    if (f.isModified()) {
+                        buffers.put(f.getFilePath(), f.getContent());
+                    }
+                }
+                root.put("tabs", tabs);
+                root.put("active", currentEditorFile);
+                root.put("cursors", cursors);
+                root.put("buffers", buffers);
+                File file = sessionFile(project);
+                file.getParentFile().mkdirs();
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+                    fos.write(root.toString().getBytes(StandardCharsets.UTF_8));
+                }
+            } catch (Exception e) {
+                android.util.Log.w(TAG, "saveSession failed", e);
+            }
+        });
+    }
+
+    private void restoreSession(Project project) {
+        indexerExecutor.execute(() -> {
+            String json = null;
+            try {
+                File file = sessionFile(project);
+                if (file.exists()) {
+                    StringBuilder sb = new StringBuilder();
+                    try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = fis.read(buf)) > 0) {
+                            sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+                        }
+                    }
+                    json = sb.toString();
+                }
+            } catch (Exception e) {
+                android.util.Log.w(TAG, "restoreSession read failed", e);
+            }
+            if (json == null || json.isEmpty()) return;
+
+            try {
+                JSONObject root = new JSONObject(json);
+                List<String> tabs = new ArrayList<>();
+                org.json.JSONArray tabArr = root.optJSONArray("tabs");
+                if (tabArr != null) {
+                    for (int i = 0; i < tabArr.length(); i++) {
+                        tabs.add(tabArr.getString(i));
+                    }
+                }
+                if (tabs.isEmpty()) return;
+                String active = root.optString("active", "");
+                JSONObject cursors = root.optJSONObject("cursors");
+                JSONObject buffers = root.optJSONObject("buffers");
+
+                JSONObject posObj = new JSONObject();
+                if (cursors != null) {
+                    java.util.Iterator<String> keyIt = cursors.keys();
+                    while (keyIt.hasNext()) {
+                        String path = keyIt.next();
+                        JSONObject p = cursors.getJSONObject(path);
+                        posObj.put(path, new JSONObject()
+                            .put("lineNumber", p.optInt("lineNumber", 1))
+                            .put("column", p.optInt("column", 1)));
+                    }
+                }
+                final String positionsJson = posObj.toString();
+
+                final List<String> openOrder = new ArrayList<>(tabs);
+                final String activePath = active.isEmpty() ? tabs.get(0) : active;
+                restoringSession = true;
+                int existing_ = 0;
+                for (String path : openOrder) {
+                    if (new File(path).exists()) existing_++;
+                }
+                restoreRemaining = existing_;
+                if (existing_ == 0) {
+                    restoringSession = false;
+                    return;
+                }
+                for (String path : openOrder) {
+                    final File f = new File(path);
+                    if (!f.exists()) {
+                        continue;
+                    }
+                    final String buffered = buffers != null ? buffers.optString(path, null) : null;
+                    final boolean hasBuffer = buffered != null;
+                    projectManager.readFile(f, new ProjectManager.OnFileReadCallback() {
+                        @Override
+                        public void onContent(String content) {
+                            String useContent = hasBuffer ? buffered : content;
+                            runOnUiThread(() -> {
+                                OpenFile existing = findOpenFile(path);
+                                if (existing == null) {
+                                    OpenFile created = new OpenFile(path, useContent);
+                                    created.setModified(hasBuffer);
+                                    openFiles.add(created);
+                                    openFilesByPath.put(path, created);
+                                    int index = openFiles.size() - 1;
+                                    TabLayout.Tab tab = tabLayout.newTab().setText(f.getName());
+                                    tabLayout.addTab(tab, index, false);
+                                    indexerExecutor.execute(() -> projectIndexer.indexFile(created));
+                                } else if (hasBuffer) {
+                                    existing.setContent(useContent);
+                                }
+                                finishRestoreTab(activePath);
+                            });
+                        }
+
+                        @Override
+                        public void onError(String error) {
+                            finishRestoreTab(activePath);
+                        }
+                    });
+                }
+                runOnUiThread(() -> {
+                    if (editorFragment != null) {
+                        editorFragment.setCursorPositions(positionsJson);
+                    } else {
+                        pendingCursorPositions = positionsJson;
+                    }
+                });
+            } catch (Exception e) {
+                android.util.Log.w(TAG, "restoreSession parse failed", e);
+            }
+        });
+    }
+
+    private void finishRestoreTab(String activePath) {
+        runOnUiThread(() -> {
+            restoreRemaining--;
+            if (restoreRemaining > 0) {
+                return;
+            }
+            restoringSession = false;
+            ensureEditorFragment();
+            noEditorPlaceholder.setVisibility(View.GONE);
+            welcomeView.setVisibility(View.GONE);
+            OpenFile target = findOpenFile(activePath);
+            if (target != null) {
+                switchToEditorTab(openFiles.indexOf(target));
+            }
+        });
     }
 
     @Override
     public void onProjectClosed() {
         currentProject = null;
+        restoringSession = false;
+        restoreRemaining = 0;
+        sessionHandler.removeCallbacks(sessionSaveRunnable);
         openFiles.clear();
         openFilesByPath.clear();
         javaCompiler.resetCheckState();
@@ -583,12 +783,16 @@ public class MainActivity extends AppCompatActivity
                 runOnUiThread(() -> {
                     updateTabModified(file, true);
                     statusText.setText("Updated: " + fileName);
-                    autosaveHandler.removeCallbacks(autosaveRunnable);
-                    autosaveHandler.postDelayed(autosaveRunnable, 1000);
+                    if (prefs.getBoolean("autosaveEnabled", true)) {
+                        autosaveHandler.removeCallbacks(autosaveRunnable);
+                        autosaveHandler.postDelayed(autosaveRunnable, 1000);
+                    }
                 });
                 scheduleTypeCheck();
             }
         }
+        sessionHandler.removeCallbacks(sessionSaveRunnable);
+        sessionHandler.postDelayed(sessionSaveRunnable, 800);
     }
 
     @Override
@@ -607,16 +811,35 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void onCompletionsRequested(String file, int line, int column, String prefix,
-                                       int requestId, @NonNull EditorFragment.CompletionCallback callback) {
+                                       String memberOf, int requestId,
+                                       @NonNull EditorFragment.CompletionCallback callback) {
+        OpenFile openFile = findOpenFile(file);
+        String content = openFile != null ? openFile.getContent() : null;
         indexerExecutor.execute(() -> {
             List<CompletionItem> completions = projectIndexer.getCompletions(
-                prefix == null ? "" : prefix, file, line, column);
+                prefix == null ? "" : prefix, file, line, column, memberOf, content);
             callback.onCompletions(completions);
         });
     }
 
     @Override
+    public String onImportCandidatesRequested(String className) {
+        return projectIndexer.findImportCandidates(className);
+    }
+
+    @Override
     public void onEditorReady() {
+        if (editorFragment != null) {
+            if (pendingCursorPositions != null) {
+                editorFragment.setCursorPositions(pendingCursorPositions);
+                pendingCursorPositions = null;
+            }
+            editorFragment.applyEditorSettings(
+                prefs.getInt("editorFontSize", 14),
+                prefs.getInt("editorTabSize", 4),
+                prefs.getBoolean("editorLineNumbers", true),
+                prefs.getBoolean("editorWordWrap", false));
+        }
         if (!currentEditorFile.isEmpty()) {
             OpenFile openFile = findOpenFile(currentEditorFile);
             if (openFile != null && editorFragment != null) {
@@ -687,6 +910,7 @@ public class MainActivity extends AppCompatActivity
         if (openFiles.isEmpty()) {
             noEditorPlaceholder.setVisibility(View.VISIBLE);
         }
+        saveSessionNow();
     }
 
     private void closeEditorTab(int index) {
@@ -711,6 +935,7 @@ public class MainActivity extends AppCompatActivity
             }
             noEditorPlaceholder.setVisibility(View.VISIBLE);
         }
+        saveSessionNow();
     }
 
     private void updateTabModified(String filePath, boolean modified) {
@@ -742,18 +967,292 @@ public class MainActivity extends AppCompatActivity
         }
         if (isCompiling) return;
 
+        DependencyResolver.BuildSpec spec = loadBuildSpec();
+        ProjectRecognizer.Detection detection = currentProject != null
+            ? ProjectRecognizer.detect(currentProject.getRootDir(), currentEditorFile) : null;
+        String language = detectRunLanguage(spec, detection);
+        String entry = resolveEntryFile(spec, detection, language);
+
+        switch (language) {
+            case ProjectRecognizer.PYTHON:
+                runScriptProgram(spec, entry, true);
+                break;
+            case ProjectRecognizer.JAVASCRIPT:
+                runScriptProgram(spec, entry, false);
+                break;
+            case ProjectRecognizer.HTML:
+            case ProjectRecognizer.CSS:
+                runWebPreview(entry, language);
+                break;
+            default:
+                compileAndRunJava(spec);
+                break;
+        }
+    }
+
+    private static String normalizeLanguageName(String raw) {
+        switch (raw.trim().toLowerCase()) {
+            case "java": return ProjectRecognizer.JAVA;
+            case "python": case "py": return ProjectRecognizer.PYTHON;
+            case "javascript": case "js": case "node": return ProjectRecognizer.JAVASCRIPT;
+            case "html": return ProjectRecognizer.HTML;
+            case "css": return ProjectRecognizer.CSS;
+            default: return null;
+        }
+    }
+
+    private String detectRunLanguage(DependencyResolver.BuildSpec spec,
+                                     ProjectRecognizer.Detection detection) {
+        if (spec != null && spec.language != null && !spec.language.isEmpty()) {
+            String normalized = normalizeLanguageName(spec.language);
+            if (normalized != null) return normalized;
+        }
+        if (!currentEditorFile.isEmpty()) {
+            String activeLanguage = ProjectRecognizer.languageForExtension(
+                new File(currentEditorFile).getName());
+            if (activeLanguage != null) return activeLanguage;
+        }
+        if (detection != null && detection.primaryLanguage != null) {
+            return detection.primaryLanguage;
+        }
+        return ProjectRecognizer.JAVA;
+    }
+
+    @Nullable
+    private String resolveEntryFile(DependencyResolver.BuildSpec spec,
+                                    ProjectRecognizer.Detection detection, String language) {
+        if (spec != null && spec.entry != null && !spec.entry.isEmpty() && currentProject != null) {
+            File candidate = new File(currentProject.getRootDir(), spec.entry);
+            if (candidate.exists()) return candidate.getAbsolutePath();
+        }
+        if (!currentEditorFile.isEmpty() && language != null
+            && language.equals(ProjectRecognizer.languageForExtension(
+                new File(currentEditorFile).getName()))) {
+            return currentEditorFile;
+        }
+        if (detection != null && detection.entryFile != null
+            && language != null
+            && language.equals(ProjectRecognizer.languageForExtension(
+                new File(detection.entryFile).getName()))) {
+            return detection.entryFile;
+        }
+        return null;
+    }
+
+    @Nullable
+    private DependencyResolver.BuildSpec loadBuildSpec() {
+        if (currentProject == null) return null;
+        for (String name : new String[]{"larvbuild.json", "larv.json"}) {
+            File f = new File(currentProject.getRootDir(), name);
+            if (f.exists()) {
+                try {
+                    return DependencyResolver.readBuildSpec(f);
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    private static class RunStreams {
+        final PipedInputStream programIn = new PipedInputStream(64 * 1024);
+        final PipedOutputStream programOut = new PipedOutputStream();
+        final PipedInputStream stdinIn = new PipedInputStream(64 * 1024);
+        final PipedOutputStream stdinOut = new PipedOutputStream();
+    }
+
+    private RunStreams openRunTerminal(String statusLine) {
+        RunStreams rs = new RunStreams();
+        try {
+            rs.programOut.connect(rs.programIn);
+            rs.stdinOut.connect(rs.stdinIn);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to create program pipes", e);
+        }
+        OutputFragment outputFragment = bottomPanelAdapter.getOutputFragment();
+        runOnUiThread(() -> {
+            statusText.setText(statusLine);
+            outputFragment.clear();
+            outputFragment.startProgram(rs.programIn, rs.stdinOut);
+            bottomPanelAdapter.getErrorsFragment().setErrors(new ArrayList<>());
+            bottomViewPager.setCurrentItem(0);
+            bottomWindowVisible = true;
+            bottomToolWindow.setVisibility(View.VISIBLE);
+            bottomResizer.setVisibility(View.VISIBLE);
+        });
+        return rs;
+    }
+
+    private void runScriptProgram(DependencyResolver.BuildSpec spec, String entryPath,
+                                  boolean python) {
+        isCompiling = true;
+        typeCheckHandler.removeCallbacksAndMessages(null);
+
+        if (entryPath == null) {
+            Toast.makeText(this, "No " + (python ? "Python" : "JavaScript")
+                + " entry file found (main.py / index.js or the active tab)",
+                Toast.LENGTH_LONG).show();
+            isCompiling = false;
+            return;
+        }
+        final File entryFile = new File(entryPath);
+        if (!entryFile.exists()) {
+            Toast.makeText(this, "Entry file not found: " + entryFile.getName(),
+                Toast.LENGTH_SHORT).show();
+            isCompiling = false;
+            return;
+        }
+
+        final String source = readFileString(entryFile);
+        RunStreams rs = openRunTerminal(python ? "Running Python..." : "Running JavaScript...");
+
+        compilerExecutor.execute(() -> {
+            List<File> preloads = new ArrayList<>();
+            List<File> pyDirs = new ArrayList<>();
+            if (spec != null && !spec.dependencies.isEmpty()) {
+                writeTerm(rs.programOut, "Resolving " + spec.dependencies.size()
+                    + " dependencies from larvbuild.json...\n");
+                DependencyResolver.ResolveResult resolveResult = dependencyResolver.resolve(
+                    spec.dependencies, spec.repositories,
+                    msg -> writeTerm(rs.programOut, "  " + msg + "\n"));
+                preloads.addAll(resolveResult.jars);
+                pyDirs.addAll(resolveResult.pyPackageDirs);
+                if (!resolveResult.success) {
+                    writeTerm(rs.programOut, "Dependency error: " + resolveResult.error + "\n");
+                    closeTermStreams(rs.programOut, rs.stdinOut);
+                    runOnUiThread(() -> {
+                        isCompiling = false;
+                        statusText.setText("Dependency resolution failed");
+                    });
+                    return;
+                }
+                if (!preloads.isEmpty() || !pyDirs.isEmpty()) {
+                    writeTerm(rs.programOut, "Dependencies ready (" + preloads.size()
+                        + " packages)\n");
+                }
+            }
+
+            writeTerm(rs.programOut, "\n");
+
+            if (python) {
+                PyRunner.RunResult result = pyRunner.run(source, pyDirs,
+                    rs.programOut, rs.programOut);
+                if (result.error != null && !"Python execution requires the native runtime module."
+                    .equals(result.error)) {
+                    writeTerm(rs.programOut, result.error + "\n");
+                }
+                writeTerm(rs.programOut, "\nProcess finished in " + result.durationMs + " ms\n");
+                closeTermStreams(rs.programOut, rs.stdinOut);
+                runOnUiThread(() -> {
+                    isCompiling = false;
+                    statusText.setText(result.success ? "Done" : "Finished with errors");
+                });
+            } else {
+                JsRunner.RunResult result = jsRunner.run(source, entryFile.getName(),
+                    preloads, rs.programOut, rs.programOut);
+                if (result.error != null) {
+                    writeTerm(rs.programOut, result.error + "\n");
+                }
+                writeTerm(rs.programOut, "\nProcess finished in " + result.durationMs + " ms\n");
+                closeTermStreams(rs.programOut, rs.stdinOut);
+                runOnUiThread(() -> {
+                    isCompiling = false;
+                    statusText.setText(result.success ? "Done" : "Finished with errors");
+                });
+            }
+        });
+    }
+
+    private void runWebPreview(@Nullable String entryPath, String language) {
+        isCompiling = true;
+        String baseUrl = currentProject != null
+            ? "file://" + currentProject.getRootDir().getAbsolutePath() + "/"
+            : "about:blank";
+
+        String html = null;
+        String cssHref = null;
+        if (entryPath != null && new File(entryPath).exists()) {
+            String name = new File(entryPath).getName().toLowerCase();
+            if (name.endsWith(".css")) {
+                cssHref = relativeToRoot(entryPath);
+            } else if (name.endsWith(".htm") || name.endsWith(".html")) {
+                html = readFileString(new File(entryPath));
+            }
+        }
+        if (html == null && !currentEditorFile.toLowerCase().endsWith(".css")) {
+            String active = currentEditorFile.toLowerCase();
+            if (active.endsWith(".html") || active.endsWith(".htm")) {
+                html = readFileString(new File(currentEditorFile));
+            }
+        }
+        if (html == null && cssHref == null) {
+            File candidate = currentProject != null
+                ? new File(currentProject.getRootDir(), "index.html") : null;
+            if (candidate != null && candidate.exists()) {
+                html = readFileString(candidate);
+            }
+        }
+        if (html == null && cssHref == null) {
+            Toast.makeText(this, "No HTML/CSS file found to preview", Toast.LENGTH_SHORT).show();
+            isCompiling = false;
+            return;
+        }
+
+        if (html == null) {
+            html = "<!DOCTYPE html>\n<html>\n<head>\n"
+                + "<link rel=\"stylesheet\" href=\"" + cssHref + "\">\n"
+                + "</head>\n<body>\n"
+                + "<h1>CSS Preview</h1>\n"
+                + "<p>This page is rendered with your stylesheet applied.</p>\n"
+                + "<button>Button sample</button>\n"
+                + "</body>\n</html>\n";
+        }
+
+        final String finalHtml = html;
+        final String finalBaseUrl = baseUrl;
+        runOnUiThread(() -> {
+            bottomPanelAdapter.getPreviewFragment().showHtml(finalHtml, finalBaseUrl);
+            bottomWindowVisible = true;
+            bottomToolWindow.setVisibility(View.VISIBLE);
+            bottomResizer.setVisibility(View.VISIBLE);
+            bottomViewPager.setCurrentItem(2);
+            statusText.setText("Preview updated");
+            isCompiling = false;
+        });
+    }
+
+    @Nullable
+    private String relativeToRoot(String path) {
+        if (currentProject == null) return new File(path).getName();
+        String root = currentProject.getRootDir().getAbsolutePath();
+        return path.startsWith(root + File.separator)
+            ? path.substring(root.length() + 1) : new File(path).getName();
+    }
+
+    private String readFileString(File file) {
+        try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
+            StringBuilder sb = new StringBuilder();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = fis.read(buf)) > 0) {
+                sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+            }
+            return sb.toString();
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private void compileAndRunJava(DependencyResolver.BuildSpec buildSpec) {
         isCompiling = true;
         typeCheckHandler.removeCallbacksAndMessages(null);
 
         OutputFragment outputFragment = bottomPanelAdapter.getOutputFragment();
 
-        PipedInputStream programOutputIn = new PipedInputStream(64 * 1024);
-        PipedOutputStream programOutputOut = new PipedOutputStream();
-        PipedInputStream programInputIn = new PipedInputStream(64 * 1024);
-        PipedOutputStream programInputOut = new PipedOutputStream();
+        RunStreams rs = new RunStreams();
         try {
-            programOutputOut.connect(programOutputIn);
-            programInputOut.connect(programInputIn);
+            rs.programOut.connect(rs.programIn);
+            rs.stdinOut.connect(rs.stdinIn);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to create program pipes", e);
         }
@@ -761,7 +1260,7 @@ public class MainActivity extends AppCompatActivity
         runOnUiThread(() -> {
             statusText.setText("Compiling...");
             outputFragment.clear();
-            outputFragment.startProgram(programOutputIn, programInputOut);
+            outputFragment.startProgram(rs.programIn, rs.stdinOut);
             bottomPanelAdapter.getErrorsFragment().setErrors(new ArrayList<>());
             bottomViewPager.setCurrentItem(0);
             bottomWindowVisible = true;
@@ -771,44 +1270,28 @@ public class MainActivity extends AppCompatActivity
 
         compilerExecutor.execute(() -> {
             List<File> dependencyJars = new ArrayList<>();
-            DependencyResolver.BuildSpec buildSpec = null;
-            if (currentProject != null) {
-                File larvJson = new File(currentProject.getRootDir(), "larv.json");
-                if (larvJson.exists()) {
-                    try {
-                        buildSpec = DependencyResolver.readBuildSpec(larvJson);
-                        if (!buildSpec.dependencies.isEmpty()) {
-                            writeTerm(programOutputOut, "Resolving " + buildSpec.dependencies.size()
-                                + " dependencies from larv.json...");
-                            DependencyResolver.ResolveResult resolveResult = dependencyResolver.resolve(
-                                buildSpec.dependencies, buildSpec.repositories,
-                                msg -> writeTerm(programOutputOut, "  " + msg));
-                            dependencyJars.addAll(resolveResult.jars);
-                            if (!resolveResult.success) {
-                                writeTerm(programOutputOut, "Dependency error: " + resolveResult.error);
-                                runOnUiThread(() -> {
-                                    isCompiling = false;
-                                    statusText.setText("Dependency resolution failed");
-                                });
-                                closeTermStreams(programOutputOut, programInputOut);
-                                return;
-                            }
-                            writeTerm(programOutputOut, "Dependencies ready ("
-                                + dependencyJars.size() + " jars)");
-                        }
-                    } catch (Exception e) {
-                        writeTerm(programOutputOut, "larv.json error: " + e.getMessage());
-                        runOnUiThread(() -> {
-                            isCompiling = false;
-                            statusText.setText("Invalid larv.json");
-                        });
-                        closeTermStreams(programOutputOut, programInputOut);
-                        return;
-                    }
+            if (buildSpec != null && !buildSpec.dependencies.isEmpty()) {
+                writeTerm(rs.programOut, "Resolving " + buildSpec.dependencies.size()
+                    + " dependencies from larvbuild.json...\n");
+                DependencyResolver.ResolveResult resolveResult = dependencyResolver.resolve(
+                    buildSpec.dependencies, buildSpec.repositories,
+                    msg -> writeTerm(rs.programOut, "  " + msg + "\n"));
+                dependencyJars.addAll(resolveResult.jars);
+                if (!resolveResult.success) {
+                    writeTerm(rs.programOut, "Dependency error: " + resolveResult.error + "\n");
+                    runOnUiThread(() -> {
+                        isCompiling = false;
+                        statusText.setText("Dependency resolution failed");
+                    });
+                    closeTermStreams(rs.programOut, rs.stdinOut);
+                    return;
                 }
+                writeTerm(rs.programOut, "Dependencies ready ("
+                    + dependencyJars.size() + " jars)\n");
             }
 
-            JavaCompiler.CompilationResult compileResult = javaCompiler.compile(openFiles, dependencyJars);
+            JavaCompiler.CompilationResult compileResult = javaCompiler.compile(openFiles,
+                dependencyJars, prefs.getString("javaLevel", "16"));
             android.util.Log.d("MainActivity", "compile success=" + compileResult.isSuccess()
                 + " diagnostics=" + compileResult.getDiagnostics().size());
             if (!compileResult.isSuccess() && compileResult.getRawOutput() != null) {
@@ -817,7 +1300,7 @@ public class MainActivity extends AppCompatActivity
 
             if (!compileResult.isSuccess()) {
                 if (compileResult.getRawOutput() != null && !compileResult.getRawOutput().isEmpty()) {
-                    writeTerm(programOutputOut, compileResult.getRawOutput());
+                    writeTerm(rs.programOut, compileResult.getRawOutput());
                 }
                 runOnUiThread(() -> {
                     bottomPanelAdapter.getErrorsFragment().setErrors(compileResult.getDiagnostics());
@@ -825,20 +1308,20 @@ public class MainActivity extends AppCompatActivity
                     statusText.setText("Compilation failed");
                     bottomViewPager.setCurrentItem(1);
                 });
-                closeTermStreams(programOutputOut, programInputOut);
+                closeTermStreams(rs.programOut, rs.stdinOut);
                 return;
             }
 
-            writeTerm(programOutputOut, "Compilation successful");
+            writeTerm(rs.programOut, "Compilation successful");
 
             Dexer.DexResult dexResult = dexer.dex(compileResult.getClassFiles(), dependencyJars, null);
             if (!dexResult.isSuccess()) {
-                writeTerm(programOutputOut, "Dex error: " + dexResult.getError());
+                writeTerm(rs.programOut, "Dex error: " + dexResult.getError());
                 runOnUiThread(() -> {
                     isCompiling = false;
                     statusText.setText("Dex error");
                 });
-                closeTermStreams(programOutputOut, programInputOut);
+                closeTermStreams(rs.programOut, rs.stdinOut);
                 return;
             }
 
@@ -848,29 +1331,29 @@ public class MainActivity extends AppCompatActivity
                 mainClass = buildSpec.mainClass;
             }
             if (mainClass == null) {
-                writeTerm(programOutputOut, "Error: No main class found");
+                writeTerm(rs.programOut, "Error: No main class found");
                 runOnUiThread(() -> {
                     isCompiling = false;
                     statusText.setText("No main class");
                 });
-                closeTermStreams(programOutputOut, programInputOut);
+                closeTermStreams(rs.programOut, rs.stdinOut);
                 return;
             }
 
-            writeTerm(programOutputOut, "Dex successful, running " + mainClass + "...");
+            writeTerm(rs.programOut, "Dex successful, running " + mainClass + "...");
 
             JavaRunner.RunResult runResult = javaRunner.run(
                 dexResult.getDexFile(), mainClass, new String[]{},
-                programOutputOut, programOutputOut, programInputIn);
+                rs.programOut, rs.programOut, rs.stdinIn);
 
             if (runResult.getError() != null) {
-                writeTerm(programOutputOut, runResult.getError());
+                writeTerm(rs.programOut, runResult.getError());
             }
             if (runResult.isSuccess()) {
-                writeTerm(programOutputOut, "Program finished (exit code 0)");
+                writeTerm(rs.programOut, "Program finished (exit code 0)");
             }
 
-            closeTermStreams(programOutputOut, programInputOut);
+            closeTermStreams(rs.programOut, rs.stdinOut);
 
             runOnUiThread(() -> {
                 isCompiling = false;
@@ -971,7 +1454,7 @@ public class MainActivity extends AppCompatActivity
 
         final String parentPath = target;
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("New Java File");
+        builder.setTitle("New File");
         builder.setMessage("In: " + new File(parentPath).getName());
 
         EditText input = createIdeInput("File name (e.g., MyClass)");
@@ -1046,7 +1529,7 @@ public class MainActivity extends AppCompatActivity
         popup.getMenu().add(node.getName()).setEnabled(false);
 
         if (node.getType() == FileNode.Type.DIRECTORY) {
-            popup.getMenu().add("New Java File").setOnMenuItemClickListener(item -> {
+            popup.getMenu().add("New File").setOnMenuItemClickListener(item -> {
                 selectedDirectory = node.getPath();
                 showNewFileDialog();
                 return true;
@@ -1167,11 +1650,129 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void showSettingsDialog() {
+        android.widget.LinearLayout root = new android.widget.LinearLayout(this);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = dp(24);
+        root.setPadding(pad, dp(8), pad, dp(8));
+
+        android.widget.TextView fontLabel = new android.widget.TextView(this);
+        fontLabel.setText("Editor font size");
+        fontLabel.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        fontLabel.setTextSize(12);
+        root.addView(fontLabel);
+
+        final android.widget.SeekBar fontSeek = new android.widget.SeekBar(this);
+        final int savedFont = prefs.getInt("editorFontSize", 14);
+        fontSeek.setMin(10);
+        fontSeek.setMax(24);
+        fontSeek.setProgress(savedFont);
+        fontSeek.getProgressDrawable().setColorFilter(
+            ContextCompat.getColor(this, R.color.ide_accent), android.graphics.PorterDuff.Mode.SRC_IN);
+        fontSeek.getThumb().setColorFilter(
+            ContextCompat.getColor(this, R.color.ide_accent), android.graphics.PorterDuff.Mode.SRC_IN);
+        root.addView(fontSeek);
+
+        final android.widget.TextView fontValue = new android.widget.TextView(this);
+        fontValue.setText(savedFont + " pt");
+        fontValue.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        fontValue.setTextSize(13);
+        fontSeek.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(android.widget.SeekBar sb, int value, boolean fromUser) {
+                fontValue.setText(value + " pt");
+            }
+            @Override public void onStartTrackingTouch(android.widget.SeekBar sb) {}
+            @Override public void onStopTrackingTouch(android.widget.SeekBar sb) {}
+        });
+        root.addView(fontValue);
+
+        root.addView(settingSwitch("Word wrap", prefs.getBoolean("editorWordWrap", false),
+            (buttonView, isChecked) -> prefs.edit().putBoolean("editorWordWrap", isChecked).apply()));
+        root.addView(settingSwitch("Show line numbers", prefs.getBoolean("editorLineNumbers", true),
+            (buttonView, isChecked) -> prefs.edit().putBoolean("editorLineNumbers", isChecked).apply()));
+        root.addView(settingSwitch("Auto save", prefs.getBoolean("autosaveEnabled", true),
+            (buttonView, isChecked) -> prefs.edit().putBoolean("autosaveEnabled", isChecked).apply()));
+
+        android.widget.TextView tabLabel = new android.widget.TextView(this);
+        tabLabel.setText("Tab size");
+        tabLabel.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        tabLabel.setTextSize(12);
+        tabLabel.setPadding(0, dp(12), 0, dp(4));
+        root.addView(tabLabel);
+
+        final String[] tabSizes = {"2", "4", "8"};
+        final int savedTab = prefs.getInt("editorTabSize", 4);
+        final android.widget.Spinner tabSpinner = new android.widget.Spinner(this);
+        android.widget.ArrayAdapter<String> tabAdapter = new android.widget.ArrayAdapter<>(this,
+            android.R.layout.simple_spinner_item, tabSizes);
+        tabAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        tabSpinner.setAdapter(tabAdapter);
+        tabSpinner.setSelection(Math.max(0, java.util.Arrays.asList(tabSizes).indexOf(String.valueOf(savedTab))));
+        root.addView(tabSpinner);
+
+        android.widget.TextView levelLabel = new android.widget.TextView(this);
+        levelLabel.setText("Java language level");
+        levelLabel.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        levelLabel.setTextSize(12);
+        levelLabel.setPadding(0, dp(12), 0, dp(4));
+        root.addView(levelLabel);
+
+        final String[] levels = {"11", "16", "17"};
+        final String savedLevel = prefs.getString("javaLevel", "16");
+        final android.widget.Spinner levelSpinner = new android.widget.Spinner(this);
+        android.widget.ArrayAdapter<String> levelAdapter = new android.widget.ArrayAdapter<>(this,
+            android.R.layout.simple_spinner_item, levels);
+        levelAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        levelSpinner.setAdapter(levelAdapter);
+        levelSpinner.setSelection(Math.max(0, java.util.Arrays.asList(levels).indexOf(savedLevel)));
+        root.addView(levelSpinner);
+
+        android.widget.ScrollView scroller = new android.widget.ScrollView(this);
+        scroller.addView(root);
+
         new AlertDialog.Builder(this)
             .setTitle("Settings")
-            .setItems(new String[]{"Java 21 (recommended)", "Java 17", "Java 11"},
-                (dialog, which) -> Toast.makeText(this, "Java level option coming soon", Toast.LENGTH_SHORT).show())
+            .setView(scroller)
+            .setPositiveButton("Apply", (dialog, which) -> {
+                prefs.edit()
+                    .putInt("editorFontSize", fontSeek.getProgress())
+                    .putInt("editorTabSize", Integer.parseInt((String) tabSpinner.getSelectedItem()))
+                    .putString("javaLevel", (String) levelSpinner.getSelectedItem())
+                    .apply();
+                if (editorFragment != null) {
+                    editorFragment.applyEditorSettings(
+                        fontSeek.getProgress(),
+                        Integer.parseInt((String) tabSpinner.getSelectedItem()),
+                        prefs.getBoolean("editorLineNumbers", true),
+                        prefs.getBoolean("editorWordWrap", false));
+                }
+            })
+            .setNegativeButton("Cancel", null)
             .show();
+    }
+
+    private android.widget.LinearLayout settingSwitch(String label, boolean checked,
+                                                      android.widget.CompoundButton.OnCheckedChangeListener listener) {
+        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
+        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(10), 0, dp(2));
+
+        android.widget.TextView text = new android.widget.TextView(this);
+        text.setText(label);
+        text.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        text.setTextSize(14);
+        text.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+            0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(text);
+
+        androidx.appcompat.widget.SwitchCompat sw = new androidx.appcompat.widget.SwitchCompat(this);
+        sw.setChecked(checked);
+        sw.setOnCheckedChangeListener(listener);
+        sw.getTrackDrawable().setColorFilter(
+            ContextCompat.getColor(this, checked ? R.color.ide_accent : R.color.input_stroke),
+            android.graphics.PorterDuff.Mode.SRC_IN);
+        row.addView(sw);
+        return row;
     }
 
     private void showWelcomeStatus(boolean projectOpen) {
@@ -1306,6 +1907,7 @@ public class MainActivity extends AppCompatActivity
         super.onStop();
         autosaveHandler.removeCallbacks(autosaveRunnable);
         saveAllModifiedFilesSync();
+        saveSessionNow();
     }
 
     private void updateWindowTitle() {

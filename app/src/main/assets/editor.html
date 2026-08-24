@@ -226,7 +226,7 @@
                 tabCompletion: 'on',
                 parameterHints: { enabled: false },
                 hover: { enabled: false },
-                lightbulb: { enabled: false },
+                lightbulb: { enabled: true },
                 codeLens: false,
                 folding: true,
                 renderIndentGuides: false,
@@ -314,8 +314,7 @@
                 });
             }
 
-            completionProvider = monaco.languages.registerCompletionItemProvider('java', {
-                triggerCharacters: ['.', '@'],
+            const larvCompletionProvider = {                triggerCharacters: ['.', '@'],
                 provideCompletionItems: function(model, position) {
                     if (!window.LarvIDE) {
                         return { suggestions: [] };
@@ -329,6 +328,19 @@
                             startColumn: word.startColumn,
                             endColumn: word.endColumn
                         };
+                        const upto = model.getValueInRange({
+                            startLineNumber: position.lineNumber, startColumn: 1,
+                            endLineNumber: position.lineNumber, endColumn: position.column
+                        });
+                        let memberOf = '';
+                        let prefix = word.word;
+                        const dotMatch = /\.(\w*)$/.exec(upto);
+                        if (dotMatch) {
+                            prefix = dotMatch[1];
+                            const beforeDot = upto.slice(0, upto.length - dotMatch[0].length);
+                            const recvMatch = /([\w$]+(?:\.[\w$]+)*)\s*$/.exec(beforeDot);
+                            memberOf = recvMatch ? recvMatch[1] : '';
+                        }
                         pendingCompletions.set(id, function(items) {
                             resolve({ suggestions: toMonacoSuggestions(items, range) });
                         });
@@ -338,9 +350,14 @@
                                 resolve({ suggestions: [] });
                             }
                         }, 1500);
-                        window.LarvIDE.requestCompletions(currentFile, position.lineNumber, position.column, id, word.word);
+                        window.LarvIDE.requestCompletions(currentFile, position.lineNumber,
+                            position.column, id, prefix, memberOf);
                     });
                 }
+            };
+
+            ['java', 'python', 'javascript'].forEach(function(lang) {
+                completionProvider = monaco.languages.registerCompletionItemProvider(lang, larvCompletionProvider);
             });
 
             window.__larvDeliverCompletions = function(id, items) {
@@ -351,6 +368,53 @@
                 }
             };
 
+            function computeImportInsertLine(model) {
+                const n = Math.min(model.getLineCount(), 400);
+                let lastImport = 0;
+                let packageLine = 0;
+                for (let i = 1; i <= n; i++) {
+                    const t = model.getLineContent(i);
+                    if (/^import\s/.test(t)) lastImport = i;
+                    else if (/^package\s/.test(t)) packageLine = i;
+                }
+                return (lastImport || packageLine || 0) + 1;
+            }
+
+            monaco.languages.registerCodeActionProvider('java', {
+                provideCodeActions: function(model, range, context) {
+                    const actions = [];
+                    const markers = context.markers || [];
+                    for (let i = 0; i < markers.length; i++) {
+                        const marker = markers[i];
+                        const cm = /^(\w+) cannot be resolved to a type/.exec(marker.message);
+                        if (!cm) continue;
+                        let candidates = [];
+                        try {
+                            candidates = JSON.parse(window.LarvIDE.importCandidates(cm[1]) || '[]');
+                        } catch (e) {}
+                        const line = computeImportInsertLine(model);
+                        for (let c = 0; c < candidates.length && c < 5; c++) {
+                            actions.push({
+                                title: "Import '" + candidates[c] + "'",
+                                kind: 'quickfix',
+                                isPreferred: c === 0,
+                                diagnostics: [marker],
+                                edit: {
+                                    edits: [{
+                                        range: {
+                                            startLineNumber: line, startColumn: 1,
+                                            endLineNumber: line, endColumn: 1
+                                        },
+                                        text: 'import ' + candidates[c] + ';\n'
+                                    }]
+                                }
+                            });
+                        }
+                    }
+                    return { actions: actions, dispose: function() {} };
+                }
+            });
+
             // Notify ready
             if (window.LarvIDE) {
                 window.LarvIDE.onEditorReady();
@@ -358,6 +422,21 @@
         });
 
         // JavaScript interface functions
+        function languageForFile(file) {
+            const ext = (file || '').split('.').pop().toLowerCase();
+            switch (ext) {
+                case 'java': return 'java';
+                case 'py': return 'python';
+                case 'js': return 'javascript';
+                case 'html': case 'htm': return 'html';
+                case 'css': return 'css';
+                case 'json': return 'json';
+                case 'xml': return 'xml';
+                case 'md': return 'markdown';
+                default: return 'plaintext';
+            }
+        }
+
         window.setContent = function(file, content) {
             flushPending();
             if (currentFile && currentFile !== file && editor) {
@@ -374,6 +453,7 @@
                     editor.setPosition({ lineNumber: p.lineNumber, column: p.column });
                     editor.revealLineInCenterIfOutsideViewport(p.lineNumber);
                 }
+                monaco.editor.setModelLanguage(editor.getModel(), languageForFile(file));
             }
         };
 
@@ -391,6 +471,25 @@
             if (editor) {
                 editor.updateOptions({ fontSize: size });
             }
+        };
+
+        window.applyEditorSettings = function(settings) {
+            if (!editor) return;
+            editor.updateOptions({
+                fontSize: settings.fontSize || 14,
+                tabSize: settings.tabSize || 4,
+                lineNumbers: settings.lineNumbers === false ? 'off' : 'on',
+                wordWrap: settings.wordWrap ? 'on' : 'off'
+            });
+        };
+
+        window.setCursorPositions = function(positionsJson) {
+            try {
+                const saved = typeof positionsJson === 'string' ? JSON.parse(positionsJson) : positionsJson;
+                for (const k in saved) {
+                    positions[k] = { lineNumber: saved[k].lineNumber, column: saved[k].column };
+                }
+            } catch (e) {}
         };
 
         window.showDiagnostics = function(diagnostics) {

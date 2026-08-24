@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.larv.ide.model.Diagnostic;
 import com.larv.ide.model.OpenFile;
@@ -17,6 +18,7 @@ import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
 import org.eclipse.jdt.internal.compiler.parser.Parser;
 import org.eclipse.jdt.internal.compiler.problem.DefaultProblemFactory;
 import org.eclipse.jdt.internal.compiler.problem.ProblemReporter;
+import org.jetbrains.annotations.Contract;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -31,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class JavaCompiler {
     private static final String TAG = "JavaCompiler";
-    private final Context context;
+    private Context context;
     private final File cacheDir;
     private final File outputDir;
     private final Map<String, String> lastCheckedContents = new ConcurrentHashMap<>();
@@ -39,9 +41,13 @@ public class JavaCompiler {
         new java.util.concurrent.CountDownLatch(1);
 
     public JavaCompiler(@NonNull Context context) {
-        this.context = context;
-        this.cacheDir = new File(context.getCacheDir(), "javacache");
-        this.outputDir = new File(context.getCacheDir(), "javaoutput");
+        this(new File(context.getCacheDir(), "javacache"),
+            new File(context.getCacheDir(), "javaoutput"));
+    }
+
+    public JavaCompiler(@NonNull File sourceCacheDir, @NonNull File outputDirectory) {
+        this.cacheDir = sourceCacheDir;
+        this.outputDir = outputDirectory;
         this.cacheDir.mkdirs();
         this.outputDir.mkdirs();
         new Thread(this::extractBootClasspath, "bootclasspath-extract").start();
@@ -83,6 +89,11 @@ public class JavaCompiler {
     }
 
     public CompilationResult compile(@NonNull List<OpenFile> openFiles, List<File> libraryJars) {
+        return compile(openFiles, libraryJars, null);
+    }
+
+    public CompilationResult compile(@NonNull List<OpenFile> openFiles, List<File> libraryJars,
+                                     String sourceLevel) {
         List<File> sourceFiles = new ArrayList<>();
         Map<String, String> fileContents = new java.util.HashMap<>();
 
@@ -104,7 +115,7 @@ public class JavaCompiler {
             fileContents.put(openFile.getFileName(), openFile.getContent());
         }
 
-        return compileFiles(sourceFiles, fileContents, libraryJars);
+        return compileFiles(sourceFiles, fileContents, libraryJars, sourceLevel);
     }
 
     private File getSourceFile(String filePath) {
@@ -115,11 +126,16 @@ public class JavaCompiler {
     }
 
     public CompilationResult compileFiles(List<File> sourceFiles, Map<String, String> fileContents) {
-        return compileFiles(sourceFiles, fileContents, null);
+        return compileFiles(sourceFiles, fileContents, null, null);
     }
 
     public CompilationResult compileFiles(List<File> sourceFiles, Map<String, String> fileContents,
                                           List<File> libraryJars) {
+        return compileFiles(sourceFiles, fileContents, libraryJars, null);
+    }
+
+    public CompilationResult compileFiles(List<File> sourceFiles, Map<String, String> fileContents,
+                                          List<File> libraryJars, String sourceLevel) {
         List<String> args = new ArrayList<>();
 
         clearDirectory(outputDir);
@@ -127,10 +143,11 @@ public class JavaCompiler {
         args.add("-d");
         args.add(outputDir.getAbsolutePath());
 
+        String level = sourceLevel == null || sourceLevel.isEmpty() ? "16" : sourceLevel;
         args.add("-source");
-        args.add("16");
+        args.add(level);
         args.add("-target");
-        args.add("16");
+        args.add(level);
 
         args.add("-encoding");
         args.add("UTF-8");
@@ -171,7 +188,7 @@ public class JavaCompiler {
         return runCompiler(args.toArray(new String[0]), fileContents);
     }
 
-    private void clearDirectory(File dir) {
+    private void clearDirectory(@NonNull File dir) {
         File[] files = dir.listFiles();
         if (files == null) return;
         for (File f : files) {
@@ -190,7 +207,7 @@ public class JavaCompiler {
         return typeCheckCompile(openFiles);
     }
 
-    public boolean needsCheck(List<OpenFile> openFiles) {
+    public boolean needsCheck(@NonNull List<OpenFile> openFiles) {
         if (openFiles.isEmpty()) return false;
         for (OpenFile openFile : openFiles) {
             String previous = lastCheckedContents.get(openFile.getFilePath());
@@ -201,7 +218,7 @@ public class JavaCompiler {
         return false;
     }
 
-    public boolean hasChanges(OpenFile openFile) {
+    public boolean hasChanges(@NonNull OpenFile openFile) {
         String previous = lastCheckedContents.get(openFile.getFilePath());
         return previous == null || !previous.equals(openFile.getContent());
     }
@@ -210,7 +227,7 @@ public class JavaCompiler {
         lastCheckedContents.clear();
     }
 
-    public List<Diagnostic> syntaxCheck(OpenFile openFile) {
+    public List<Diagnostic> syntaxCheck(@NonNull OpenFile openFile) {
         long start = System.currentTimeMillis();
         String fileName = openFile.getFileName();
         final char[] source = openFile.getContent().toCharArray();
@@ -219,6 +236,7 @@ public class JavaCompiler {
                 public char[] getFileName() {
                     return fileName.toCharArray();
                 }
+                @Contract(pure = true)
                 public char[] getContents() {
                     return source;
                 }
@@ -226,6 +244,8 @@ public class JavaCompiler {
                     int dot = fileName.lastIndexOf('.');
                     return (dot > 0 ? fileName.substring(0, dot) : fileName).toCharArray();
                 }
+                @Nullable
+                @Contract(pure = true)
                 public char[][] getPackageName() {
                     return null;
                 }

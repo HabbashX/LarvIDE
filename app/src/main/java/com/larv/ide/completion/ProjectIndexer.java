@@ -64,9 +64,44 @@ public class ProjectIndexer {
 
     private final Map<String, FileSymbols> fileIndex = new ConcurrentHashMap<>();
     private final Map<String, List<CompletionItem>> stdlibIndex = new ConcurrentHashMap<>();
+    private final Map<String, String> classToPackage = new ConcurrentHashMap<>();
+    private volatile Map<String, List<CompletionItem>> memberCache;
 
     public ProjectIndexer() {
         buildStdlibIndex();
+    }
+
+    public String findImportCandidates(String className) {
+        if (className == null || className.isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        String exact = classToPackage.get(className);
+        boolean first = true;
+        if (exact != null) {
+            sb.append('"').append(exact).append('.').append(className).append('"');
+            first = false;
+        }
+        for (Map.Entry<String, String> e : classToPackage.entrySet()) {
+            if (e.getKey().equalsIgnoreCase(className) && !e.getKey().equals(className)) {
+                if (!first) sb.append(',');
+                sb.append('"').append(e.getValue()).append('.').append(e.getKey()).append('"');
+                first = false;
+            }
+            if (sb.length() > 220) break;
+        }
+        for (Map.Entry<String, FileSymbols> entry : fileIndex.entrySet()) {
+            FileSymbols symbols = entry.getValue();
+            if (symbols.packageName == null || symbols.packageName.isEmpty()) continue;
+            for (ClassSymbol cls : symbols.classes) {
+                if (cls.name.equals(className)) {
+                    if (!first) sb.append(',');
+                    sb.append('"').append(symbols.packageName).append('.').append(cls.name).append('"');
+                    first = false;
+                    break;
+                }
+            }
+        }
+        sb.append(']');
+        return sb.toString();
     }
 
     public void indexFile(OpenFile openFile) {
@@ -92,13 +127,21 @@ public class ProjectIndexer {
         fileIndex.clear();
     }
 
+    private FileSymbols resolveCurrentSymbols(String currentFile) {
+        if (currentFile == null) return null;
+        FileSymbols symbols = fileIndex.get(currentFile);
+        if (symbols != null) return symbols;
+        String name = new java.io.File(currentFile).getName();
+        return fileIndex.get(name);
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.N)
     public List<CompletionItem> getCompletions(@NonNull String prefix, String currentFile, int line, int column) {
         List<CompletionItem> completions = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         String prefixLower = prefix.toLowerCase();
 
-        FileSymbols currentSymbols = fileIndex.get(currentFile);
+        FileSymbols currentSymbols = resolveCurrentSymbols(currentFile);
         Set<String> currentImports = currentSymbols != null ? currentSymbols.imports : new HashSet<>();
 
         if (currentSymbols != null) {
@@ -123,6 +166,418 @@ public class ProjectIndexer {
         });
 
         return completions;
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.N)
+    public List<CompletionItem> getCompletions(@NonNull String prefix, String currentFile,
+                                               int line, int column,
+                                               String memberOf, String currentContent) {
+        if (memberOf != null && !memberOf.trim().isEmpty()) {
+            List<CompletionItem> members = getMemberCompletions(
+                memberOf.trim(), currentContent, line, resolveCurrentSymbols(currentFile));
+            if (prefix != null && !prefix.isEmpty()) {
+                String p = prefix.toLowerCase();
+                members.removeIf(i -> !i.getLabel().toLowerCase().startsWith(p));
+            }
+            return members;
+        }
+        return getCompletions(prefix == null ? "" : prefix, currentFile, line, column);
+    }
+
+    private static final Map<String, String[][]> MEMBER_TABLE = buildMemberTable();
+
+    private static Map<String, String[][]> buildMemberTable() {
+        Map<String, String[][]> t = new java.util.HashMap<>();
+        t.put("String", new String[][]{
+            {"length", "int length()", "m"},
+            {"isEmpty", "boolean isEmpty()", "m"},
+            {"isBlank", "boolean isBlank()", "m"},
+            {"charAt", "char charAt(int index)", "m"},
+            {"substring", "String substring(int beginIndex)", "m"},
+            {"indexOf", "int indexOf(String str)", "m"},
+            {"lastIndexOf", "int lastIndexOf(String str)", "m"},
+            {"contains", "boolean contains(CharSequence s)", "m"},
+            {"equals", "boolean equals(Object anObject)", "m"},
+            {"equalsIgnoreCase", "boolean equalsIgnoreCase(String another)", "m"},
+            {"compareTo", "int compareTo(String anotherString)", "m"},
+            {"toUpperCase", "String toUpperCase()", "m"},
+            {"toLowerCase", "String toLowerCase()", "m"},
+            {"trim", "String trim()", "m"},
+            {"strip", "String strip()", "m"},
+            {"replace", "String replace(char oldChar, char newChar)", "m"},
+            {"replaceAll", "String replaceAll(String regex, String replacement)", "m"},
+            {"split", "String[] split(String regex)", "m"},
+            {"startsWith", "boolean startsWith(String prefix)", "m"},
+            {"endsWith", "boolean endsWith(String suffix)", "m"},
+            {"concat", "String concat(String str)", "m"},
+            {"repeat", "String repeat(int count)", "m"},
+            {"matches", "boolean matches(String regex)", "m"},
+            {"toCharArray", "char[] toCharArray()", "m"},
+            {"getBytes", "byte[] getBytes()", "m"},
+            {"format", "static String format(String fmt, Object... args)", "m"},
+            {"valueOf", "static String valueOf(Object obj)", "m"},
+            {"join", "static String join(CharSequence delim, CharSequence... elems)", "m"},
+            {"hashCode", "int hashCode()", "m"}
+        });
+        t.put("StringBuilder", new String[][]{
+            {"append", "StringBuilder append(String str)", "m"},
+            {"insert", "StringBuilder insert(int offset, String str)", "m"},
+            {"delete", "StringBuilder delete(int start, int end)", "m"},
+            {"deleteCharAt", "StringBuilder deleteCharAt(int index)", "m"},
+            {"replace", "StringBuilder replace(int start, int end, String str)", "m"},
+            {"reverse", "StringBuilder reverse()", "m"},
+            {"setLength", "void setLength(int newLength)", "m"},
+            {"length", "int length()", "m"},
+            {"charAt", "char charAt(int index)", "m"},
+            {"toString", "String toString()", "m"}
+        });
+        t.put("System.out", new String[][]{
+            {"println", "void println(Object x)", "m"},
+            {"print", "void print(Object x)", "m"},
+            {"printf", "PrintStream printf(String format, Object... args)", "m"},
+            {"write", "void write(int b)", "m"},
+            {"flush", "void flush()", "m"}
+        });
+        t.put("Math", new String[][]{
+            {"abs", "static int abs(int a)", "m"},
+            {"max", "static int max(int a, int b)", "m"},
+            {"min", "static int min(int a, int b)", "m"},
+            {"pow", "static double pow(double a, double b)", "m"},
+            {"sqrt", "static double sqrt(double a)", "m"},
+            {"cbrt", "static double cbrt(double a)", "m"},
+            {"floor", "static double floor(double a)", "m"},
+            {"ceil", "static double ceil(double a)", "m"},
+            {"round", "static long round(double a)", "m"},
+            {"random", "static double random()", "m"},
+            {"signum", "static double signum(double d)", "m"},
+            {"toRadians", "static double toRadians(double angdeg)", "m"},
+            {"toDegrees", "static double toDegrees(double angrad)", "m"},
+            {"PI", "static final double PI", "f"},
+            {"E", "static final double E", "f"}
+        });
+        t.put("Integer", new String[][]{
+            {"parseInt", "static int parseInt(String s)", "m"},
+            {"valueOf", "static Integer valueOf(int i)", "m"},
+            {"toString", "static String toString(int i)", "m"},
+            {"compare", "static int compare(int x, int y)", "m"},
+            {"max", "static int max(int a, int b)", "m"},
+            {"min", "static int min(int a, int b)", "m"},
+            {"bitCount", "static int bitCount(int i)", "m"},
+            {"MAX_VALUE", "static final int MAX_VALUE", "f"},
+            {"MIN_VALUE", "static final int MIN_VALUE", "f"}
+        });
+        t.put("Long", new String[][]{
+            {"parseLong", "static long parseLong(String s)", "m"},
+            {"valueOf", "static Long valueOf(long l)", "m"},
+            {"toString", "static String toString(long i)", "m"},
+            {"compare", "static int compare(long x, long y)", "m"},
+            {"MAX_VALUE", "static final long MAX_VALUE", "f"},
+            {"MIN_VALUE", "static final long MIN_VALUE", "f"}
+        });
+        t.put("Double", new String[][]{
+            {"parseDouble", "static double parseDouble(String s)", "m"},
+            {"valueOf", "static Double valueOf(double d)", "m"},
+            {"isNaN", "static boolean isNaN(double v)", "m"},
+            {"isInfinite", "static boolean isInfinite(double v)", "m"},
+            {"compare", "static int compare(double d1, double d2)", "m"},
+            {"MAX_VALUE", "static final double MAX_VALUE", "f"},
+            {"MIN_VALUE", "static final double MIN_VALUE", "f"},
+            {"POSITIVE_INFINITY", "static final double POSITIVE_INFINITY", "f"},
+            {"NaN", "static final double NaN", "f"}
+        });
+        t.put("Float", new String[][]{
+            {"parseFloat", "static float parseFloat(String s)", "m"},
+            {"valueOf", "static Float valueOf(float f)", "m"},
+            {"isNaN", "static boolean isNaN(float v)", "m"}
+        });
+        t.put("Boolean", new String[][]{
+            {"parseBoolean", "static boolean parseBoolean(String s)", "m"},
+            {"valueOf", "static Boolean valueOf(boolean b)", "m"},
+            {"TRUE", "static final Boolean TRUE", "f"},
+            {"FALSE", "static final Boolean FALSE", "f"}
+        });
+        t.put("Character", new String[][]{
+            {"isDigit", "static boolean isDigit(char ch)", "m"},
+            {"isLetter", "static boolean isLetter(char ch)", "m"},
+            {"isLetterOrDigit", "static boolean isLetterOrDigit(char ch)", "m"},
+            {"isWhitespace", "static boolean isWhitespace(char ch)", "m"},
+            {"isUpperCase", "static boolean isUpperCase(char ch)", "m"},
+            {"isLowerCase", "static boolean isLowerCase(char ch)", "m"},
+            {"toUpperCase", "static char toUpperCase(char ch)", "m"},
+            {"toLowerCase", "static char toLowerCase(char ch)", "m"},
+            {"getNumericValue", "static int getNumericValue(char ch)", "m"}
+        });
+        String[][] listMembers = {
+            {"add", "boolean add(E e)", "m"},
+            {"get", "E get(int index)", "m"},
+            {"set", "E set(int index, E element)", "m"},
+            {"remove", "E remove(int index)", "m"},
+            {"size", "int size()", "m"},
+            {"isEmpty", "boolean isEmpty()", "m"},
+            {"contains", "boolean contains(Object o)", "m"},
+            {"indexOf", "int indexOf(Object o)", "m"},
+            {"clear", "void clear()", "m"},
+            {"addAll", "boolean addAll(Collection<? extends E> c)", "m"},
+            {"removeAll", "boolean removeAll(Collection<?> c)", "m"},
+            {"iterator", "Iterator<E> iterator()", "m"},
+            {"forEach", "void forEach(Consumer<? super E> action)", "m"},
+            {"toArray", "Object[] toArray()", "m"},
+            {"sort", "void sort(Comparator<? super E> c)", "m"},
+            {"stream", "Stream<E> stream()", "m"}
+        };
+        t.put("ArrayList", listMembers);
+        t.put("List", listMembers);
+        t.put("LinkedList", listMembers);
+        String[][] mapMembers = {
+            {"put", "V put(K key, V value)", "m"},
+            {"get", "V get(Object key)", "m"},
+            {"getOrDefault", "V getOrDefault(Object key, V defaultValue)", "m"},
+            {"remove", "V remove(Object key)", "m"},
+            {"containsKey", "boolean containsKey(Object key)", "m"},
+            {"containsValue", "boolean containsValue(Object value)", "m"},
+            {"keySet", "Set<K> keySet()", "m"},
+            {"values", "Collection<V> values()", "m"},
+            {"entrySet", "Set<Map.Entry<K,V>> entrySet()", "m"},
+            {"size", "int size()", "m"},
+            {"isEmpty", "boolean isEmpty()", "m"},
+            {"clear", "void clear()", "m"},
+            {"putAll", "void putAll(Map<? extends K,? extends V> m)", "m"},
+            {"computeIfAbsent", "V computeIfAbsent(K key, Function<K,V> fn)", "m"},
+            {"merge", "V merge(K key, V value, BiFunction<V,V,V> fn)", "m"},
+            {"forEach", "void forEach(BiConsumer<K,V> action)", "m"}
+        };
+        t.put("HashMap", mapMembers);
+        t.put("Map", mapMembers);
+        t.put("TreeMap", mapMembers);
+        String[][] setMembers = {
+            {"add", "boolean add(E e)", "m"},
+            {"remove", "boolean remove(Object o)", "m"},
+            {"contains", "boolean contains(Object o)", "m"},
+            {"size", "int size()", "m"},
+            {"isEmpty", "boolean isEmpty()", "m"},
+            {"clear", "void clear()", "m"},
+            {"iterator", "Iterator<E> iterator()", "m"},
+            {"stream", "Stream<E> stream()", "m"}
+        };
+        t.put("HashSet", setMembers);
+        t.put("Set", setMembers);
+        t.put("LinkedHashSet", setMembers);
+        t.put("Arrays", new String[][]{
+            {"sort", "static void sort(int[] a)", "m"},
+            {"fill", "static void fill(int[] a, int val)", "m"},
+            {"copyOf", "static int[] copyOf(int[] original, int newLength)", "m"},
+            {"copyOfRange", "static int[] copyOfRange(int[] original, int from, int to)", "m"},
+            {"asList", "static List<T> asList(T... a)", "m"},
+            {"toString", "static String toString(int[] a)", "m"},
+            {"deepToString", "static String deepToString(Object[] a)", "m"},
+            {"equals", "static boolean equals(int[] a, int[] a2)", "m"},
+            {"binarySearch", "static int binarySearch(int[] a, int key)", "m"},
+            {"stream", "static IntStream stream(int[] array)", "m"}
+        });
+        t.put("Collections", new String[][]{
+            {"sort", "static <T> void sort(List<T> list)", "m"},
+            {"reverse", "static void reverse(List<?> list)", "m"},
+            {"shuffle", "static void shuffle(List<?> list)", "m"},
+            {"max", "static <T extends Comparable> T max(Collection coll)", "m"},
+            {"min", "static <T extends Comparable> T min(Collection coll)", "m"},
+            {"swap", "static void swap(List<?> list, int i, int j)", "m"},
+            {"unmodifiableList", "static <T> List<T> unmodifiableList(List<? extends T> list)", "m"},
+            {"emptyList", "static <T> List<T> emptyList()", "m"},
+            {"singletonList", "static <T> List<T> singletonList(T o)", "m"},
+            {"frequency", "static int frequency(Collection<?> c, Object o)", "m"}
+        });
+        t.put("Objects", new String[][]{
+            {"requireNonNull", "static <T> T requireNonNull(T obj)", "m"},
+            {"equals", "static boolean equals(Object a, Object b)", "m"},
+            {"hash", "static int hash(Object... values)", "m"},
+            {"toString", "static String toString(Object o)", "m"},
+            {"isNull", "static boolean isNull(Object obj)", "m"},
+            {"nonNull", "static boolean nonNull(Object obj)", "m"}
+        });
+        t.put("Optional", new String[][]{
+            {"of", "static <T> Optional<T> of(T value)", "m"},
+            {"ofNullable", "static <T> Optional<T> ofNullable(T value)", "m"},
+            {"empty", "static <T> Optional<T> empty()", "m"},
+            {"isPresent", "boolean isPresent()", "m"},
+            {"isEmpty", "boolean isEmpty()", "m"},
+            {"get", "T get()", "m"},
+            {"orElse", "T orElse(T other)", "m"},
+            {"orElseThrow", "T orElseThrow()", "m"},
+            {"ifPresent", "void ifPresent(Consumer<? super T> action)", "m"},
+            {"map", "<U> Optional<U> map(Function<? super T,? extends U> mapper)", "m"},
+            {"filter", "Optional<T> filter(Predicate<? super T> predicate)", "m"}
+        });
+        t.put("Thread", new String[][]{
+            {"start", "void start()", "m"},
+            {"run", "void run()", "m"},
+            {"sleep", "static void sleep(long millis)", "m"},
+            {"join", "void join()", "m"},
+            {"interrupt", "void interrupt()", "m"},
+            {"setName", "void setName(String name)", "m"},
+            {"getName", "String getName()", "m"},
+            {"currentThread", "static Thread currentThread()", "m"},
+            {"isAlive", "boolean isAlive()", "m"}
+        });
+        String[][] throwableMembers = {
+            {"getMessage", "String getMessage()", "m"},
+            {"getLocalizedMessage", "String getLocalizedMessage()", "m"},
+            {"printStackTrace", "void printStackTrace()", "m"},
+            {"getCause", "Throwable getCause()", "m"},
+            {"toString", "String toString()", "m"}
+        };
+        t.put("Exception", throwableMembers);
+        t.put("Throwable", throwableMembers);
+        t.put("RuntimeException", throwableMembers);
+        t.put("Iterator", new String[][]{
+            {"hasNext", "boolean hasNext()", "m"},
+            {"next", "E next()", "m"},
+            {"remove", "default void remove()", "m"},
+            {"forEachRemaining", "default void forEachRemaining(Consumer<? super E> action)", "m"}
+        });
+        t.put("Scanner", new String[][]{
+            {"next", "String next()", "m"},
+            {"nextLine", "String nextLine()", "m"},
+            {"nextInt", "int nextInt()", "m"},
+            {"nextDouble", "double nextDouble()", "m"},
+            {"nextBoolean", "boolean nextBoolean()", "m"},
+            {"hasNext", "boolean hasNext()", "m"},
+            {"close", "void close()", "m"}
+        });
+        t.put("Random", new String[][]{
+            {"nextInt", "int nextInt(int bound)", "m"},
+            {"nextDouble", "double nextDouble()", "m"},
+            {"nextBoolean", "boolean nextBoolean()", "m"},
+            {"nextGaussian", "double nextGaussian()", "m"},
+            {"nextLong", "long nextLong()", "m"},
+            {"setSeed", "void setSeed(long seed)", "m"}
+        });
+        t.put("File", new String[][]{
+            {"exists", "boolean exists()", "m"},
+            {"getName", "String getName()", "m"},
+            {"getPath", "String getPath()", "m"},
+            {"getAbsolutePath", "String getAbsolutePath()", "m"},
+            {"length", "long length()", "m"},
+            {"delete", "boolean delete()", "m"},
+            {"mkdir", "boolean mkdir()", "m"},
+            {"mkdirs", "boolean mkdirs()", "m"},
+            {"listFiles", "File[] listFiles()", "m"},
+            {"isDirectory", "boolean isDirectory()", "m"},
+            {"isFile", "boolean isFile()", "m"}
+        });
+        t.put("PrintStream", t.get("System.out"));
+        return t;
+    }
+
+    private List<CompletionItem> getMemberCompletions(String receiver, String content,
+                                                      int cursorLine, FileSymbols symbols) {
+        Map<String, String[][]> table = MEMBER_TABLE;
+        String type = resolveReceiverType(receiver, content, cursorLine, symbols, table);
+        if (type == null) {
+            type = table.containsKey(receiver) ? receiver : null;
+        }
+        List<CompletionItem> items = new ArrayList<>();
+        if (type == null || !table.containsKey(type)) {
+            return items;
+        }
+        Set<String> seen = new HashSet<>();
+        for (String[] row : table.get(type)) {
+            CompletionItem.Kind kind = row[2].equals("f")
+                ? CompletionItem.Kind.FIELD : CompletionItem.Kind.METHOD;
+            CompletionItem item = new CompletionItem(row[0], kind);
+            item.setDetail(row[1]);
+            item.setInsertText(row[0].endsWith("(") ? row[0] : row[0] + "()");
+            item.setSortPriority(kind == CompletionItem.Kind.FIELD ? 30 : 20);
+            items.add(item);
+            seen.add(row[0]);
+        }
+        for (String[] row : OBJECT_MEMBERS) {
+            if (seen.add(row[0])) {
+                CompletionItem item = new CompletionItem(row[0], CompletionItem.Kind.METHOD);
+                item.setDetail(row[1]);
+                item.setInsertText(row[0] + "()");
+                item.setSortPriority(60);
+                items.add(item);
+            }
+        }
+        return items;
+    }
+
+    private static final String[][] OBJECT_MEMBERS = {
+        {"equals", "boolean equals(Object obj)"},
+        {"hashCode", "int hashCode()"},
+        {"toString", "String toString()"},
+        {"getClass", "Class<?> getClass()"}
+    };
+
+    private String resolveReceiverType(String receiver, String content, int cursorLine,
+                                       FileSymbols symbols, Map<String, String[][]> table) {
+        receiver = receiver.trim();
+        if (receiver.isEmpty()) return null;
+        if (table.containsKey(receiver)) return receiver;
+
+        String lastSeg = receiver;
+        int dot = lastSeg.lastIndexOf('.');
+        if (dot >= 0) lastSeg = lastSeg.substring(dot + 1);
+        if (table.containsKey(lastSeg)) return lastSeg;
+
+        if (content != null && !content.isEmpty()) {
+            String[] lines = content.split("\n");
+            int limit = Math.min(cursorLine <= 0 ? lines.length : cursorLine, lines.length);
+            for (int i = limit - 1; i >= 0; i--) {
+                String line = lines[i];
+                Matcher m = LOCAL_DECL_PATTERN.matcher(line);
+                if (m.find()) {
+                    if (stripType(m.group(1)).equalsIgnoreCase(stripType(lastSeg))
+                        || m.group(2).equals(lastSeg)) {
+                        return stripType(m.group(1));
+                    }
+                }
+                m = FOR_EACH_PATTERN.matcher(line);
+                if (m.find() && m.group(2).equals(lastSeg)) {
+                    return stripType(m.group(1));
+                }
+                m = PARAM_PATTERN.matcher(line);
+                while (m.find()) {
+                    if (m.group(2).equals(lastSeg)) {
+                        return stripType(m.group(1));
+                    }
+                }
+            }
+        }
+
+        if (symbols != null) {
+            for (FieldSymbol field : symbols.fields) {
+                if (field.name.equals(lastSeg)) {
+                    return stripType(field.type);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static final Pattern LOCAL_DECL_PATTERN = Pattern.compile(
+        "^\\s*(?:final\\s+)?([A-Za-z_$][\\w$]*(?:\\s*<[^=;]*>)?(?:\\s*\\[\\s*\\])?)\\s+([A-Za-z_$][\\w$]*)\\s*(?:=[^=].*)?[;,]?");
+    private static final Pattern FOR_EACH_PATTERN = Pattern.compile(
+        "\\bfor\\s*\\(\\s*([A-Za-z_$][\\w$.]*(?:\\s*<[^>]*>)?(?:\\s*\\[\\s*\\])?)\\s+([A-Za-z_$][\\w$]*)\\s*:");
+    private static final Pattern PARAM_PATTERN = Pattern.compile(
+        "[({]\\s*([A-Za-z_$][\\w$]*(?:\\s*<[^>]*>)?(?:\\s*\\[\\s*\\])?)\\s+([A-Za-z_$][\\w$]*)\\s*(?=[,)])");
+
+    private String stripType(String raw) {
+        if (raw == null) return "";
+        String t = raw.trim();
+        t = t.replaceAll("<[^<>]*>", "");
+        t = t.replace("[", "").replace("]", "").replace(" ", "");
+        int dot = t.lastIndexOf('.');
+        if (dot >= 0) t = t.substring(dot + 1);
+        switch (t) {
+            case "int": return "Integer";
+            case "long": return "Long";
+            case "double": return "Double";
+            case "float": return "Float";
+            case "boolean": return "Boolean";
+            case "char": return "Character";
+            default: return t;
+        }
     }
 
     private void addCompletionsFromSymbols(List<CompletionItem> completions, Set<String> seen,
@@ -394,6 +849,9 @@ public class ProjectIndexer {
         item.setSortPriority(50);
 
         stdlibIndex.computeIfAbsent(packageName, k -> new ArrayList<>()).add(item);
+        if (!classToPackage.containsKey(className)) {
+            classToPackage.put(className, packageName);
+        }
     }
 
     private static class FileSymbols {

@@ -48,6 +48,10 @@ android {
         }
     }
 
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -111,16 +115,19 @@ dependencies {
     // and 3.28+ additionally requires a Java 11 runtime.
     implementation 'org.eclipse.jdt:ecj:3.26.0'
     
-    // R8/D8 so the on-device dex step can produce real classes.dex
     implementation 'com.android.tools:r8:8.6.27'
-    
-    // D8/R8 is included in Android Gradle Plugin
-    
-    // Commons IO
+
     implementation 'commons-io:commons-io:2.15.1'
     
     // Real terminal emulator (jackpal emulatorview).
     // Pure-Java VT100 emulator: TermSession accepts custom in/out streams,
     // so no subprocess/PTY is required for in-process program execution.
     implementation 'com.github.jackpal.Android-Terminal-Emulator:emulatorview:v1.0.70'
+
+    // JavaScript engine (pure-Java, runs on ART in interpreter mode)
+    implementation 'org.mozilla:rhino:1.7.14'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20231013'
+    testImplementation 'net.sf.kxml:kxml2:2.3.0'
 }

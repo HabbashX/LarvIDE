@@ -7,11 +7,13 @@ import androidx.viewpager2.adapter.FragmentStateAdapter;
 
 import com.larv.ide.ui.fragment.ErrorsFragment;
 import com.larv.ide.ui.fragment.OutputFragment;
+import com.larv.ide.ui.fragment.PreviewFragment;
 
 public class BottomPanelAdapter extends FragmentStateAdapter {
 
     private final OutputFragment outputFragment = new OutputFragment();
     private final ErrorsFragment errorsFragment = new ErrorsFragment();
+    private final PreviewFragment previewFragment = new PreviewFragment();
 
     public BottomPanelAdapter(@NonNull FragmentActivity fragmentActivity) {
         super(fragmentActivity);
@@ -20,12 +22,16 @@ public class BottomPanelAdapter extends FragmentStateAdapter {
     @NonNull
     @Override
     public Fragment createFragment(int position) {
-        return position == 0 ? outputFragment : errorsFragment;
+        switch (position) {
+            case 1: return errorsFragment;
+            case 2: return previewFragment;
+            default: return outputFragment;
+        }
     }
 
     @Override
     public int getItemCount() {
-        return 2;
+        return 3;
     }
 
     public OutputFragment getOutputFragment() {
@@ -34,5 +40,9 @@ public class BottomPanelAdapter extends FragmentStateAdapter {
 
     public ErrorsFragment getErrorsFragment() {
         return errorsFragment;
+    }
+
+    public PreviewFragment getPreviewFragment() {
+        return previewFragment;
     }
 }
