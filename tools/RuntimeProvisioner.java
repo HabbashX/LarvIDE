@@ -93,6 +93,14 @@ public class RuntimeProvisioner {
     }
 
     static void download(String url, Path dest) throws Exception {
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            Path local = Paths.get(url);
+            if (!Files.exists(local)) {
+                throw new IllegalStateException("pack file not found: " + local.toAbsolutePath());
+            }
+            Files.copy(local, dest, StandardCopyOption.REPLACE_EXISTING);
+            return;
+        }
         var conn = URI.create(url).toURL().openConnection();
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(60000);
