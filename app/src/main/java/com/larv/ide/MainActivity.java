@@ -158,6 +158,7 @@ public class MainActivity extends AppCompatActivity
     private boolean dropHandled = false;
     private RunDispatcher runDispatcher;
     private SessionManager sessionManager;
+    private com.larv.ide.run.backend.termux.TermuxSetupWizard termuxWizard;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -406,6 +407,12 @@ public class MainActivity extends AppCompatActivity
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == com.larv.ide.run.backend.termux.TermuxSetupWizard.PERMISSION_REQUEST_CODE) {
+            if (termuxWizard != null) {
+                termuxWizard.onPermissionResult();
+            }
+            return;
+        }
         if (requestCode == REQUEST_STORAGE_PERMISSION && grantResults.length > 0
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "Storage permission granted", Toast.LENGTH_SHORT).show();
@@ -1456,6 +1463,10 @@ public class MainActivity extends AppCompatActivity
             return true;
         } else if (itemId == R.id.menu_compile) {
             compileAndRun();
+            return true;
+        } else if (itemId == R.id.menu_run_termux) {
+            termuxWizard = new com.larv.ide.run.backend.termux.TermuxSetupWizard(this);
+            termuxWizard.show();
             return true;
         } else if (itemId == R.id.menu_clean) {
             clearBuildOutput();
