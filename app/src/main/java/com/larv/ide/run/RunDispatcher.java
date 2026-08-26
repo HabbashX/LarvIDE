@@ -4,17 +4,20 @@ import android.content.SharedPreferences;
 
 import androidx.annotation.Nullable;
 
-import com.larv.ide.build.DependencyResolver;
+import com.larv.ide.build.LarvBuildParser;
 import com.larv.ide.compiler.Dexer;
 import com.larv.ide.compiler.JavaCompiler;
 import com.larv.ide.compiler.JavaRunner;
-
 import com.larv.ide.compiler.JavascriptRunner;
 import com.larv.ide.compiler.PythonRunner;
 import com.larv.ide.model.Diagnostic;
 import com.larv.ide.model.OpenFile;
 import com.larv.ide.model.Project;
+import com.larv.ide.model.Project;
 import com.larv.ide.project.ProjectRecognizer;
+import com.larv.ide.run.backend.BackendUnavailableException;
+import com.larv.ide.run.backend.ExecRequest;
+import com.larv.ide.run.backend.termux.TermuxCommandBackend;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -38,7 +41,7 @@ public class RunDispatcher {
         List<OpenFile> openFiles();
         JavaCompiler javaCompiler();
         Dexer dexer();
-        DependencyResolver resolver();
+        LarvBuildParser.BuildSpec loadBuildSpec();
         JavascriptRunner javascriptRunner();
         PythonRunner pythonRunner();
         JavaRunner javaRunner();
@@ -54,6 +57,8 @@ public class RunDispatcher {
         SharedPreferences prefs();
         String findMainClass(List<OpenFile> files);
         void toast(String message);
+        void openTermuxWizard();
+        void executeTermux(ExecRequest request) throws BackendUnavailableException;
     }
 
     public static class RunStreams {
@@ -68,9 +73,11 @@ public class RunDispatcher {
     }
 
     private final Host host;
+    private final TermuxCommandBackend termuxBackend;
 
-    public RunDispatcher(Host host) {
+    public RunDispatcher(Host host, TermuxCommandBackend termuxBackend) {
         this.host = host;
+        this.termuxBackend = termuxBackend;
     }
 
     public void dispatch() {
@@ -80,12 +87,21 @@ public class RunDispatcher {
         }
         if (host.isBusy()) return;
 
-        DependencyResolver.BuildSpec spec = loadBuildSpec();
+        LarvBuildParser.BuildSpec spec = loadBuildSpec();
         ProjectRecognizer.Detection detection = host.currentProject() != null
             ? ProjectRecognizer.detect(host.currentProject().getRootDir(), host.activeFilePath())
             : null;
         String language = detectRunLanguage(spec, detection);
         String entry = resolveEntryFile(spec, detection, language);
+
+        boolean termuxReady = termuxBackend != null && termuxBackend.isAvailable();
+        boolean preferTermux = host.prefs().getBoolean("runViaTermux", true);
+        boolean hasExplicitCmd = spec != null && !spec.runCommand.isEmpty();
+        if (termuxReady
+            && (hasExplicitCmd || (preferTermux && usesTermuxToolchain(language)))) {
+            runInTermux(spec, entry, language);
+            return;
+        }
 
         switch (language) {
             case ProjectRecognizer.PYTHON:
@@ -104,6 +120,61 @@ public class RunDispatcher {
         }
     }
 
+    private static boolean usesTermuxToolchain(String language) {
+        return ProjectRecognizer.JAVA.equals(language)
+            || ProjectRecognizer.CPP.equals(language);
+    }
+
+    static List<String> buildTermuxCommand(String language, String entryFileName,
+                                           List<String> explicitCommand) {
+        if (explicitCommand != null && !explicitCommand.isEmpty()) return explicitCommand;
+        if (entryFileName == null || entryFileName.isEmpty()) return null;
+        String base = entryFileName.contains(".")
+            ? entryFileName.substring(0, entryFileName.lastIndexOf('.')) : entryFileName;
+        List<String> cmd = new ArrayList<>();
+        cmd.add("bash");
+        cmd.add("-c");
+        if (ProjectRecognizer.JAVA.equals(language)) {
+            cmd.add("javac " + q(entryFileName) + " && java " + q(base));
+            return cmd;
+        }
+        if (ProjectRecognizer.CPP.equals(language)) {
+            cmd.add("clang++ -std=c++17 " + q(entryFileName)
+                + " -o " + q(base) + " && ./" + q(base));
+            return cmd;
+        }
+        return null;
+    }
+
+    private static String q(String s) {
+        return "'" + s.replace("'", "'\\''") + "'";
+    }
+
+    private void runInTermux(LarvBuildParser.BuildSpec spec, String entryPath,
+                             String language) {
+        host.setBusy(true);
+        host.typeCheckHandler().removeCallbacksAndMessages(null);
+        File workdir = host.currentProject() != null
+            ? host.currentProject().getRootDir() : new File("/");
+        String entryName = entryPath != null ? new File(entryPath).getName() : null;
+        List<String> cmd = buildTermuxCommand(language, entryName,
+            spec == null ? null : spec.runCommand);
+        if (cmd == null) {
+            host.toast("No entry file for " + language);
+            host.setBusy(false);
+            return;
+        }
+        try {
+            host.executeTermux(new ExecRequest(cmd, workdir.getAbsolutePath(), true));
+            host.setStatus("Running via Termux: " + String.join(" ", cmd));
+            host.setBusy(false);
+        } catch (BackendUnavailableException ex) {
+            host.setBusy(false);
+            host.toast("Termux not ready: " + ex.getState());
+            host.openTermuxWizard();
+        }
+    }
+
     private static String normalizeLanguageName(String raw) {
         switch (raw.trim().toLowerCase()) {
             case "java": return ProjectRecognizer.JAVA;
@@ -115,7 +186,7 @@ public class RunDispatcher {
         }
     }
 
-    private String detectRunLanguage(DependencyResolver.BuildSpec spec,
+    private String detectRunLanguage(LarvBuildParser.BuildSpec spec,
                                      ProjectRecognizer.Detection detection) {
         if (spec != null && spec.language != null && !spec.language.isEmpty()) {
             String normalized = normalizeLanguageName(spec.language);
@@ -134,7 +205,7 @@ public class RunDispatcher {
     }
 
     @Nullable
-    private String resolveEntryFile(DependencyResolver.BuildSpec spec,
+    private String resolveEntryFile(LarvBuildParser.BuildSpec spec,
                                     ProjectRecognizer.Detection detection, String language) {
         if (spec != null && spec.entry != null && !spec.entry.isEmpty()
             && host.currentProject() != null) {
@@ -157,14 +228,14 @@ public class RunDispatcher {
     }
 
     @Nullable
-    public DependencyResolver.BuildSpec loadBuildSpec() {
+    public LarvBuildParser.BuildSpec loadBuildSpec() {
         Project project = host.currentProject();
         if (project == null) return null;
         for (String name : new String[]{"larvbuild.json", "larv.json"}) {
             File f = new File(project.getRootDir(), name);
             if (f.exists()) {
                 try {
-                    return DependencyResolver.readBuildSpec(f);
+                    return LarvBuildParser.readBuildSpec(f);
                 } catch (Exception ignored) {
                 }
             }
@@ -172,7 +243,7 @@ public class RunDispatcher {
         return null;
     }
 
-    private void runScriptProgram(DependencyResolver.BuildSpec spec, String entryPath,
+    private void runScriptProgram(LarvBuildParser.BuildSpec spec, String entryPath,
                                   boolean python) {
         host.setBusy(true);
         host.typeCheckHandler().removeCallbacksAndMessages(null);
@@ -196,28 +267,6 @@ public class RunDispatcher {
         host.executor().execute(() -> {
             List<File> preloads = new ArrayList<>();
             List<File> pyDirs = new ArrayList<>();
-            if (spec != null && !spec.dependencies.isEmpty()) {
-                host.writeTerm(rs.programOut(), "Resolving " + spec.dependencies.size()
-                    + " dependencies from larvbuild.json...\n");
-                DependencyResolver.ResolveResult resolveResult = host.resolver().resolve(
-                    spec.dependencies, spec.repositories,
-                    msg -> host.writeTerm(rs.programOut(), "  " + msg + "\n"));
-                preloads.addAll(resolveResult.jars);
-                pyDirs.addAll(resolveResult.pyPackageDirs);
-                if (!resolveResult.success) {
-                    host.writeTerm(rs.programOut(),
-                        "Dependency error: " + resolveResult.error + "\n");
-                    host.closeTermStreams(rs.programOut(), rs.stdinOut());
-                    host.setBusy(false);
-                    host.setStatus("Dependency resolution failed");
-                    return;
-                }
-                if (!preloads.isEmpty() || !pyDirs.isEmpty()) {
-                    host.writeTerm(rs.programOut(), "Dependencies ready (" + preloads.size()
-                        + " packages)\n");
-                }
-            }
-
             host.writeTerm(rs.programOut(), "\n");
 
             String[] programArgs = spec != null
@@ -314,7 +363,7 @@ public class RunDispatcher {
             ? path.substring(root.length() + 1) : new File(path).getName();
     }
 
-    private void compileAndRunJava(DependencyResolver.BuildSpec buildSpec) {
+    private void compileAndRunJava(LarvBuildParser.BuildSpec buildSpec) {
         host.setBusy(true);
         host.typeCheckHandler().removeCallbacksAndMessages(null);
 
@@ -322,26 +371,7 @@ public class RunDispatcher {
 
         host.executor().execute(() -> {
             List<File> dependencyJars = new ArrayList<>();
-            if (buildSpec != null && !buildSpec.dependencies.isEmpty()) {
-                host.writeTerm(rs.programOut(), "Resolving " + buildSpec.dependencies.size()
-                    + " dependencies from larvbuild.json...\n");
-                DependencyResolver.ResolveResult resolveResult = host.resolver().resolve(
-                    buildSpec.dependencies, buildSpec.repositories,
-                    msg -> host.writeTerm(rs.programOut(), "  " + msg + "\n"));
-                dependencyJars.addAll(resolveResult.jars);
-                if (!resolveResult.success) {
-                    host.writeTerm(rs.programOut(),
-                        "Dependency error: " + resolveResult.error + "\n");
-                    host.setBusy(false);
-                    host.setStatus("Dependency resolution failed");
-                    host.closeTermStreams(rs.programOut(), rs.stdinOut());
-                    return;
-                }
-                host.writeTerm(rs.programOut(),
-                    "Dependencies ready (" + dependencyJars.size() + " jars)\n");
-            }
-
-            JavaCompiler.CompilationResult compileResult = host.javaCompiler().compile(
+                JavaCompiler.CompilationResult compileResult = host.javaCompiler().compile(
                 host.openFiles(), dependencyJars,
                 host.prefs().getString("javaLevel", "16"));
             if (!compileResult.isSuccess() && compileResult.getRawOutput() != null
@@ -413,7 +443,7 @@ public class RunDispatcher {
         });
     }
 
-    private boolean pushStdinFile(RunStreams rs, DependencyResolver.BuildSpec spec) {
+    private boolean pushStdinFile(RunStreams rs, LarvBuildParser.BuildSpec spec) {
         Project project = host.currentProject();
         if (spec == null || spec.stdinFile == null || project == null) return false;
         File stdinSource = new File(project.getRootDir(), spec.stdinFile);

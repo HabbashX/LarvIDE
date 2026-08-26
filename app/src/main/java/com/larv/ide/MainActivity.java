@@ -37,7 +37,7 @@ import androidx.viewpager2.widget.ViewPager2;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 import com.google.gson.Gson;
-import com.larv.ide.build.DependencyResolver;
+import com.larv.ide.build.LarvBuildParser;
 import com.larv.ide.compiler.Dexer;
 import com.larv.ide.compiler.JavaCompiler;
 import com.larv.ide.compiler.JavaRunner;
@@ -52,6 +52,7 @@ import com.larv.ide.model.Project;
 import com.larv.ide.project.ProjectManager;
 import com.larv.ide.project.ProjectRecognizer;
 import com.larv.ide.run.RunDispatcher;
+import com.larv.ide.run.backend.termux.TermuxCommandBackend;
 import com.larv.ide.session.SessionManager;
 import com.larv.ide.ui.dialog.SettingsDialog;
 import com.larv.ide.ui.adapter.BottomPanelAdapter;
@@ -137,7 +138,6 @@ public class MainActivity extends AppCompatActivity
     private ProjectManager projectManager;
     private JavaCompiler javaCompiler;
     private Dexer dexer;
-    private DependencyResolver dependencyResolver;
     private JavascriptRunner javascriptRunner;
     private PythonRunner pythonRunner;
     private JavaRunner javaRunner;
@@ -157,6 +157,7 @@ public class MainActivity extends AppCompatActivity
     private android.graphics.drawable.Drawable highlightedOriginalBackground = null;
     private boolean dropHandled = false;
     private RunDispatcher runDispatcher;
+    private TermuxCommandBackend termuxBackend;
     private SessionManager sessionManager;
     private com.larv.ide.run.backend.termux.TermuxSetupWizard termuxWizard;
 
@@ -270,9 +271,9 @@ public class MainActivity extends AppCompatActivity
 
         javaCompiler = new JavaCompiler(getApplicationContext());
         dexer = new Dexer(getApplicationContext());
-        dependencyResolver = new DependencyResolver(new File(getFilesDir(), "m2"));
         javascriptRunner = new JavascriptRunner();
-        runDispatcher = new RunDispatcher(new RunHost());
+        termuxBackend = new TermuxCommandBackend(getApplicationContext());
+        runDispatcher = new RunDispatcher(new RunHost(), termuxBackend);
         sessionManager = new SessionManager(new SessionManager.Host() {
             @Override public Project currentProject() { return currentProject; }
             @Override public java.util.List<OpenFile> openFiles() { return openFiles; }
@@ -852,7 +853,18 @@ public class MainActivity extends AppCompatActivity
         @Override public List<OpenFile> openFiles() { return openFiles; }
         @Override public JavaCompiler javaCompiler() { return javaCompiler; }
         @Override public Dexer dexer() { return dexer; }
-        @Override public DependencyResolver resolver() { return dependencyResolver; }
+        @Override public LarvBuildParser.BuildSpec loadBuildSpec() {
+            if (currentProject == null) return null;
+            for (String name : new String[]{"larvbuild.json", "larv.json"}) {
+                java.io.File f = new java.io.File(currentProject.getRootDir(), name);
+                if (f.exists()) {
+                    try {
+                        return LarvBuildParser.readBuildSpec(f);
+                    } catch (Exception ignored) { }
+                }
+            }
+            return null;
+        }
         @Override public JavascriptRunner javascriptRunner() { return javascriptRunner; }
         @Override public PythonRunner pythonRunner() { return pythonRunner; }
         @Override public JavaRunner javaRunner() { return javaRunner; }
@@ -890,6 +902,15 @@ public class MainActivity extends AppCompatActivity
         @Override public android.content.SharedPreferences prefs() { return prefs; }
         @Override public String findMainClass(List<OpenFile> files) {
             return MainActivity.this.findMainClass(files);
+        }
+        @Override public void executeTermux(com.larv.ide.run.backend.ExecRequest request) throws com.larv.ide.run.backend.BackendUnavailableException {
+            termuxBackend.execute(request);
+        }
+        @Override public void openTermuxWizard() {
+            runOnUiThread(() -> {
+                termuxWizard = new com.larv.ide.run.backend.termux.TermuxSetupWizard(MainActivity.this);
+                termuxWizard.show();
+            });
         }
         @Override public void toast(String message) {
             runOnUiThread(() -> Toast.makeText(MainActivity.this, message,
@@ -1380,6 +1401,24 @@ public class MainActivity extends AppCompatActivity
         sessionManager.saveNow();
     }
 
+    private void openTermuxShell() {
+        File workdir = currentProject != null ? currentProject.getRootDir() : getFilesDir();
+        try {
+            termuxBackend.execute(new com.larv.ide.run.backend.ExecRequest(
+                java.util.Arrays.asList("bash"), workdir.getAbsolutePath(), true));
+            Toast.makeText(this, "Opened a shell in Termux at: " + workdir.getName(),
+                Toast.LENGTH_SHORT).show();
+        } catch (Exception ex) {
+            Toast.makeText(this, "Termux not ready — opening setup wizard", Toast.LENGTH_SHORT).show();
+            showTermuxWizard();
+        }
+    }
+
+    private void showTermuxWizard() {
+        termuxWizard = new com.larv.ide.run.backend.termux.TermuxSetupWizard(this);
+        termuxWizard.show();
+    }
+
     private void openEmbeddedTerminal() {
         File workdir = currentProject != null
             ? currentProject.getRootDir() : getFilesDir();
@@ -1494,9 +1533,26 @@ public class MainActivity extends AppCompatActivity
         } else if (itemId == R.id.menu_open_terminal) {
             openEmbeddedTerminal();
             return true;
+        } else if (itemId == R.id.menu_open_termux_shell) {
+            openTermuxShell();
+            return true;
+        } else if (itemId == R.id.menu_languages) {
+            com.larv.ide.ui.dialog.LanguagesDialog.show(this, termuxBackend,
+                currentProject != null ? currentProject.getRootDir() : getFilesDir(),
+                (pkg) -> {
+                    try {
+                        termuxBackend.execute(new com.larv.ide.run.backend.ExecRequest(
+                            java.util.Arrays.asList("pkg", "install", "-y", pkg), null, true));
+                        Toast.makeText(this, "Installing " + pkg + " — check the Termux window",
+                            Toast.LENGTH_LONG).show();
+                    } catch (Exception ex) {
+                        Toast.makeText(this, "Termux not ready: open Build ▸ Run with Termux first",
+                            Toast.LENGTH_LONG).show();
+                    }
+                });
+            return true;
         } else if (itemId == R.id.menu_run_termux) {
-            termuxWizard = new com.larv.ide.run.backend.termux.TermuxSetupWizard(this);
-            termuxWizard.show();
+            compileAndRun();
             return true;
         } else if (itemId == R.id.menu_clean) {
             clearBuildOutput();

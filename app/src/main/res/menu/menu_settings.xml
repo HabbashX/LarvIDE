@@ -6,6 +6,10 @@
         android:title="Settings..." />
 
     <item
+        android:id="@+id/menu_languages"
+        android:title="Languages &amp; Runtimes" />
+
+    <item
         android:id="@+id/menu_about"
         android:title="About" />
 </menu>

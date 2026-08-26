@@ -10,6 +10,10 @@
         android:title="Compile Only" />
 
     <item
+        android:id="@+id/menu_open_termux_shell"
+        android:title="Terminal (Termux)" />
+
+    <item
         android:id="@+id/menu_open_terminal"
         android:title="Open Terminal" />
 

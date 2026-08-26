@@ -13,6 +13,7 @@ public class ProjectRecognizer {
     public static final String JAVASCRIPT = "JavaScript";
     public static final String HTML = "HTML";
     public static final String CSS = "CSS";
+    public static final String CPP = "C/C++";
 
     public static class Detection {
         public final List<String> languages = new ArrayList<>();
@@ -27,6 +28,9 @@ public class ProjectRecognizer {
         if (lower.endsWith(".js")) return JAVASCRIPT;
         if (lower.endsWith(".html") || lower.endsWith(".htm")) return HTML;
         if (lower.endsWith(".css")) return CSS;
+        if (lower.endsWith(".c")) return CPP;
+        if (lower.endsWith(".cpp") || lower.endsWith(".cc")
+            || lower.endsWith(".h") || lower.endsWith(".hpp")) return CPP;
         return null;
     }
 

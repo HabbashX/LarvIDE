@@ -37,8 +37,17 @@ public class ProjectManager {
 
     public ProjectManager(Context context) {
         this.context = context;
-        this.projectsRootDir = new File(context.getExternalFilesDir(null), PROJECTS_DIR_NAME);
-        this.projectsRootDir.mkdirs();
+        File sharedRoot = new File(android.os.Environment.getExternalStorageDirectory(), "LarvIDE/projects");
+        boolean sharedOk = (sharedRoot.mkdirs() || sharedRoot.isDirectory());
+        if (!sharedOk) {
+            Log.w(TAG, "Shared workspace unavailable, using app-internal projects dir");
+            sharedRoot = new File(context.getExternalFilesDir(null), PROJECTS_DIR_NAME);
+            sharedRoot.mkdirs();
+        }
+        this.projectsRootDir = sharedRoot;
+        if (sharedOk) {
+            migrateLegacyProjects(context, sharedRoot);
+        }
     }
 
     public void setListener(OnProjectChangeListener listener) {
@@ -60,6 +69,44 @@ public class ProjectManager {
         return projects;
     }
 
+
+    private void migrateLegacyProjects(Context context, File newRoot) {
+        try {
+            File legacy = new File(context.getExternalFilesDir(null), PROJECTS_DIR_NAME);
+            if (!legacy.isDirectory()) return;
+            android.content.SharedPreferences sp =
+                context.getSharedPreferences("larv_ide", Context.MODE_PRIVATE);
+            if (sp.getBoolean("legacy_projects_migrated", false)) return;
+            File[] dirs = legacy.listFiles(File::isDirectory);
+            if (dirs != null) {
+                for (File dir : dirs) {
+                    File target = new File(newRoot, dir.getName());
+                    if (target.exists()) continue;
+                    copyTree(dir, target);
+                }
+            }
+            sp.edit().putBoolean("legacy_projects_migrated", true).apply();
+            Log.i(TAG, "Legacy projects migrated to shared workspace");
+        } catch (Exception e) {
+            Log.w(TAG, "Project migration skipped: " + e.getMessage());
+        }
+    }
+
+    private static void copyTree(File src, File dst) throws IOException {
+        if (src.isDirectory()) {
+            if (!dst.mkdirs() && !dst.isDirectory()) throw new IOException("mkdir failed: " + dst);
+            File[] children = src.listFiles();
+            if (children == null) return;
+            for (File c : children) copyTree(c, new File(dst, c.getName()));
+        } else {
+            try (FileInputStream in = new FileInputStream(src);
+                 FileOutputStream out = new FileOutputStream(dst)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+        }
+    }
     public void createProject(String name, OnProjectCreatedCallback callback) {
         executor.execute(() -> {
             File projectDir = new File(projectsRootDir, sanitizeFileName(name));
