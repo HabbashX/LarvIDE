@@ -127,13 +127,13 @@ public class EditorFragment extends Fragment {
 
     public void showDiagnosticsJson(String json) {
         if (isReady && webView != null) {
-            webView.evaluateJavascript("window.showDiagnostics(" + json + ");", null);
+            webView.post(() -> webView.evaluateJavascript("window.showDiagnostics(" + json + ");", null));
         }
     }
 
     public void clearDiagnostics() {
         if (isReady && webView != null) {
-            webView.evaluateJavascript("window.clearDiagnostics();", null);
+            webView.post(() -> webView.evaluateJavascript("window.clearDiagnostics();", null));
         }
     }
 
@@ -145,7 +145,7 @@ public class EditorFragment extends Fragment {
 
     public void execAction(String action) {
         if (isReady && webView != null) {
-            webView.evaluateJavascript("window.execAction('" + action + "');", null);
+            webView.post(() -> webView.evaluateJavascript("window.execAction('" + action + "');", null));
         }
     }
 
@@ -166,19 +166,19 @@ public class EditorFragment extends Fragment {
             + ",indentGuides:" + indentGuides
             + ",highlightLine:" + highlightLine
             + ",fontFamily:'" + fontFamily.replace("'", "") + "'});";
-        webView.evaluateJavascript(js, null);
+        webView.post(() -> webView.evaluateJavascript(js, null));
     }
 
     public void applyEditorTheme(String themeId) {
         if (!isReady || webView == null || themeId == null || themeId.isEmpty()) return;
         final String safe = themeId.replaceAll("[^a-zA-Z0-9\\-]", "");
-        webView.evaluateJavascript("window.setEditorTheme('" + safe + "');", null);
+        webView.post(() -> webView.evaluateJavascript("window.setEditorTheme('" + safe + "');", null));
     }
 
     public void setCursorPositions(String positionsJson) {
         if (!isReady || webView == null) return;
         String js = "window.setCursorPositions(" + positionsJson + ");";
-        webView.evaluateJavascript(js, null);
+        webView.post(() -> webView.evaluateJavascript(js, null));
     }
 
     @Override

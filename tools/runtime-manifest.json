@@ -1,0 +1,24 @@
+{
+  "_comment": "Pinned runtime packs. Each entry: id, url (zip), sha256, files[] with rename rules. ELF binaries must be renamed to lib<name>.so so AGP packages them into jniLibs.",
+  "engines": [
+    {
+      "id": "python",
+      "url": "https://github.com/HabbashX/larvide-runtimes/releases/download/v0.1/python-arm64.zip",
+      "sha256": "TBD_AFTER_FIRST_RELEASE",
+      "files": [
+        { "from": "python3", "to": "jniLibs/libpyrun.so" },
+        { "from": "libpython3.12.so", "to": "jniLibs/libpython312.so" },
+        { "from": "Lib.zip", "to": "assets/runtimes/python/Lib.zip" }
+      ]
+    },
+    {
+      "id": "jdk17",
+      "url": "https://github.com/HabbashX/larvide-runtimes/releases/download/v0.1/jdk17-arm64.zip",
+      "sha256": "TBD_AFTER_FIRST_RELEASE",
+      "files": [
+        { "from": "bin/java", "to": "jniLibs/libjavalauncher.so" },
+        { "from": "lib/server/libjvm.so", "to": "jniLibs/libjvm.so" }
+      ]
+    }
+  ]
+}
