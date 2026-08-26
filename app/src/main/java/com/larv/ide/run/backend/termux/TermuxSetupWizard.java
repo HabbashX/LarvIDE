@@ -67,7 +67,12 @@ public class TermuxSetupWizard {
         boolean permission = environment.hasRunCommandPermission(activity);
 
         addStep(installed, "1. Termux app installed",
-            installed ? "Found Termux " + safeVersion() : "Termux is not installed",
+            installed
+                ? "Found Termux " + safeVersion()
+                    + " — installer: " + installerSource() + " · pkg: com.termux"
+                : "Termux is not installed (package com.termux not visible to LarvIDE).\n"
+                    + "If it IS installed, your device may be hiding it — reinstall "
+                    + "LarvIDE after Termux, or use a Termux build from F-Droid/GitHub.",
             installed ? null : "Install from F-Droid", v -> openUrl(F_DROID_URL));
 
         if (installed) {
@@ -182,6 +187,20 @@ public class TermuxSetupWizard {
     private String safeVersion() {
         String v = environment.installedVersion(activity);
         return v == null ? "" : "(v" + v + ")";
+    }
+
+    private String installerSource() {
+        if (environment.isPlayStoreBuild(activity)) {
+            return "Google Play (BROKEN build)";
+        }
+        try {
+            String src = activity.getPackageManager()
+                .getInstallSourceInfo(TermuxEnvironment.TERMUX_PACKAGE)
+                .getInitiatingPackageName();
+            return src == null ? "unknown/sideloaded" : src;
+        } catch (Exception e) {
+            return "unknown/sideloaded";
+        }
     }
 
     private int dp(int v) {

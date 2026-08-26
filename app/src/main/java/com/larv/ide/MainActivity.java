@@ -248,13 +248,14 @@ public class MainActivity extends AppCompatActivity
 
         bottomPanelAdapter = new BottomPanelAdapter(this);
         bottomViewPager.setAdapter(bottomPanelAdapter);
-        bottomViewPager.setOffscreenPageLimit(3);
+        bottomViewPager.setOffscreenPageLimit(4);
 
         new TabLayoutMediator(bottomTabLayout, bottomViewPager, (tab, position) -> {
             String title;
             switch (position) {
                 case 1: title = getString(R.string.errors_title); break;
                 case 2: title = "Preview"; break;
+                case 3: title = "Terminal"; break;
                 default: title = getString(R.string.run_code); break;
             }
             tab.setText(title);
@@ -426,6 +427,7 @@ public class MainActivity extends AppCompatActivity
         if (prefs != null) {
             prefs.edit().putString(PREF_LAST_PROJECT, project.getPath()).apply();
         }
+        closeAllOpenTabs();
         runOnUiThread(() -> {
             bottomToolWindow.setVisibility(editorMaximized ? View.GONE : View.VISIBLE);
             bottomWindowVisible = true;
@@ -1378,6 +1380,31 @@ public class MainActivity extends AppCompatActivity
         sessionManager.saveNow();
     }
 
+    private void openEmbeddedTerminal() {
+        File workdir = currentProject != null
+            ? currentProject.getRootDir() : getFilesDir();
+        bottomPanelAdapter.getTerminalFragment().openSession(workdir);
+        bottomViewPager.setCurrentItem(3);
+        bottomWindowVisible = true;
+        bottomToolWindow.setVisibility(View.VISIBLE);
+        bottomResizer.setVisibility(View.VISIBLE);
+    }
+
+    private void closeAllOpenTabs() {
+        runOnUiThread(() -> {
+            openFiles.clear();
+            openFilesByPath.clear();
+            tabLayout.removeAllTabs();
+            projectIndexer.clear();
+            javaCompiler.resetCheckState();
+            currentEditorFile = "";
+            if (editorFragment != null && editorFragment.isAdded()) {
+                editorFragment.setContent("", "");
+            }
+            noEditorPlaceholder.setVisibility(View.VISIBLE);
+        });
+    }
+
     private void updateWindowTitle() {
         String title = getString(R.string.app_name);
         if (currentProject != null) {
@@ -1463,6 +1490,9 @@ public class MainActivity extends AppCompatActivity
             return true;
         } else if (itemId == R.id.menu_compile) {
             compileAndRun();
+            return true;
+        } else if (itemId == R.id.menu_open_terminal) {
+            openEmbeddedTerminal();
             return true;
         } else if (itemId == R.id.menu_run_termux) {
             termuxWizard = new com.larv.ide.run.backend.termux.TermuxSetupWizard(this);

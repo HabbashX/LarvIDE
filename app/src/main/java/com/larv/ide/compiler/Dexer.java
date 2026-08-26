@@ -35,7 +35,7 @@ public class Dexer {
 
     @SuppressLint("NewApi")
     public DexResult dex(List<File> classFiles, List<File> programArchives, File outputDir) {
-        File dexOutputDir = outputDir != null ? outputDir : this.outputDir;
+        File dexOutputDir = outputDir != null ? outputDir : freshRunDir();
         dexOutputDir.mkdirs();
 
         try {
@@ -79,6 +79,33 @@ public class Dexer {
         } else {
             return new DexResult(false, null, "Failed to create JAR from class files");
         }
+    }
+
+    private static final int MAX_RUN_DIRS = 3;
+
+    private File freshRunDir() {
+        File[] existing = outputDir.listFiles(
+            (dir, name) -> name.startsWith("run_"));
+        if (existing != null) {
+            java.util.Arrays.sort(existing,
+                java.util.Comparator.comparingLong(File::lastModified).reversed());
+            for (int i = MAX_RUN_DIRS - 1; i < existing.length; i++) {
+                deleteRecursively(existing[i]);
+            }
+        }
+        File runDir = new File(outputDir, "run_" + System.currentTimeMillis());
+        runDir.mkdirs();
+        return runDir;
+    }
+
+    private void deleteRecursively(File file) {
+        File[] children = file.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                deleteRecursively(child);
+            }
+        }
+        file.delete();
     }
 
     private void createJarFromClassFiles(List<File> classFiles, File jarFile) throws IOException {

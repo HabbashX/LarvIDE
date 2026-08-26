@@ -79,9 +79,8 @@ public class ProjectManager {
             boolean success = projectDir.mkdirs();
             if (success) {
                 File mainFile = new File(projectDir, "Main.java");
-                String template = context.getString(com.larv.ide.R.string.java_file_template);
                 try (FileOutputStream fos = new FileOutputStream(mainFile)) {
-                    fos.write(String.format(template, "Main").getBytes(StandardCharsets.UTF_8));
+                    fos.write(templateFor("Main.java").getBytes("UTF-8"));
                 } catch (IOException e) {
                     Log.e(TAG, "Failed to create Main.java", e);
                 }
