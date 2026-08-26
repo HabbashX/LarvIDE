@@ -8,7 +8,7 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-public class PyRunner {
+public class PythonRunner {
 
     private static final String TAG = "PyRunner";
     private Object pythonInstance;
@@ -49,7 +49,7 @@ public class PyRunner {
 
     private final android.content.Context appContext;
 
-    public PyRunner(android.content.Context appContext) {
+    public PythonRunner(android.content.Context appContext) {
         this.appContext = appContext != null ? appContext.getApplicationContext() : null;
     }
 

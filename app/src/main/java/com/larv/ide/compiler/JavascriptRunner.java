@@ -13,7 +13,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-public class JsRunner {
+public class JavascriptRunner {
 
     public static class RunResult {
         public final boolean success;

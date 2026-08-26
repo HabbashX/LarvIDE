@@ -13,18 +13,18 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class JsRunnerTest {
+public class JavascriptRunnerTest {
 
-    private static String runCapture(JsRunner runner, String source, List<File> preloads) {
+    private static String runCapture(JavascriptRunner runner, String source, List<File> preloads) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        JsRunner.RunResult r = runner.run(source, "test.js", preloads, out, out);
+        JavascriptRunner.RunResult r = runner.run(source, "test.js", preloads, out, out);
         assertTrue("run failed: " + r.error, r.success);
         return new String(out.toByteArray(), StandardCharsets.UTF_8);
     }
 
     @Test
     public void capturesConsoleAndPrint() {
-        JsRunner runner = new JsRunner();
+        JavascriptRunner runner = new JavascriptRunner();
         String output = runCapture(runner,
             "console.log('Hello JS'); var a=[1,2,3].map(function(x){return x*2;}); print(a.join(','));",
             null);
@@ -39,7 +39,7 @@ public class JsRunnerTest {
         try (FileWriter w = new FileWriter(dep)) {
             w.write("function larvHelper(n){ return 'dep' + n; }");
         }
-        JsRunner runner = new JsRunner();
+        JavascriptRunner runner = new JavascriptRunner();
         String output = runCapture(runner, "print(larvHelper(7));",
             new ArrayList<>(Collections.singletonList(dep)));
         assertTrue(output.contains("dep7"));
@@ -47,9 +47,9 @@ public class JsRunnerTest {
 
     @Test
     public void programArgumentsExposedAsGlobal() {
-        JsRunner runner = new JsRunner();
+        JavascriptRunner runner = new JavascriptRunner();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        JsRunner.RunResult r = runner.run("print(arguments.join('|'));", "args.js",
+        JavascriptRunner.RunResult r = runner.run("print(arguments.join('|'));", "args.js",
             null, out, out, new String[]{"alpha", "beta"});
         assertTrue(r.success);
         String output = new String(out.toByteArray(), StandardCharsets.UTF_8);
@@ -58,18 +58,18 @@ public class JsRunnerTest {
 
     @Test
     public void syntaxErrorsAreReportedNotThrown() {
-        JsRunner runner = new JsRunner();
+        JavascriptRunner runner = new JavascriptRunner();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        JsRunner.RunResult r = runner.run("var x = ;;; broken(", "bad.js", null, out, out);
+        JavascriptRunner.RunResult r = runner.run("var x = ;;; broken(", "bad.js", null, out, out);
         assertTrue(!r.success);
         assertNotNull(r.error);
     }
 
     @Test
     public void runtimeErrorsReportLineNumber() {
-        JsRunner runner = new JsRunner();
+        JavascriptRunner runner = new JavascriptRunner();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        JsRunner.RunResult r = runner.run(
+        JavascriptRunner.RunResult r = runner.run(
             "function f(){ return undefinedValue + 1; }\nf();", "boom.js", null, out, out);
         assertTrue(!r.success);
         assertNotNull(r.error);

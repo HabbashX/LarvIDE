@@ -9,13 +9,13 @@ import org.junit.Test;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 
-public class PyRunnerTest {
+public class PythonRunnerTest {
 
     @Test
     public void withoutEmbeddedRuntimeReportsGuidanceNotCrash() {
-        PyRunner runner = new PyRunner(null);
+        PythonRunner runner = new PythonRunner(null);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        PyRunner.RunResult r = runner.run("print('hi')", null, out, out);
+        PythonRunner.RunResult r = runner.run("print('hi')", null, out, out);
 
         assertFalse(r.success);
         assertNotNull(r.error);
