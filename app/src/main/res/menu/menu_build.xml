@@ -10,6 +10,11 @@
         android:title="Compile Only" />
 
     <item
+        android:id="@+id/menu_run_termux"
+        android:enabled="false"
+        android:title="Run with Termux" />
+
+    <item
         android:id="@+id/menu_clean"
         android:title="Clean Project" />
 </menu>
