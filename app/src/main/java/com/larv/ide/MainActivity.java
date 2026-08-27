@@ -1626,11 +1626,167 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void showAboutDialog() {
+        String version = "1.1";
+        try {
+            version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception ignored) {}
+
+        android.widget.ScrollView scroller = new android.widget.ScrollView(this);
+        android.widget.LinearLayout root = new android.widget.LinearLayout(this);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = dp(20);
+        root.setPadding(pad, dp(12), pad, dp(8));
+        scroller.addView(root);
+
+        android.widget.TextView title = new android.widget.TextView(this);
+        title.setText("LarvIDE");
+        title.setTextSize(22);
+        title.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        root.addView(title);
+
+        android.widget.TextView subtitle = new android.widget.TextView(this);
+        subtitle.setText("Real-World Java IDE for Android  •  v" + version);
+        subtitle.setTextSize(12);
+        subtitle.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        subtitle.setPadding(0, dp(2), 0, dp(12));
+        root.addView(subtitle);
+
+        root.addView(createAboutDivider());
+        root.addView(createAboutSectionTitle("Purpose"));
+        root.addView(createAboutBody(
+            "LarvIDE was built for university students in Gaza who cannot afford laptops. "
+            + "Many students need to pass Java, data-structures and algorithms assignments on a phone alone. "
+            + "LarvIDE gives them a complete, offline-first IDE — editor, compiler, runner and terminal — right on Android."));
+
+        root.addView(createAboutSectionTitle("Developer"));
+        root.addView(createAboutBody("Project Developed By Abd Allah Al Habbash"));
+        root.addView(createAboutLinkRow("GitHub: github.com/HabbashX", "https://github.com/HabbashX"));
+        root.addView(createAboutLinkRow("Email: abdalahalhabbash@gmail.com", "mailto:abdalahalhabbash@gmail.com"));
+        root.addView(createAboutLinkRow("Phone: 0567162449", "tel:0567162449"));
+
+        root.addView(createAboutDivider());
+        root.addView(createAboutSectionTitle("Support the Project  —  Donate"));
+        root.addView(createAboutBody(
+            "You can help me to develop the IDE and enhance it for more students. "
+            + "Every donation — even small — keeps the project alive. Thank you!"));
+
+        android.widget.LinearLayout donateCard = new android.widget.LinearLayout(this);
+        donateCard.setOrientation(android.widget.LinearLayout.VERTICAL);
+        donateCard.setBackground(ContextCompat.getDrawable(this, R.drawable.edittext_ide));
+        donateCard.setPadding(dp(14), dp(12), dp(14), dp(12));
+        android.widget.LinearLayout.LayoutParams cardLp = new android.widget.LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cardLp.topMargin = dp(8);
+        donateCard.setLayoutParams(cardLp);
+
+        android.widget.TextView donateLabel = new android.widget.TextView(this);
+        donateLabel.setText("PalPay Wallet");
+        donateLabel.setTextSize(11);
+        donateLabel.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        donateCard.addView(donateLabel);
+
+        android.widget.TextView walletNumber = new android.widget.TextView(this);
+        walletNumber.setText("0567162449");
+        walletNumber.setTextSize(18);
+        walletNumber.setTextColor(themeColor(android.R.attr.colorPrimary));
+        walletNumber.setTypeface(null, android.graphics.Typeface.BOLD);
+        walletNumber.setTextIsSelectable(true);
+        donateCard.addView(walletNumber);
+
+        android.widget.TextView walletOwner = new android.widget.TextView(this);
+        walletOwner.setText("Wallet owner: Abd Allah Al Habbash");
+        walletOwner.setTextSize(12);
+        walletOwner.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        walletOwner.setPadding(0, dp(2), 0, 0);
+        donateCard.addView(walletOwner);
+
+        root.addView(donateCard);
+
+        android.widget.TextView licenceNote = new android.widget.TextView(this);
+        licenceNote.setText("Licence: LarvIDE Educational Source-Available v1.0  •  Free for study & private modification. "
+            + "Publishing a modified version requires permission. See PERMISSIONS.md");
+        licenceNote.setTextSize(10);
+        licenceNote.setTextColor(ContextCompat.getColor(this, R.color.text_disabled));
+        licenceNote.setPadding(0, dp(16), 0, 0);
+        root.addView(licenceNote);
+
         new AlertDialog.Builder(this)
-            .setTitle("About LarvIDE")
-            .setMessage("LarvIDE - Lightweight Java IDE for Android\nVersion 1.0\nBuilt with ECJ, R8, Monaco Editor")
-            .setPositiveButton("OK", null)
+            .setView(scroller)
+            .setPositiveButton("Close", null)
+            .setNeutralButton("GitHub", (d, w) -> {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/HabbashX")));
+                } catch (Exception ignored) {}
+            })
+            .setNegativeButton("Copy Wallet", (d, w) -> {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("PalPay Wallet", "0567162449"));
+                    Toast.makeText(this, "Wallet number copied: 0567162449", Toast.LENGTH_SHORT).show();
+                }
+            })
             .show();
+    }
+
+    private android.widget.TextView createAboutSectionTitle(String text) {
+        android.widget.TextView tv = new android.widget.TextView(this);
+        tv.setText(text);
+        tv.setTextSize(13);
+        tv.setTypeface(null, android.graphics.Typeface.BOLD);
+        tv.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        tv.setPadding(0, dp(14), 0, dp(4));
+        return tv;
+    }
+
+    private android.widget.TextView createAboutBody(String text) {
+        android.widget.TextView tv = new android.widget.TextView(this);
+        tv.setText(text);
+        tv.setTextSize(13);
+        tv.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        tv.setLineSpacing(dp(2), 1.0f);
+        return tv;
+    }
+
+    private View createAboutDivider() {
+        View v = new View(this);
+        v.setBackgroundColor(ContextCompat.getColor(this, R.color.divider));
+        android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+        lp.topMargin = dp(10);
+        lp.bottomMargin = dp(4);
+        v.setLayoutParams(lp);
+        return v;
+    }
+
+    private android.widget.LinearLayout createAboutLinkRow(String label, String url) {
+        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
+        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(4), 0, dp(2));
+
+        android.widget.TextView tv = new android.widget.TextView(this);
+        tv.setText(label);
+        tv.setTextSize(13);
+        tv.setTextColor(themeColor(android.R.attr.colorPrimary));
+        tv.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        tv.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+            } catch (Exception ignored) {}
+        });
+        row.addView(tv);
+
+        android.widget.TextView action = new android.widget.TextView(this);
+        action.setText("↗");
+        action.setTextSize(14);
+        action.setTextColor(themeColor(android.R.attr.colorPrimary));
+        action.setPadding(dp(8), 0, 0, 0);
+        row.addView(action);
+        row.setOnClickListener(v -> tv.performClick());
+        row.setBackgroundResource(android.R.drawable.list_selector_background);
+        return row;
     }
 
     private void toggleLeftWindow() {

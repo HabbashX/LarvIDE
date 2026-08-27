@@ -13,6 +13,8 @@ LarvIDE is **Source-Available** under the `LarvIDE Educational Source-Available 
 
 This applies to **everyone**, including universities, schools, and companies.
 
+> **Universities / Schools — Required Attribution:** Even when you use the *unmodified* official build in a classroom or lab, please give visible credit to students as required by `LICENSE` §4(e): **`Project Developed By Abd Allah Al Habbash — github.com/HabbashX`** (ideally clickable) in your course material, lab handout, or by keeping LarvIDE's About screen intact, so students know who built the tool for them.
+
 ## How to request permission
 
 Send an email to **abdalahalhabbash@gmail.com** with:

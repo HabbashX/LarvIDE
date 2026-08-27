@@ -54,6 +54,11 @@ a) Retain `Copyright (c) 2026 Abdallah Al-Habbash (HabbashX)` and this Licence i
 b) Cause modified files to carry a prominent notice stating You changed them and the date of change;
 c) Not remove or alter any `NOTICE` or attribution files;
 d) Clearly identify Your distribution as a *modified version* — e.g., "Based on LarvIDE by HabbashX" — and not as the official LarvIDE.
+e) **University / Institutional Attribution:** If You are a University, School, Institute, or educational organisation that *uses* or *distributes* the Software (even unmodified) for classroom, lab, or coursework purposes, You must give conspicuous credit to the original author where end-users can see it — for example in the application's **About screen**, course material, or lab handout — with the text:
+
+> **Project Developed By Abd Allah Al Habbash — github.com/HabbashX**
+
+   You are encouraged (but not required) to make `github.com/HabbashX` a clickable link so students can discover the original project and its author.
 
 ### 5. Trademarks
 
