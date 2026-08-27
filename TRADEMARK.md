@@ -2,19 +2,17 @@
 **Effective Date:** August 16, 2026
 
 **Project:** Larv IDE
-**Trademark Owner:** HabbashX
+**Trademark Owner:** HabbashX — Copyright (c) 2026 Abdallah Al-Habbash
 
 ## 1. Purpose
 
-Larv IDE is an open-source software project developed and maintained by HabbashX.
+Larv IDE is developed and maintained by HabbashX and is distributed under the **LarvIDE Educational Source-Available Licence v1.0** (`LICENSE`).
 
-The source code of Larv IDE is released under the Apache License, Version 2.0.
+Unlike permissive open-source licences, this licence **requires explicit written permission to distribute modified versions**. See `PERMISSIONS.md`.
 
 This Trademark and Branding Policy governs the use of the **Larv IDE** name, logo, icons, visual identity, and other project branding.
 
-The Apache License grants rights to the software itself. It does **not** grant unrestricted rights to use the Larv IDE name, logo, or other trademarks.
-
-The separation between software licensing and trademark protection is intentional and is consistent with the approach used by major open-source projects.
+The Licence grants rights to the software itself. It does **not** grant unrestricted rights to use the Larv IDE name, logo, or other trademarks.
 
 ---
 
@@ -33,23 +31,20 @@ All rights in these marks are reserved by HabbashX, except where explicitly stat
 
 ---
 
-## 3. What the Apache License Allows
+## 3. What the Licence Allows
 
-The Apache License 2.0 allows you to:
+Without additional permission, the LarvIDE Licence allows you to:
 
-* Use Larv IDE source code.
+* Use Larv IDE.
 * Study the source code.
-* Modify the source code.
-* Create forks.
-* Create derivative works.
-* Redistribute original versions.
-* Redistribute modified versions.
-* Use the software commercially.
-* Include Larv IDE code in larger projects.
+* Modify it *privately* for personal/internal study.
+* Redistribute *unmodified* copies with attribution.
 
-These rights are governed by the Apache License 2.0.
+**Distributing modified versions — including by universities and companies — requires prior written permission.** See `LICENSE` §3.2 and `PERMISSIONS.md`.
 
-No additional permission from HabbashX is required to exercise rights granted by the Apache License.
+These rights are governed by the LarvIDE Educational Source-Available Licence v1.0.
+
+Permission to distribute modified versions must be obtained from HabbashX.
 
 ---
 
@@ -65,7 +60,7 @@ A modified version of Larv IDE may not represent itself as the official Larv IDE
 
 ## 5. Unmodified Larv IDE
 
-You may redistribute an unmodified version of Larv IDE under the Apache License 2.0.
+You may redistribute an unmodified version of Larv IDE under the LarvIDE Licence §3.1.
 
 When redistributing the official, unmodified software:
 
@@ -78,9 +73,11 @@ When redistributing the official, unmodified software:
 
 ## 6. Modified Versions
 
-You are free to modify Larv IDE under the Apache License 2.0.
+Private modification for study/internal use does not require permission.
 
-However, a modified version must not be presented as the official Larv IDE release.
+**Publishing or distributing a modified version — including by universities, schools, and companies — requires prior written permission per `LICENSE` §3.2 and `PERMISSIONS.md`.** See those files for the request process.
+
+Any distributed modified version (whether permission was required or granted) must not be presented as the official Larv IDE release.
 
 If your version contains modifications, you should clearly identify it as a modified or derivative version.
 
@@ -152,11 +149,9 @@ This restriction does not prevent factual statements that your software is based
 
 ## 10. Forks
 
-Forking Larv IDE is permitted under the Apache License 2.0.
+You may fork Larv IDE for private study without permission.
 
-Forks do not require permission from HabbashX.
-
-However, forks should use a distinct product name and branding when distributed as independent products.
+Distributing a fork (publishing it) requires permission per `LICENSE` §3.2, and distributed forks must use a distinct product name and branding.
 
 Fork maintainers are responsible for making it clear that their fork is independently maintained unless it has been officially adopted or endorsed by HabbashX.
 
@@ -164,24 +159,13 @@ Fork maintainers are responsible for making it clear that their fork is independ
 
 ## 11. Commercial Products
 
-Commercial use of Larv IDE source code is permitted under the Apache License 2.0.
-
-You may:
-
-* Sell products containing Larv IDE code.
-* Use Larv IDE code in commercial software.
-* Modify Larv IDE for commercial purposes.
-* Distribute commercial products based on Larv IDE.
-
-However, commercial products may not use Larv IDE branding in a manner that suggests official affiliation, sponsorship, or endorsement by HabbashX.
-
-The Apache License allows commercial use; this Trademark Policy protects the Larv IDE brand separately.
+Use and private modification of Larv IDE for commercial purposes does not require permission. Distributing a modified commercial product does — see `LICENSE` §3.2. Any commercial product, whether permission was granted or is pending, may not use Larv IDE branding in a manner that suggests official affiliation, sponsorship, or endorsement by HabbashX.
 
 ---
 
 ## 12. Attribution
 
-When redistributing Larv IDE or substantial portions of its source code, you must comply with the attribution, copyright, NOTICE, and other requirements of the Apache License 2.0.
+When redistributing Larv IDE or substantial portions of its source code, you must comply with the attribution, copyright, `LICENSE`, and `NOTICE` requirements.
 
 Nothing in this policy removes or changes those requirements.
 
@@ -189,9 +173,9 @@ Nothing in this policy removes or changes those requirements.
 
 ## 13. Third-Party Components
 
-Larv IDE may contain third-party software and libraries that are distributed under their own licenses.
+Larv IDE may contain third-party software and libraries that are distributed under their own licences.
 
-Those licenses remain applicable to their respective components.
+Those licences remain applicable to their respective components.
 
 The Larv IDE trademark policy applies only to Larv IDE's own branding and trademarks.
 
@@ -199,7 +183,7 @@ The Larv IDE trademark policy applies only to Larv IDE's own branding and tradem
 
 ## 14. Requesting Permission
 
-Although permission is generally not required to modify the software itself, you may request permission from HabbashX if you wish to:
+Permission is required to distribute modified versions (`LICENSE` §3.2). You may also request permission from HabbashX if you wish to:
 
 * Use the official Larv IDE logo for a fork.
 * Use Larv IDE branding as part of an official-looking distribution.
@@ -226,7 +210,7 @@ HabbashX may update this Trademark and Branding Policy from time to time.
 
 Changes apply to future uses of the Larv IDE trademarks unless otherwise stated.
 
-Changes to this policy do not modify the rights granted by the Apache License 2.0 for versions of the software already released under that license.
+Changes to this policy do not modify the rights granted by the LarvIDE Licence for versions of the software already released under that licence.
 
 ---
 
@@ -242,15 +226,11 @@ Requests should clearly describe the intended use of the Larv IDE name, logo, or
 
 ## 18. Final Statement
 
-Larv IDE is open-source software.
+Larv IDE is **Source-Available** software under the **LarvIDE Educational Source-Available Licence v1.0** (`LICENSE`).
 
-You are free to use, study, modify, fork, redistribute, and commercially use the Larv IDE software in accordance with the Apache License, Version 2.0.
+You are free to **use, study, and privately modify** LarvIDE without permission.
 
-You do not need permission from HabbashX to modify the source code.
-
-You do not need permission from HabbashX to create a fork.
-
-You do not need permission from HabbashX to commercially use the source code.
+You **do need permission** to *distribute* a modified version — including by universities, schools, and companies (see `LICENSE` §3.2 and `PERMISSIONS.md`).
 
 However, the **Larv IDE name, logo, and official branding remain protected trademarks and may not be used to create confusion about the origin, endorsement, or official status of a modified or independently distributed product.
 

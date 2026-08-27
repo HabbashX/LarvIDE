@@ -140,4 +140,12 @@ Students in resource-constrained environments (e.g., Gaza) who have Android phon
 
 ## License
 
-Apache-2.0 — see `LICENSE`. Termux-derived packs retain their upstream licenses (Python PSF, OpenJDK GPL+CP, clang).
+**LarvIDE Educational Source-Available Licence v1.0** — see [`LICENSE`](LICENSE).
+
+*   **Use & private study:** free for everyone, including Gaza students and universities — no permission needed.
+*   **Share unmodified copies:** allowed with copyright & licence preserved.
+*   **Publish a *modified* version (forks, Play Store builds, university distributions) — including by companies, universities, and schools — requires prior written permission.** See [`PERMISSIONS.md`](PERMISSIONS.md) for the 4-line email template. For branding rules see [`TRADEMARK.md`](TRADEMARK.md).
+
+Contributions via Pull Requests to the official repository are welcome under the same licence.
+
+Third-party packs retain their upstream licences (Python PSF, OpenJDK GPL+CP, clang).
