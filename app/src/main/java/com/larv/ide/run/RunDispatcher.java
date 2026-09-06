@@ -64,6 +64,17 @@ public class RunDispatcher {
             throw new BackendUnavailableException(
                 com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
         }
+        /**
+         * Run a command as a REAL interactive Linux process: stdin stays open so
+         * the user can type into the program (Scanner, input(), readline).
+         * {@code stdinPrefeed} (e.g. larvbuild.json run.stdin file) is written
+         * first, then the session stays open for the user.
+         */
+        default void runEmbeddedInteractive(ExecRequest request, byte[] stdinPrefeed)
+                throws BackendUnavailableException {
+            throw new BackendUnavailableException(
+                com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
+        }
         default void openEmbeddedSetup() { openTermuxWizard(); }
     }
 
@@ -199,14 +210,40 @@ public class RunDispatcher {
             host.setBusy(false);
             return;
         }
+        byte[] prefeed = readStdinPrefeed(spec);
+        if (prefeed != null) {
+            host.setStatus("stdin: " + spec.stdinFile + " (you can keep typing)");
+        }
         try {
-            host.executeEmbedded(new ExecRequest(cmd, workdir.getAbsolutePath(), true));
+            host.runEmbeddedInteractive(
+                new ExecRequest(cmd, workdir.getAbsolutePath(), true), prefeed);
             host.setStatus("Running via embedded Linux: " + String.join(" ", cmd));
             host.setBusy(false);
         } catch (BackendUnavailableException ex) {
             host.setBusy(false);
             host.toast("Linux runtime not ready: " + ex.getState());
             host.openEmbeddedSetup();
+        }
+    }
+
+    /** Raw bytes of the larvbuild.json run.stdin file, or null. */
+    @Nullable
+    private byte[] readStdinPrefeed(LarvBuildParser.BuildSpec spec) {
+        Project project = host.currentProject();
+        if (spec == null || spec.stdinFile == null || project == null) return null;
+        File stdinSource = new File(project.getRootDir(), spec.stdinFile);
+        if (!stdinSource.exists()) {
+            host.toast("stdin file not found: " + spec.stdinFile);
+            return null;
+        }
+        try (FileInputStream fis = new FileInputStream(stdinSource)) {
+            byte[] buf = new byte[8192];
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            int n;
+            while ((n = fis.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toByteArray();
+        } catch (IOException e) {
+            return null;
         }
     }
 

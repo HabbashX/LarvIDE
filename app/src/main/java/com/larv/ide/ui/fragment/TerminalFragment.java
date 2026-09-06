@@ -75,12 +75,20 @@ public class TerminalFragment extends Fragment {
         SafeEmulatorView view = new SafeEmulatorView(requireContext(), session,
             getResources().getDisplayMetrics());
         view.setTextSize(13);
+        view.setUseCookedIME(true);
         view.setColorScheme(DARK_SCHEME);
 
         terminalContainer.addView(view, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         terminalView = view;
         view.requestFocus();
+        android.view.inputmethod.InputMethodManager imm =
+            (android.view.inputmethod.InputMethodManager) requireContext()
+                .getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.showSoftInput(view,
+                android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+        }
         showExtraKeysBar();
     }
 

@@ -174,6 +174,33 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         return t;
     }
 
+    /**
+     * Interactive command process for Run-with-input: stdin is LEFT OPEN so the
+     * user can type into Scanner / input() / readline while the program runs.
+     * stderr is merged into stdout (single terminal stream, like a real PTY).
+     * The caller owns the process lifetime and must close its streams.
+     */
+    public Process openCommandProcess(ExecRequest request) throws Exception {
+        SetupState state = setupState();
+        if (state != SetupState.READY) {
+            throw new BackendUnavailableException(state);
+        }
+        List<String> prootCmd = buildProotCommand(request);
+        ProcessBuilder pb = new ProcessBuilder(prootCmd);
+        if (request.getWorkdir() != null) {
+            pb.directory(new File(request.getWorkdir()));
+        }
+        java.util.Map<String, String> env = pb.environment();
+        File prefix = new File(appContext.getFilesDir(), "usr");
+        env.put("PREFIX", prefix.getAbsolutePath());
+        env.put("HOME", new File(appContext.getFilesDir(), "home").getAbsolutePath());
+        env.put("TERM", "xterm-256color");
+        env.put("PATH", prefix.getAbsolutePath() + "/bin:" + prefix.getAbsolutePath() + "/bin/applets");
+        pb.redirectErrorStream(true);
+        // NOTE: stdin intentionally left open — the terminal view drives it.
+        return pb.start();
+    }
+
     /** Interactive shell process for the embedded terminal view. */
     public Process openShell(String workdir) throws Exception {
         SetupState state = setupState();

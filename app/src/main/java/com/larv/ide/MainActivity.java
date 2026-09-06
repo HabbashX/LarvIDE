@@ -918,45 +918,26 @@ public class MainActivity extends AppCompatActivity
             // Legacy dead path — redirect to embedded setup.
             openEmbeddedSetup();
         }
-        @Override public void executeEmbedded(com.larv.ide.run.backend.ExecRequest request)
+        @Override public void runEmbeddedInteractive(com.larv.ide.run.backend.ExecRequest request,
+                byte[] stdinPrefeed)
                 throws com.larv.ide.run.backend.BackendUnavailableException {
-            // Stream embedded output into the Run terminal tab.
+            // REAL Linux session: process stdin stays open, terminal keystrokes
+            // flow straight into the program (Scanner / input() / readline).
             com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend backend = embeddedBackend;
             if (backend == null || !backend.isAvailable()) {
                 throw new com.larv.ide.run.backend.BackendUnavailableException(
                     backend != null ? backend.setupState()
                         : com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
             }
-            RunDispatcher.RunStreams rs = openRunTerminal("Running via embedded Linux…");
-            writeTerm(rs.programOut(), "$ " + String.join(" ", request.getCommand()) + "\n");
-            compilerExecutor.execute(() -> {
-                try {
-                    int exit = backend.executeCapture(request,
-                        new com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.OutputSink() {
-                            @Override public void onStdout(byte[] data, int len) {
-                                com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.copyTo(
-                                    rs.programOut(), data, len);
-                            }
-                            @Override public void onStderr(byte[] data, int len) {
-                                com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.copyTo(
-                                    rs.programOut(), data, len);
-                            }
-                            @Override public void onExit(int exitCode) {
-                                writeTerm(rs.programOut(),
-                                    "\nProcess finished with exit code " + exitCode + "\n");
-                                closeTermStreams(rs.programOut(), rs.stdinOut());
-                                setStatus(exitCode == 0 ? "Done" : "Finished with errors");
-                            }
-                        });
-                    if (exit != 0) {
-                        setStatus("Finished with errors");
-                    }
-                } catch (Exception e) {
-                    writeTerm(rs.programOut(), "Embedded run failed: " + e.getMessage() + "\n");
-                    closeTermStreams(rs.programOut(), rs.stdinOut());
-                    setStatus("Finished with errors");
-                }
-            });
+            try {
+                Process proc = backend.openCommandProcess(request);
+                attachExternalProcess(proc,
+                    "$ " + String.join(" ", request.getCommand()) + "\n", stdinPrefeed);
+            } catch (com.larv.ide.run.backend.BackendUnavailableException e) {
+                throw e;
+            } catch (Exception e) {
+                toast("Embedded run failed: " + e.getMessage());
+            }
         }
         @Override public void openEmbeddedSetup() {
             runOnUiThread(() -> MainActivity.this.showEmbeddedSetupDialog());
@@ -987,6 +968,73 @@ public class MainActivity extends AppCompatActivity
             bottomResizer.setVisibility(View.VISIBLE);
         });
         return rs;
+    }
+
+    /**
+     * Attach a REAL external process to the Run tab: the terminal view reads the
+     * process stdout and the soft keyboard writes straight to the process stdin.
+     * No manual capture — the session is live until the process exits.
+     */
+    private void attachExternalProcess(Process proc, String banner, byte[] stdinPrefeed) {
+        try {
+            java.io.PipedInputStream sessionIn = new java.io.PipedInputStream(64 * 1024);
+            java.io.PipedOutputStream bridge = new java.io.PipedOutputStream(sessionIn);
+            OutputStream procIn = proc.getOutputStream();
+            java.io.InputStream procOut = proc.getInputStream();
+            if (banner != null) {
+                bridge.write(banner.replace("\n", "\r\n").getBytes(StandardCharsets.UTF_8));
+                bridge.flush();
+            }
+            if (stdinPrefeed != null && stdinPrefeed.length > 0) {
+                procIn.write(stdinPrefeed);
+                procIn.flush();
+            }
+            OutputFragment outputFragment = bottomPanelAdapter.getOutputFragment();
+            runOnUiThread(() -> {
+                statusText.setText("Running via embedded Linux… (type into the terminal)");
+                outputFragment.clear();
+                outputFragment.startProgram(sessionIn, procIn);
+                bottomWindowVisible = true;
+                bottomToolWindow.setVisibility(View.VISIBLE);
+                bottomResizer.setVisibility(View.VISIBLE);
+                bottomViewPager.setCurrentItem(0);
+            });
+            Thread watcher = new Thread(() -> {
+                byte[] buf = new byte[8192];
+                int exit = -1;
+                try {
+                    int n;
+                    while ((n = procOut.read(buf)) > 0) {
+                        bridge.write(buf, 0, n);
+                        bridge.flush();
+                    }
+                } catch (IOException ignored) {
+                }
+                try {
+                    exit = proc.waitFor();
+                } catch (InterruptedException ignored) {
+                }
+                try {
+                    String msg = "\r\nProcess finished with exit code " + exit + "\r\n";
+                    bridge.write(msg.getBytes(StandardCharsets.UTF_8));
+                    bridge.flush();
+                    bridge.close();
+                } catch (IOException ignored) {
+                }
+                try {
+                    procOut.close();
+                } catch (IOException ignored) {
+                }
+                final int code = exit;
+                runOnUiThread(() ->
+                    statusText.setText(code == 0 ? "Done" : "Finished with errors"));
+            }, "emb-watch");
+            watcher.setDaemon(true);
+            watcher.start();
+        } catch (IOException e) {
+            Toast.makeText(this, "Embedded run failed: " + e.getMessage(),
+                Toast.LENGTH_SHORT).show();
+        }
     }
 
     private String readFileString(File file) {
