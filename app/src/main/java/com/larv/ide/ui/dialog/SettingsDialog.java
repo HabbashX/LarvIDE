@@ -322,32 +322,13 @@ public class SettingsDialog {
         removeBtn.setLayoutParams(removeLp);
         buttons.addView(removeBtn);
 
-        android.widget.EditText urlInput = new android.widget.EditText(activity);
-        urlInput.setHint("Bootstrap URL override (optional)");
-        urlInput.setText(prefs.getString("embeddedBootstrapUrl", ""));
-        urlInput.setTextSize(12);
-        urlInput.setSingleLine(true);
-        LinearLayout.LayoutParams urlLp = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        urlLp.topMargin = dp(activity, 8);
-        urlInput.setLayoutParams(urlLp);
-        card.addView(urlInput);
-        urlInput.setOnFocusChangeListener((v, hasFocus) -> {
-            if (!hasFocus) {
-                prefs.edit().putString("embeddedBootstrapUrl",
-                    urlInput.getText().toString().trim()).apply();
-            }
-        });
-
         downloadBtn.setOnClickListener(v -> {
-            String override = urlInput.getText().toString().trim();
-            prefs.edit().putString("embeddedBootstrapUrl", override).apply();
             downloadBtn.setEnabled(false);
             progress.setVisibility(android.view.View.VISIBLE);
             progress.setIndeterminate(true);
             status.setText("Downloading…");
             status.setTextColor(ContextCompat.getColor(activity, R.color.warning));
-            installer.installAsync(override.isEmpty() ? null : override,
+            installer.installAsync(null,
                 new com.larv.ide.run.backend.embedded.PrefixInstaller.Listener() {
                     @Override public void onProgress(String stage, int percent) {
                         status.setText(stage);
