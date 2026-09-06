@@ -115,6 +115,8 @@ public class SettingsDialog {
                 prefs.getBoolean("runViaEmbedded", true),
                 (b, checked) -> prefs.edit().putBoolean("runViaEmbedded", checked).apply()));
 
+        root.addView(linuxEnvironmentSection(activity, prefs));
+
         root.addView(label(activity, "Tab size", true));
         final String[] tabSizes = {"2", "4", "8"};
         final int savedTab = prefs.getInt("editorTabSize", 4);
@@ -213,5 +215,211 @@ public class SettingsDialog {
         return Math.round(v * activity.getResources().getDisplayMetrics().density);
     }
 
+    /**
+     * Linux Environment section: status, one-tap download with progress,
+     * bootstrap URL override, and removal to free space. Runs entirely
+     * in-app — no external Termux app involved.
+     */
+    private static LinearLayout linuxEnvironmentSection(Activity activity,
+                                                        SharedPreferences prefs) {
+        com.larv.ide.run.backend.embedded.PrefixInstaller installer =
+            new com.larv.ide.run.backend.embedded.PrefixInstaller(activity);
+        boolean ready =
+            com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity);
+        boolean arm64 =
+            com.larv.ide.run.backend.embedded.EmbeddedRuntime.isArm64();
+
+        LinearLayout section = new LinearLayout(activity);
+        section.setOrientation(LinearLayout.VERTICAL);
+
+        TextView title = new TextView(activity);
+        title.setText("Linux Environment");
+        title.setTextColor(ContextCompat.getColor(activity, R.color.text_secondary));
+        title.setTextSize(12);
+        title.setPadding(0, dp(activity, 14), 0, dp(activity, 4));
+        section.addView(title);
+
+        LinearLayout card = new LinearLayout(activity);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(ContextCompat.getDrawable(activity, R.drawable.edittext_ide));
+        card.setPadding(dp(activity, 14), dp(activity, 12), dp(activity, 14), dp(activity, 12));
+        section.addView(card);
+
+        TextView status = new TextView(activity);
+        status.setTextSize(14);
+        card.addView(status);
+
+        TextView detail = new TextView(activity);
+        detail.setTextSize(12);
+        detail.setTextColor(ContextCompat.getColor(activity, R.color.text_secondary));
+        detail.setPadding(0, dp(activity, 4), 0, 0);
+        card.addView(detail);
+
+        Runnable refreshInfo = () -> {
+            boolean r =
+                com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity);
+            if (installer.isInstalling()) {
+                status.setText("Downloading…");
+                status.setTextColor(ContextCompat.getColor(activity, R.color.warning));
+            } else if (r) {
+                status.setText("Installed — ready");
+                status.setTextColor(ContextCompat.getColor(activity, R.color.success));
+            } else {
+                status.setText(arm64 ? "Not downloaded" : "Not supported on this device");
+                status.setTextColor(ContextCompat.getColor(activity,
+                    arm64 ? R.color.warning : R.color.error));
+            }
+        };
+        refreshInfo.run();
+
+        // Prefix size is computed off the UI thread (can be many files).
+        new Thread(() -> {
+            String info;
+            if (com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity)) {
+                long bytes = dirSize(new java.io.File(activity.getFilesDir(), "usr"));
+                info = "arm64 · " + formatSize(bytes) + " in private storage"
+                    + "\nUnlocks: C/C++ (Clang), OpenJDK 17, Node.js, Rust";
+            } else if (!arm64) {
+                String abi = android.os.Build.SUPPORTED_ABIS.length > 0
+                    ? android.os.Build.SUPPORTED_ABIS[0] : "unknown";
+                info = "Requires arm64 — this device reports: " + abi;
+            } else {
+                info = "~100–150 MB one-time download (WiFi recommended)"
+                    + "\nUnlocks: C/C++ (Clang), OpenJDK 17, Node.js, Rust";
+            }
+            final String text = info;
+            activity.runOnUiThread(() -> detail.setText(text));
+        }).start();
+
+        android.widget.ProgressBar progress = new android.widget.ProgressBar(activity, null,
+            android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(100);
+        progress.setVisibility(android.view.View.GONE);
+        LinearLayout.LayoutParams progressLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        progressLp.topMargin = dp(activity, 8);
+        progress.setLayoutParams(progressLp);
+        card.addView(progress);
+
+        LinearLayout buttons = new LinearLayout(activity);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setPadding(0, dp(activity, 8), 0, 0);
+        card.addView(buttons);
+
+        android.widget.Button downloadBtn = new android.widget.Button(activity, null, 0);
+        downloadBtn.setText(ready ? "Re-download" : "Download");
+        downloadBtn.setTextSize(12);
+        downloadBtn.setEnabled(arm64 && !installer.isInstalling());
+        buttons.addView(downloadBtn);
+
+        android.widget.Button removeBtn = new android.widget.Button(activity, null, 0);
+        removeBtn.setText("Remove");
+        removeBtn.setTextSize(12);
+        removeBtn.setVisibility(ready ? android.view.View.VISIBLE : android.view.View.GONE);
+        LinearLayout.LayoutParams removeLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        removeLp.leftMargin = dp(activity, 8);
+        removeBtn.setLayoutParams(removeLp);
+        buttons.addView(removeBtn);
+
+        android.widget.EditText urlInput = new android.widget.EditText(activity);
+        urlInput.setHint("Bootstrap URL override (optional)");
+        urlInput.setText(prefs.getString("embeddedBootstrapUrl", ""));
+        urlInput.setTextSize(12);
+        urlInput.setSingleLine(true);
+        LinearLayout.LayoutParams urlLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        urlLp.topMargin = dp(activity, 8);
+        urlInput.setLayoutParams(urlLp);
+        card.addView(urlInput);
+        urlInput.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) {
+                prefs.edit().putString("embeddedBootstrapUrl",
+                    urlInput.getText().toString().trim()).apply();
+            }
+        });
+
+        downloadBtn.setOnClickListener(v -> {
+            String override = urlInput.getText().toString().trim();
+            prefs.edit().putString("embeddedBootstrapUrl", override).apply();
+            downloadBtn.setEnabled(false);
+            progress.setVisibility(android.view.View.VISIBLE);
+            progress.setIndeterminate(true);
+            status.setText("Downloading…");
+            status.setTextColor(ContextCompat.getColor(activity, R.color.warning));
+            installer.installAsync(override.isEmpty() ? null : override,
+                new com.larv.ide.run.backend.embedded.PrefixInstaller.Listener() {
+                    @Override public void onProgress(String stage, int percent) {
+                        status.setText(stage);
+                        if (percent > 0) {
+                            progress.setIndeterminate(false);
+                            progress.setProgress(Math.min(100, percent));
+                        }
+                    }
+                    @Override public void onComplete() {
+                        com.larv.ide.project.ProjectManager.setCppEnabled(true);
+                        downloadBtn.setEnabled(true);
+                        downloadBtn.setText("Re-download");
+                        removeBtn.setVisibility(android.view.View.VISIBLE);
+                        progress.setVisibility(android.view.View.GONE);
+                        refreshInfo.run();
+                        detail.setText("Installed — C/C++ templates and Run unlocked.");
+                    }
+                    @Override public void onError(String message) {
+                        downloadBtn.setEnabled(true);
+                        progress.setVisibility(android.view.View.GONE);
+                        status.setText("Download failed");
+                        status.setTextColor(ContextCompat.getColor(activity, R.color.error));
+                        detail.setText(message != null ? message : "Unknown error. Retry on WiFi.");
+                    }
+                });
+        });
+
+        removeBtn.setOnClickListener(v -> {
+            removeBtn.setEnabled(false);
+            status.setText("Removing…");
+            new Thread(() -> {
+                deleteRecursive(new java.io.File(activity.getFilesDir(), "usr"));
+                activity.runOnUiThread(() -> {
+                    com.larv.ide.project.ProjectManager.setCppEnabled(false);
+                    removeBtn.setEnabled(true);
+                    removeBtn.setVisibility(android.view.View.GONE);
+                    downloadBtn.setText("Download");
+                    refreshInfo.run();
+                    detail.setText("Removed. Re-download anytime to restore C/C++.");
+                });
+            }).start();
+        });
+
+        return section;
+    }
+
+    private static long dirSize(java.io.File dir) {
+        long total = 0;
+        java.io.File[] files = dir.listFiles();
+        if (files == null) return 0;
+        for (java.io.File f : files) {
+            total += f.isDirectory() ? dirSize(f) : f.length();
+        }
+        return total;
+    }
+
+    private static void deleteRecursive(java.io.File f) {
+        if (f == null || !f.exists()) return;
+        if (f.isDirectory()) {
+            java.io.File[] children = f.listFiles();
+            if (children != null) {
+                for (java.io.File c : children) deleteRecursive(c);
+            }
+        }
+        //noinspection ResultOfMethodCallIgnored
+        f.delete();
+    }
+
+    private static String formatSize(long bytes) {
+        if (bytes < 1024 * 1024) return (bytes / 1024) + " KB";
+        if (bytes < 1024L * 1024 * 1024) return (bytes / (1024 * 1024)) + " MB";
+        return String.format(java.util.Locale.US, "%.1f GB", bytes / (1024.0 * 1024 * 1024));
+    }
 
 }
