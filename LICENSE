@@ -32,7 +32,7 @@ No other rights are granted.
 
 ### 3. Distribution — What Requires Permission
 
-**3.1  Unmodified Copies:** You may Distribute *verbatim, unmodified* copies of the Software provided You retain all copyright, licence, `NOTICE` and attribution notices, and include a copy of this Licence. You must not misrepresent the origin of the Software.
+**3.1  Unmodified Copies:** You may Distribute *verbatim, unmodified* copies of the Software provided You retain all copyright, licence, `NOTICE` and attribution notices, and include a copy of this Licence. You must not misrepresent the origin of the Software. For clarity, "unmodified" includes — and you must not remove or alter — the in-app **About screen** and any copyright, attribution, or branding notices displayed to the end user.
 
 **3.2  Modified Versions — Permission Required:** You may **not** Distribute any modified version or Derivative Work of the Software without **prior explicit written permission** from the Licensor.
 
@@ -74,7 +74,26 @@ Your rights under this Licence terminate automatically if You breach its terms a
 
 ### 8. Third-Party Components
 
-LarvIDE contains third-party libraries (e.g., ECJ under EPL-2.0, Rhino under MPL-2.0, AndroidX under Apache-2.0) that remain under their own licences. This Licence applies only to LarvIDE's own original code and assets.
+LarvIDE bundles third-party libraries that remain under their own licences. This Licence applies only to LarvIDE's own original code and assets; the components below (and their respective licences) are not affected by the restrictions in §§3 and 4 of this Licence:
+
+| Library | Licence |
+| :--- | :--- |
+| Eclipse JDT (ECJ) — `org.eclipse.jdt:ecj` | EPL-2.0 |
+| Mozilla Rhino — `org.mozilla:rhino` | MPL-2.0 |
+| AndroidX (appcompat, activity, constraintlayout, recyclerview, multidex, webkit) | Apache-2.0 |
+| Google Material Components — `com.google.android.material:material` | Apache-2.0 |
+| Google Gson — `com.google.code.gson:gson` | Apache-2.0 |
+| Kotlin Coroutines — `org.jetbrains.kotlinx:kotlinx-coroutines-*` | Apache-2.0 |
+| Commons IO — `commons-io:commons-io` | Apache-2.0 |
+| Android-Terminal-Emulator (jackpal) — `com.github.jackpal.Android-Terminal-Emulator:emulatorview` | Apache-2.0 |
+| R8 — `com.android.tools:r8` | BSD-3-Clause |
+| JUnit (test) — `junit:junit` | EPL-1.0 |
+| json (test) — `org.json:json` | MIT-style / Public Domain |
+| kxml2 (test) — `net.sf.kxml:kxml2` | BSD-style (public domain dedication) |
+
+The Android `android.jar` (bootclasspath) is part of the Android SDK and is used only as a compile-time/runtime reference inside the on-device compiler; it is not redistributed as LarvIDE's own code.
+
+Up-to-date versions and a generated machine-readable bill of materials are published in the official repository at `https://github.com/HabbashX/LarvIDE` (see `app/build.gradle` and any `THIRD_PARTY_LICENSES` / `licenses` output bundled with the APK).
 
 ---
 

@@ -4,11 +4,11 @@ LarvIDE is **Source-Available** under the `LarvIDE Educational Source-Available 
 
 ## TL;DR
 
-| Action | Need permission? |
+| Action | Permission needed? |
 | :--- | :--- |
 | Use / Install / Run for study or assignments (student, university, anyone) | **No** — always allowed |
 | Modify privately for yourself (fix a bug, learn, keep it on your device) | **No** |
-| Share an *unmodified* copy (keep copyright & licence intact, don't claim it's yours) | **No** |
+| Share an *unmodified* copy (keep copyright, `LICENSE`, `NOTICE`, and About screen intact, don't claim it's yours) | **No** |
 | **Publish / Distribute a *modified* version** (GitHub fork, Play Store build, APK for your class/company) | **Yes — written permission required** |
 
 This applies to **everyone**, including universities, schools, and companies.
