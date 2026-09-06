@@ -12,6 +12,15 @@ import com.larv.ide.run.backend.ExecRequest;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Legacy external-Termux backend (RUN_COMMAND intent, opens the Termux app).
+ * Kept dead for reference — LarvIDE now uses the embedded in-app Linux runtime
+ * ({@code com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend}) so Run never
+ * leaves the IDE. Removal planned later.
+ *
+ * @deprecated Do not use for new code. Use EmbeddedLinuxBackend.
+ */
+@Deprecated
 public class TermuxCommandBackend implements ExecutionBackend {
 
     public static final String ACTION_RUN_COMMAND = "com.termux.RUN_COMMAND";

@@ -157,7 +157,10 @@ public class MainActivity extends AppCompatActivity
     private android.graphics.drawable.Drawable highlightedOriginalBackground = null;
     private boolean dropHandled = false;
     private RunDispatcher runDispatcher;
+    /** @deprecated Kept dead — embedded runtime is the path. Removal later. */
+    @Deprecated
     private TermuxCommandBackend termuxBackend;
+    private com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend embeddedBackend;
     private SessionManager sessionManager;
     private com.larv.ide.run.backend.termux.TermuxSetupWizard termuxWizard;
 
@@ -273,7 +276,12 @@ public class MainActivity extends AppCompatActivity
         dexer = new Dexer(getApplicationContext());
         javascriptRunner = new JavascriptRunner();
         termuxBackend = new TermuxCommandBackend(getApplicationContext());
+        embeddedBackend = new com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend(
+            getApplicationContext());
         runDispatcher = new RunDispatcher(new RunHost(), termuxBackend);
+        runDispatcher.setEmbeddedBackend(embeddedBackend);
+        ProjectManager.setCppEnabled(
+            com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this));
         sessionManager = new SessionManager(new SessionManager.Host() {
             @Override public Project currentProject() { return currentProject; }
             @Override public java.util.List<OpenFile> openFiles() { return openFiles; }
@@ -907,10 +915,51 @@ public class MainActivity extends AppCompatActivity
             termuxBackend.execute(request);
         }
         @Override public void openTermuxWizard() {
-            runOnUiThread(() -> {
-                termuxWizard = new com.larv.ide.run.backend.termux.TermuxSetupWizard(MainActivity.this);
-                termuxWizard.show();
+            // Legacy dead path — redirect to embedded setup.
+            openEmbeddedSetup();
+        }
+        @Override public void executeEmbedded(com.larv.ide.run.backend.ExecRequest request)
+                throws com.larv.ide.run.backend.BackendUnavailableException {
+            // Stream embedded output into the Run terminal tab.
+            com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend backend = embeddedBackend;
+            if (backend == null || !backend.isAvailable()) {
+                throw new com.larv.ide.run.backend.BackendUnavailableException(
+                    backend != null ? backend.setupState()
+                        : com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
+            }
+            RunDispatcher.RunStreams rs = openRunTerminal("Running via embedded Linux…");
+            writeTerm(rs.programOut(), "$ " + String.join(" ", request.getCommand()) + "\n");
+            compilerExecutor.execute(() -> {
+                try {
+                    int exit = backend.executeCapture(request,
+                        new com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.OutputSink() {
+                            @Override public void onStdout(byte[] data, int len) {
+                                com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.copyTo(
+                                    rs.programOut(), data, len);
+                            }
+                            @Override public void onStderr(byte[] data, int len) {
+                                com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.copyTo(
+                                    rs.programOut(), data, len);
+                            }
+                            @Override public void onExit(int exitCode) {
+                                writeTerm(rs.programOut(),
+                                    "\nProcess finished with exit code " + exitCode + "\n");
+                                closeTermStreams(rs.programOut(), rs.stdinOut());
+                                setStatus(exitCode == 0 ? "Done" : "Finished with errors");
+                            }
+                        });
+                    if (exit != 0) {
+                        setStatus("Finished with errors");
+                    }
+                } catch (Exception e) {
+                    writeTerm(rs.programOut(), "Embedded run failed: " + e.getMessage() + "\n");
+                    closeTermStreams(rs.programOut(), rs.stdinOut());
+                    setStatus("Finished with errors");
+                }
             });
+        }
+        @Override public void openEmbeddedSetup() {
+            runOnUiThread(() -> MainActivity.this.showEmbeddedSetupDialog());
         }
         @Override public void toast(String message) {
             runOnUiThread(() -> Toast.makeText(MainActivity.this, message,
@@ -1055,6 +1104,11 @@ public class MainActivity extends AppCompatActivity
             String fileName = input.getText().toString().trim();
             if (fileName.isEmpty()) {
                 Toast.makeText(this, "File name cannot be empty", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (ProjectManager.isCppFileName(fileName) && !ProjectManager.isCppEnabled()) {
+                dialog.dismiss();
+                showEmbeddedSetupDialog();
                 return;
             }
             dialog.dismiss();
@@ -1415,8 +1469,58 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void showTermuxWizard() {
-        termuxWizard = new com.larv.ide.run.backend.termux.TermuxSetupWizard(this);
-        termuxWizard.show();
+        // Legacy dead path — redirect to embedded setup.
+        showEmbeddedSetupDialog();
+    }
+
+    /** In-app Linux runtime setup: download Termux bootstrap (arm64, WiFi) — no external app. */
+    private void showEmbeddedSetupDialog() {
+        com.larv.ide.run.backend.ExecutionBackend.SetupState state =
+            embeddedBackend != null ? embeddedBackend.setupState()
+                : com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING;
+        if (state == com.larv.ide.run.backend.ExecutionBackend.SetupState.READY) {
+            Toast.makeText(this, "Linux runtime ready", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (state == com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_INSTALLING) {
+            Toast.makeText(this, "Linux runtime is downloading…", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("Linux runtime required")
+            .setMessage("C/C++ and real-world toolchains (clang, javac, python, node) run "
+                + "inside LarvIDE — no external app needed.\n\n"
+                + "Download the Linux bootstrap (~100–150 MB, arm64, WiFi recommended) "
+                + "to unlock C/C++ templates and Run?")
+            .setPositiveButton("Download", (d, w) -> {
+                Toast.makeText(this, "Downloading Linux runtime…", Toast.LENGTH_LONG).show();
+                statusText.setText("Downloading Linux runtime…");
+                embeddedBackend.installer().installAsync(
+                    prefs.getString("embeddedBootstrapUrl", null),
+                    new com.larv.ide.run.backend.embedded.PrefixInstaller.Listener() {
+                        @Override public void onProgress(String stage, int percent) {
+                            runOnUiThread(() -> statusText.setText(stage));
+                        }
+                        @Override public void onComplete() {
+                            runOnUiThread(() -> {
+                                ProjectManager.setCppEnabled(true);
+                                statusText.setText("Linux runtime ready");
+                                Toast.makeText(MainActivity.this,
+                                    "Linux runtime ready — C/C++ unlocked",
+                                    Toast.LENGTH_LONG).show();
+                            });
+                        }
+                        @Override public void onError(String message) {
+                            runOnUiThread(() -> {
+                                statusText.setText("Linux runtime failed");
+                                Toast.makeText(MainActivity.this,
+                                    "Download failed: " + message, Toast.LENGTH_LONG).show();
+                            });
+                        }
+                    });
+            })
+            .setNegativeButton("Later", null)
+            .show();
     }
 
     private void openEmbeddedTerminal() {
@@ -1540,13 +1644,45 @@ public class MainActivity extends AppCompatActivity
             com.larv.ide.ui.dialog.LanguagesDialog.show(this, termuxBackend,
                 currentProject != null ? currentProject.getRootDir() : getFilesDir(),
                 (pkg) -> {
+                    if (embeddedBackend == null || !embeddedBackend.isAvailable()) {
+                        Toast.makeText(this, "Linux runtime not ready — download it first",
+                            Toast.LENGTH_LONG).show();
+                        showEmbeddedSetupDialog();
+                        return;
+                    }
                     try {
-                        termuxBackend.execute(new com.larv.ide.run.backend.ExecRequest(
-                            java.util.Arrays.asList("pkg", "install", "-y", pkg), null, true));
-                        Toast.makeText(this, "Installing " + pkg + " — check the Termux window",
+                        RunDispatcher.RunStreams rs = openRunTerminal("Installing " + pkg + "…");
+                        writeTerm(rs.programOut(), "$ pkg install -y " + pkg + "\n");
+                        compilerExecutor.execute(() -> {
+                            try {
+                                embeddedBackend.executeCapture(
+                                    new com.larv.ide.run.backend.ExecRequest(
+                                        java.util.Arrays.asList("pkg", "install", "-y", pkg),
+                                        null, false),
+                                    new com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.OutputSink() {
+                                        @Override public void onStdout(byte[] data, int len) {
+                                            com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.copyTo(
+                                                rs.programOut(), data, len);
+                                        }
+                                        @Override public void onStderr(byte[] data, int len) {
+                                            com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.copyTo(
+                                                rs.programOut(), data, len);
+                                        }
+                                        @Override public void onExit(int exitCode) {
+                                            writeTerm(rs.programOut(),
+                                                "\nInstall finished (exit " + exitCode + ")\n");
+                                            closeTermStreams(rs.programOut(), rs.stdinOut());
+                                        }
+                                    });
+                            } catch (Exception e) {
+                                writeTerm(rs.programOut(), "Install failed: " + e.getMessage() + "\n");
+                                closeTermStreams(rs.programOut(), rs.stdinOut());
+                            }
+                        });
+                        Toast.makeText(this, "Installing " + pkg + " — watch the Run tab",
                             Toast.LENGTH_LONG).show();
                     } catch (Exception ex) {
-                        Toast.makeText(this, "Termux not ready: open Build ▸ Run with Termux first",
+                        Toast.makeText(this, "Linux runtime not ready",
                             Toast.LENGTH_LONG).show();
                     }
                 });

@@ -17,6 +17,12 @@ import androidx.core.content.ContextCompat;
 import com.larv.ide.R;
 import com.larv.ide.run.backend.ExecutionBackend;
 
+/**
+ * Legacy external-Termux setup wizard. Kept dead — LarvIDE now uses the embedded
+ * in-app Linux runtime (no external app). Removal planned later.
+ * @deprecated Use MainActivity.showEmbeddedSetupDialog path instead.
+ */
+@Deprecated
 public class TermuxSetupWizard {
 
     public static final int PERMISSION_REQUEST_CODE = 4201;

@@ -8,6 +8,11 @@ import androidx.core.content.ContextCompat;
 
 import com.larv.ide.run.backend.ExecutionBackend;
 
+/**
+ * Legacy external-Termux detector. Kept dead — see {@link TermuxCommandBackend}.
+ * @deprecated Use EmbeddedLinuxBackend / EmbeddedRuntime instead.
+ */
+@Deprecated
 public class TermuxEnvironment {
 
     public static final String TERMUX_PACKAGE = "com.termux";

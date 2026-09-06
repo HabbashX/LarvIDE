@@ -8,6 +8,7 @@ import androidx.annotation.RequiresApi;
 import com.larv.ide.model.OpenFile;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -159,11 +160,7 @@ public class ProjectIndexer {
 
         addKeywordsAndSnippets(completions, prefixLower);
 
-        completions.sort((a, b) -> {
-            int priorityDiff = Integer.compare(a.getSortPriority(), b.getSortPriority());
-            if (priorityDiff != 0) return priorityDiff;
-            return a.getKindOrder() - b.getKindOrder();
-        });
+        completions.sort(Comparator.comparingInt(CompletionItem::getSortPriority).thenComparingInt(CompletionItem::getKindOrder));
 
         return completions;
     }

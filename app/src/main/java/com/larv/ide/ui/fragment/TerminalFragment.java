@@ -13,6 +13,7 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.larv.ide.R;
+import com.larv.ide.terminal.EmbeddedLinuxSession;
 import com.larv.ide.terminal.EmbeddedShellSession;
 import com.larv.ide.ui.view.SafeEmulatorView;
 
@@ -26,10 +27,17 @@ public class TerminalFragment extends Fragment {
     private static final ColorScheme DARK_SCHEME = new ColorScheme(
         0xFFBCBEC4, 0xFF141517, 0xFF141517, 0xFF56A8F5);
 
+    private static final String[] EXTRA_KEYS = {
+        "Ctrl", "Esc", "Tab", "↑", "↓", "←", "→", "-", "/", "|", "~"
+    };
+
     private FrameLayout terminalContainer;
     private TextView emptyView;
+    private android.widget.HorizontalScrollView extraKeysBar;
     private SafeEmulatorView terminalView;
     private EmbeddedShellSession shellSession;
+    private EmbeddedLinuxSession linuxSession;
+    private TermSession activeSession;
     private File pendingWorkdir;
     private boolean startPending = false;
 
@@ -45,6 +53,7 @@ public class TerminalFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         emptyView = view.findViewById(R.id.terminalEmpty);
         terminalContainer = view.findViewById(R.id.terminalContainer);
+        extraKeysBar = view.findViewById(R.id.terminalExtraKeys);
         if (startPending) {
             startPending = false;
             openSession(pendingWorkdir);
@@ -72,12 +81,57 @@ public class TerminalFragment extends Fragment {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         terminalView = view;
         view.requestFocus();
+        showExtraKeysBar();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private TermSession newEmbeddedSession(@Nullable File workingDirectory) {
-        shellSession = new EmbeddedShellSession(workingDirectory);
-        return shellSession.getSession();
+        // Prefer embedded Linux bash (no external app); toybox fallback inside.
+        linuxSession = new EmbeddedLinuxSession(requireContext(), workingDirectory);
+        activeSession = linuxSession.getSession();
+        return activeSession;
+    }
+
+    private void showExtraKeysBar() {
+        if (extraKeysBar == null || getContext() == null) return;
+        android.widget.LinearLayout row =
+            (android.widget.LinearLayout) extraKeysBar.getChildAt(0);
+        if (row == null) return;
+        if (row.getChildCount() > 0) {
+            extraKeysBar.setVisibility(View.VISIBLE);
+            return;
+        }
+        for (String key : EXTRA_KEYS) {
+            android.widget.Button b = new android.widget.Button(getContext(), null, 0);
+            b.setText(key);
+            b.setTextSize(12);
+            b.setMinWidth(0);
+            b.setMinimumWidth(0);
+            int p = Math.round(8 * getResources().getDisplayMetrics().density);
+            b.setPadding(p, p / 2, p, p / 2);
+            b.setOnClickListener(v -> sendExtraKey(key));
+            row.addView(b);
+        }
+        extraKeysBar.setVisibility(View.VISIBLE);
+    }
+
+    private void sendExtraKey(String key) {
+        if (activeSession == null) return;
+        try {
+            switch (key) {
+                case "Ctrl":
+                    if (terminalView != null) terminalView.sendControlKey();
+                    break;
+                case "Esc": activeSession.write(new byte[]{27}, 0, 1); break;
+                case "Tab": activeSession.write(new byte[]{'\t'}, 0, 1); break;
+                case "↑": activeSession.write(new byte[]{27, '[', 'A'}, 0, 3); break;
+                case "↓": activeSession.write(new byte[]{27, '[', 'B'}, 0, 3); break;
+                case "→": activeSession.write(new byte[]{27, '[', 'C'}, 0, 3); break;
+                case "←": activeSession.write(new byte[]{27, '[', 'D'}, 0, 3); break;
+                default: activeSession.write(key); break;
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void closeSession() {
@@ -85,10 +139,16 @@ public class TerminalFragment extends Fragment {
             ((ViewGroup) terminalView.getParent()).removeView(terminalView);
         }
         terminalView = null;
+        activeSession = null;
+        if (linuxSession != null) {
+            linuxSession.destroy();
+            linuxSession = null;
+        }
         if (shellSession != null) {
             shellSession.destroy();
             shellSession = null;
         }
+        if (extraKeysBar != null) extraKeysBar.setVisibility(View.GONE);
     }
 
     @Override

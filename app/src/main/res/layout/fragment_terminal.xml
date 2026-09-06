@@ -1,20 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/terminalEmpty"
-        android:layout_width="wrap_content"
+    <HorizontalScrollView
+        android:id="@+id/terminalExtraKeys"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:text="Build ▸ Open Terminal to start a shell session"
-        android:textColor="@color/text_disabled"
-        android:textSize="13sp" />
+        android:scrollbars="none"
+        android:background="@color/sidebar_background"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="4dp" />
+    </HorizontalScrollView>
 
     <FrameLayout
-        android:id="@+id/terminalContainer"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone" />
-</FrameLayout>
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <TextView
+            android:id="@+id/terminalEmpty"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="Build ▸ Open Terminal to start a shell session"
+            android:textColor="@color/text_disabled"
+            android:textSize="13sp" />
+
+        <FrameLayout
+            android:id="@+id/terminalContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>

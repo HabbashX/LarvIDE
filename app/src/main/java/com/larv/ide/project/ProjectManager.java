@@ -24,6 +24,18 @@ public class ProjectManager {
 
     private final Context context;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    /** When false, C/C++ file creation is hidden (needs embedded Linux runtime). */
+    private static volatile boolean cppEnabled = false;
+
+    public static void setCppEnabled(boolean enabled) { cppEnabled = enabled; }
+    public static boolean isCppEnabled() { return cppEnabled; }
+
+    public static boolean isCppFileName(String name) {
+        String lower = name.toLowerCase();
+        return lower.endsWith(".c") || lower.endsWith(".cpp") || lower.endsWith(".cc")
+            || lower.endsWith(".h") || lower.endsWith(".hpp");
+    }
+
     private final File projectsRootDir;
     private Project currentProject;
     private OnProjectChangeListener listener;
@@ -194,6 +206,11 @@ public class ProjectManager {
                 return;
             }
 
+            if (isCppFileName(fileName) && !cppEnabled) {
+                if (callback != null) callback.onError(
+                    "C/C++ needs the Linux runtime — download it from Languages & Runtimes first");
+                return;
+            }
             final String finalFileName = hasKnownExtension(fileName) ? fileName : fileName + ".java";
             File newFile = new File(parentDir, finalFileName);
             if (newFile.exists()) {
@@ -218,7 +235,9 @@ public class ProjectManager {
         return lower.endsWith(".java") || lower.endsWith(".py") || lower.endsWith(".js")
             || lower.endsWith(".html") || lower.endsWith(".htm") || lower.endsWith(".css")
             || lower.endsWith(".json") || lower.endsWith(".xml") || lower.endsWith(".md")
-            || lower.endsWith(".txt");
+            || lower.endsWith(".txt")
+            || lower.endsWith(".c") || lower.endsWith(".cpp") || lower.endsWith(".cc")
+            || lower.endsWith(".h") || lower.endsWith(".hpp");
     }
 
     public static String templateFor(String fileName) {
@@ -244,6 +263,12 @@ public class ProjectManager {
         if (lower.endsWith(".java")) {
             return "public class " + base + " {\n    public static void main(String[] args) {\n"
                 + "        System.out.println(\"Hello from LarvIDE!\");\n    }\n}\n";
+        }
+        if (lower.endsWith(".c") || lower.endsWith(".cpp") || lower.endsWith(".cc")) {
+            return "#include <iostream>\n\nint main() {\n    std::cout << \"Hello from LarvIDE!\" << std::endl;\n    return 0;\n}\n";
+        }
+        if (lower.endsWith(".h") || lower.endsWith(".hpp")) {
+            return "#pragma once\n";
         }
         return "";
     }

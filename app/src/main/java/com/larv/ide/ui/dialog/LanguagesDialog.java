@@ -27,8 +27,8 @@ public class LanguagesDialog {
 
     public static void show(Activity activity, TermuxCommandBackend backend,
                             File projectWorkdir, Consumer<String> installer) {
-        TermuxEnvironment env = TermuxEnvironment.create();
-        boolean termuxOk = env.isUsable(activity);
+        boolean embeddedReady =
+            com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity);
 
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -36,12 +36,12 @@ public class LanguagesDialog {
         root.setPadding(pad, dp(activity, 8), pad, dp(activity, 8));
 
         TextView note = new TextView(activity);
-        note.setText(termuxOk
-            ? "Termux runtime connected — heavy toolchains run through it."
-            : "Termux is not connected yet. Java/C/C++/Rust need it; "
-                + "Java/JS/HTML/CSS already work without it.");
+        note.setText(embeddedReady
+            ? "Linux runtime ready — heavy toolchains run inside LarvIDE."
+            : "Linux runtime not downloaded yet. Java/JS/Python/HTML already work; "
+                + "C/C++/Rust/Node unlock after the one-time download.");
         note.setTextColor(ContextCompat.getColor(activity,
-            termuxOk ? R.color.success : R.color.warning));
+            embeddedReady ? R.color.success : R.color.warning));
         note.setTextSize(12);
         root.addView(note);
 
@@ -49,8 +49,9 @@ public class LanguagesDialog {
         installs.put("Python 3.14", null);
         installs.put("JavaScript (Rhino)", null);
         installs.put("HTML / CSS", null);
-        installs.put("Java (OpenJDK 17)", "openjdk-17");
+        installs.put("Java (built-in ECJ)", null);
         installs.put("C / C++ (Clang)", "clang");
+        installs.put("Java (OpenJDK 17)", "openjdk-17");
         installs.put("Node.js", "nodejs");
         installs.put("Rust", "rust");
         installs.put("Ruby", "ruby");
@@ -61,10 +62,10 @@ public class LanguagesDialog {
             View action = null;
             if (pkg == null) {
                 status = "Built-in — ready";
-            } else if (!termuxOk) {
-                status = "Requires Termux setup";
+            } else if (!embeddedReady) {
+                status = "Locked — download Linux runtime first";
             } else {
-                status = "Installed via Termux · tap to (re)install";
+                status = "Via embedded Linux · tap to (re)install";
                 Button b = new Button(activity, null, 0);
                 b.setText("Install " + pkg);
                 b.setTextColor(ContextCompat.getColor(activity, R.color.ide_accent));

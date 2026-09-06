@@ -59,6 +59,12 @@ public class RunDispatcher {
         void toast(String message);
         void openTermuxWizard();
         void executeTermux(ExecRequest request) throws BackendUnavailableException;
+        // Embedded in-app Linux runtime (no external app).
+        default void executeEmbedded(ExecRequest request) throws BackendUnavailableException {
+            throw new BackendUnavailableException(
+                com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
+        }
+        default void openEmbeddedSetup() { openTermuxWizard(); }
     }
 
     public static class RunStreams {
@@ -74,10 +80,16 @@ public class RunDispatcher {
 
     private final Host host;
     private final TermuxCommandBackend termuxBackend;
+    private com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend embeddedBackend;
 
     public RunDispatcher(Host host, TermuxCommandBackend termuxBackend) {
         this.host = host;
         this.termuxBackend = termuxBackend;
+    }
+
+    public void setEmbeddedBackend(
+            com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend embedded) {
+        this.embeddedBackend = embedded;
     }
 
     public void dispatch() {
@@ -94,12 +106,29 @@ public class RunDispatcher {
         String language = detectRunLanguage(spec, detection);
         String entry = resolveEntryFile(spec, detection, language);
 
-        boolean termuxReady = termuxBackend != null && termuxBackend.isAvailable();
-        boolean preferTermux = host.prefs().getBoolean("runViaTermux", true);
+        boolean embeddedReady = embeddedBackend != null && embeddedBackend.isAvailable();
+        boolean preferEmbedded = host.prefs().getBoolean("runViaEmbedded", true);
         boolean hasExplicitCmd = spec != null && !spec.runCommand.isEmpty();
+        if (embeddedReady
+            && (hasExplicitCmd || (preferEmbedded && usesEmbeddedToolchain(language)))) {
+            runInEmbedded(spec, entry, language);
+            return;
+        }
+
+        // Legacy external-Termux path kept dead: only used if embedded missing AND
+        // user explicitly opted into legacy in prefs (default off).
+        boolean termuxReady = termuxBackend != null && termuxBackend.isAvailable();
+        boolean preferTermux = host.prefs().getBoolean("runViaTermux", false);
         if (termuxReady
             && (hasExplicitCmd || (preferTermux && usesTermuxToolchain(language)))) {
             runInTermux(spec, entry, language);
+            return;
+        }
+
+        // C/C++ has no built-in fallback — never compile it as Java.
+        if (ProjectRecognizer.CPP.equals(language)) {
+            host.toast("C/C++ needs the Linux runtime — download it to Run");
+            host.openEmbeddedSetup();
             return;
         }
 
@@ -125,6 +154,12 @@ public class RunDispatcher {
             || ProjectRecognizer.CPP.equals(language);
     }
 
+    /** Languages routed to the embedded Linux runtime when READY. */
+    private static boolean usesEmbeddedToolchain(String language) {
+        return ProjectRecognizer.CPP.equals(language)
+            || ProjectRecognizer.JAVA.equals(language);
+    }
+
     static List<String> buildTermuxCommand(String language, String entryFileName,
                                            List<String> explicitCommand) {
         if (explicitCommand != null && !explicitCommand.isEmpty()) return explicitCommand;
@@ -148,6 +183,31 @@ public class RunDispatcher {
 
     private static String q(String s) {
         return "'" + s.replace("'", "'\\''") + "'";
+    }
+
+    private void runInEmbedded(LarvBuildParser.BuildSpec spec, String entryPath,
+                               String language) {
+        host.setBusy(true);
+        host.typeCheckHandler().removeCallbacksAndMessages(null);
+        File workdir = host.currentProject() != null
+            ? host.currentProject().getRootDir() : new File("/");
+        String entryName = entryPath != null ? new File(entryPath).getName() : null;
+        List<String> cmd = buildTermuxCommand(language, entryName,
+            spec == null ? null : spec.runCommand);
+        if (cmd == null) {
+            host.toast("No entry file for " + language);
+            host.setBusy(false);
+            return;
+        }
+        try {
+            host.executeEmbedded(new ExecRequest(cmd, workdir.getAbsolutePath(), true));
+            host.setStatus("Running via embedded Linux: " + String.join(" ", cmd));
+            host.setBusy(false);
+        } catch (BackendUnavailableException ex) {
+            host.setBusy(false);
+            host.toast("Linux runtime not ready: " + ex.getState());
+            host.openEmbeddedSetup();
+        }
     }
 
     private void runInTermux(LarvBuildParser.BuildSpec spec, String entryPath,
