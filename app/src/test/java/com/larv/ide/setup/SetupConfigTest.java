@@ -46,6 +46,19 @@ public class SetupConfigTest {
     }
 
     @Test
+    public void entryFilesCoverAllLanguages() {
+        assertEquals("Main.java",
+            SetupConfig.entryFileName(SetupConfig.Language.JAVA));
+        assertEquals("main.cpp",
+            SetupConfig.entryFileName(SetupConfig.Language.CPP));
+        assertEquals("main.py",
+            SetupConfig.entryFileName(SetupConfig.Language.PYTHON));
+        assertEquals("index.js",
+            SetupConfig.entryFileName(SetupConfig.Language.NODE));
+        assertEquals(null, SetupConfig.entryFileName(null));
+    }
+
+    @Test
     public void unknownStoredNamesAreDropped() {
         java.util.Set<String> stored = new java.util.LinkedHashSet<>(
             Arrays.asList("JAVA", "COBOL"));

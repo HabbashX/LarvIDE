@@ -69,4 +69,21 @@ public final class SetupConfig {
         }
         return out;
     }
+
+    /** Entry file scaffolded for a fresh project of this language. */
+    public static String entryFileName(Language lang) {
+        if (lang == null) return null;
+        switch (lang) {
+            case JAVA: return "Main.java";
+            case CPP: return "main.cpp";
+            case PYTHON: return "main.py";
+            case NODE: return "index.js";
+            default: return null;
+        }
+    }
+
+    /** Pref key recording a successful toolchain install. */
+    public static String toolchainFlag(String pkg) {
+        return "toolchain_installed_" + pkg;
+    }
 }

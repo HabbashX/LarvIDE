@@ -263,6 +263,10 @@ public class SetupWizardActivity extends AppCompatActivity {
                                 @Override public void onExit(int exitCode) {
                                 }
                             });
+                        if (exit == 0) {
+                            prefs.edit().putBoolean(
+                                SetupConfig.toolchainFlag(pkg), true).apply();
+                        }
                         appendLog(log, (exit == 0 ? "✓ " : "✗ (exit " + exit + ") ")
                             + pkg + "\n\n");
                     } catch (Exception ex) {

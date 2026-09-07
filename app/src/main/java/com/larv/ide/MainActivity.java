@@ -165,6 +165,7 @@ public class MainActivity extends AppCompatActivity
 
         initViews();
         initServices();
+        registerProjectCreator();
         setupListeners();
         checkPermissions();
 
@@ -468,7 +469,7 @@ public class MainActivity extends AppCompatActivity
         btnCloseProjectWindow.setOnClickListener(v -> closeLeftWindow());
         btnCloseBottomWindow.setOnClickListener(v -> closeBottomWindow());
 
-        findViewById(R.id.btnWelcomeNewProject).setOnClickListener(v -> showNewProjectDialog());
+        findViewById(R.id.btnWelcomeNewProject).setOnClickListener(v -> startProjectCreator());
         findViewById(R.id.btnWelcomeOpenProject).setOnClickListener(v -> showOpenProjectDialog());
 
         menuFile.setOnClickListener(v -> showMenuBarPopup(v, R.menu.menu_file, this::onMenuBarItemSelected, null));
@@ -590,9 +591,16 @@ public class MainActivity extends AppCompatActivity
             showWelcome(false);
         });
         sessionManager.restore(project);
-        if (!hadSession) {
-            // Fresh project (or pre-session era): open the entry file so the
-            // user never lands on an empty editor.
+        // Open the creator-chosen entry first, else Main.java for fresh
+        // projects — the user never lands on an empty editor.
+        final String pendingEntry = pendingEntryName;
+        pendingEntryName = null;
+        if (pendingEntry != null && !pendingEntry.isEmpty()) {
+            File entry = new File(project.getRootDir(), pendingEntry);
+            if (entry.exists()) {
+                runOnUiThread(() -> openFileInEditor(entry));
+            }
+        } else if (!hadSession) {
             File main = new File(project.getRootDir(), "Main.java");
             if (main.exists()) {
                 runOnUiThread(() -> openFileInEditor(main));
@@ -1525,30 +1533,32 @@ public class MainActivity extends AppCompatActivity
         statusText.setText(projectOpen ? "Ready" : "Ready");
     }
 
-    private void showNewProjectDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("New Project");
+    private androidx.activity.result.ActivityResultLauncher<Intent> projectCreatorLauncher;
 
-        EditText input = createIdeInput("Project name");
-        builder.setView(wrapDialogView(input));
+    private void registerProjectCreator() {
+        projectCreatorLauncher = registerForActivityResult(
+            new androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    String path = result.getData().getStringExtra(
+                        com.larv.ide.ui.setup.ProjectCreatorActivity.EXTRA_PROJECT_PATH);
+                    String entry = result.getData().getStringExtra(
+                        com.larv.ide.ui.setup.ProjectCreatorActivity.EXTRA_ENTRY_NAME);
+                    if (path != null && !path.isEmpty()) {
+                        File dir = new File(path);
+                        pendingEntryName = (entry != null && !entry.isEmpty()) ? entry : null;
+                        switchToProject(new Project(dir.getName(), dir.getAbsolutePath()));
+                    }
+                }
+            });
+    }
 
-        builder.setPositiveButton("Create", (dialog, which) -> {
-            String name = input.getText().toString().trim();
-            if (!name.isEmpty()) {
-                projectManager.createProject(name, new ProjectManager.OnProjectCreatedCallback() {
-                    @Override
-                    public void onCreated(Project project) {
-                        switchToProject(project);
-                    }
-                    @Override
-                    public void onError(String error) {
-                        runOnUiThread(() -> Toast.makeText(MainActivity.this, error, Toast.LENGTH_SHORT).show());
-                    }
-                });
-            }
-        });
-        builder.setNegativeButton("Cancel", null);
-        builder.show();
+    /** Entry file to auto-open once the created project finishes opening. */
+    private String pendingEntryName = null;
+
+    private void startProjectCreator() {
+        projectCreatorLauncher.launch(new Intent(this,
+            com.larv.ide.ui.setup.ProjectCreatorActivity.class));
     }
 
     private void showOpenProjectDialog() {
@@ -1775,7 +1785,7 @@ public class MainActivity extends AppCompatActivity
 
     private boolean onMenuBarItemSelected(int itemId, int groupId) {
         if (itemId == R.id.menu_new_project) {
-            showNewProjectDialog();
+            startProjectCreator();
             return true;
         } else if (itemId == R.id.menu_open_project) {
             showOpenProjectDialog();
@@ -1871,6 +1881,11 @@ public class MainActivity extends AppCompatActivity
                                                 rs.programOut(), data, len);
                                         }
                                         @Override public void onExit(int exitCode) {
+                                            if (exitCode == 0) {
+                                                prefs.edit().putBoolean(
+                                                    com.larv.ide.setup.SetupConfig.toolchainFlag(
+                                                        pkg), true).apply();
+                                            }
                                             writeTerm(rs.programOut(),
                                                 "\nInstall finished (exit " + exitCode + ")\n");
                                             closeTermStreams(rs.programOut(), rs.stdinOut());

@@ -120,6 +120,17 @@ public class ProjectManager {
         }
     }
     public void createProject(String name, OnProjectCreatedCallback callback) {
+        createProject(name, "Main.java", callback);
+    }
+
+    /**
+     * Create a project scaffolded for a language. {@code entryName} may be
+     * null/empty for a bare empty project (no entry file, no toolchain).
+     * The entry file name is returned to the caller for auto-open via
+     * {@link OnProjectCreatedCallback#onCreated(Project)} + pending entry.
+     */
+    public void createProject(String name, String entryName,
+                              OnProjectCreatedCallback callback) {
         executor.execute(() -> {
             File projectDir = new File(projectsRootDir, sanitizeFileName(name));
             if (projectDir.exists()) {
@@ -136,11 +147,20 @@ public class ProjectManager {
 
             boolean success = projectDir.mkdirs();
             if (success) {
-                File mainFile = new File(projectDir, "Main.java");
-                try (FileOutputStream fos = new FileOutputStream(mainFile)) {
-                    fos.write(templateFor("Main.java").getBytes("UTF-8"));
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to create Main.java", e);
+                if (entryName != null && !entryName.trim().isEmpty()) {
+                    if (isCppFileName(entryName) && !cppEnabled) {
+                        if (callback != null) {
+                            callback.onError("C/C++ needs the Linux runtime — "
+                                + "download it from Languages & Runtimes first");
+                        }
+                        return;
+                    }
+                    File entryFile = new File(projectDir, entryName);
+                    try (FileOutputStream fos = new FileOutputStream(entryFile)) {
+                        fos.write(templateFor(entryName).getBytes("UTF-8"));
+                    } catch (IOException e) {
+                        Log.e(TAG, "Failed to create " + entryName, e);
+                    }
                 }
 
                 // No larvbuild.json: Run auto-detects language + entry from the
