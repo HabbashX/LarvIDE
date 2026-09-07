@@ -544,6 +544,22 @@
             flushPending();
         };
 
+        // Insert text at the cursor from the native symbol bar (phone
+        // keyboards lack braces/semicolons). 'TAB' triggers a real tab.
+        window.insertText = function(text) {
+            if (!editor) return;
+            editor.focus();
+            if (text === 'TAB') {
+                editor.trigger('larv-symbolbar', 'tab', null);
+                return;
+            }
+            var sel = editor.getSelection();
+            editor.executeEdits('larv-symbolbar', [{
+                range: sel, text: text, forceMoveMarkers: true
+            }]);
+            editor.revealPositionInCenterIfOutsideViewport(editor.getPosition());
+        };
+
         window.setContent = function(file, content) {
             flushPending();
             if (currentFile && currentFile !== file && editor) {

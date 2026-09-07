@@ -56,7 +56,48 @@ public class EditorFragment extends Fragment {
         View view = inflater.inflate(R.layout.fragment_editor, container, false);
         webView = view.findViewById(R.id.editorWebView);
         setupWebView();
+        setupSymbolBar(view);
         return view;
+    }
+
+    /** Phone keyboards lack code symbols — one-tap bar above the editor. */
+    private static final String[] SYMBOLS = {
+        "Tab", "{", "}", "(", ")", "[", "]", ";", ":", "\"", "'",
+        "=", "+", "-", "*", "/", "<", ">", "!", "_", "$", "@", "#", "\\", "|", "&", "?"
+    };
+
+    private void setupSymbolBar(View root) {
+        android.widget.HorizontalScrollView bar =
+            root.findViewById(R.id.editorSymbolBar);
+        if (bar == null) return;
+        android.widget.LinearLayout row =
+            (android.widget.LinearLayout) bar.getChildAt(0);
+        if (row == null) return;
+        for (String s : SYMBOLS) {
+            android.widget.Button b = new android.widget.Button(
+                requireContext(), null, 0);
+            b.setText(s.equals("Tab") ? "⇥" : s);
+            b.setTextSize(14);
+            b.setMinWidth(0);
+            b.setMinimumWidth(0);
+            int p = Math.round(10 * getResources().getDisplayMetrics().density);
+            b.setPadding(p, p / 2, p, p / 2);
+            final String symbol = s;
+            b.setOnClickListener(v -> insertSymbol(symbol));
+            row.addView(b);
+        }
+    }
+
+    /**
+     * Insert a symbol at the cursor via Monaco executeEdits (undo-safe).
+     * "Tab" triggers a real indent. Edits flow back through the normal
+     * onContentChange bridge, so save/compile/session all stay consistent.
+     */
+    public void insertSymbol(String symbol) {
+        if (!isReady || webView == null || symbol == null) return;
+        final String arg = "Tab".equals(symbol) ? "TAB" : escapeForJs(symbol);
+        webView.post(() -> webView.evaluateJavascript(
+            "window.insertText('" + arg + "');", null));
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "ClickableViewAccessibility"})
