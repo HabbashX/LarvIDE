@@ -171,6 +171,26 @@ public class MainActivity extends AppCompatActivity
         handleIntent(getIntent());
         restoreLastProject();
         showWelcome(currentProject == null);
+        maybeShowSetupWizard();
+    }
+
+    /** First-launch onboarding: languages → runtime → toolchains. Skippable. */
+    private void maybeShowSetupWizard() {
+        if (prefs == null) return;
+        if (!prefs.getBoolean(
+                com.larv.ide.setup.SetupConfig.PREF_SETUP_COMPLETE, false)) {
+            startActivity(new Intent(this,
+                com.larv.ide.ui.setup.SetupWizardActivity.class));
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // The runtime may have been installed while we were away (wizard,
+        // Settings) — re-evaluate the C++ gate every return.
+        ProjectManager.setCppEnabled(
+            com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this));
     }
 
     @Override

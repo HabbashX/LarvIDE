@@ -383,6 +383,22 @@ public class SettingsDialog {
             }).start();
         });
 
+        android.widget.Button wizardBtn = new android.widget.Button(activity, null, 0);
+        wizardBtn.setText("Setup wizard");
+        wizardBtn.setTextSize(12);
+        LinearLayout.LayoutParams wizardLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wizardLp.topMargin = dp(activity, 8);
+        wizardBtn.setLayoutParams(wizardLp);
+        wizardBtn.setOnClickListener(v -> {
+            try {
+                activity.startActivity(new android.content.Intent(activity,
+                    com.larv.ide.ui.setup.SetupWizardActivity.class));
+            } catch (Exception ignored) {
+            }
+        });
+        card.addView(wizardBtn);
+
         return section;
     }
 
