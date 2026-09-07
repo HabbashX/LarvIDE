@@ -99,17 +99,16 @@ public class JavaCompiler {
 
         for (OpenFile openFile : openFiles) {
             File sourceFile = getSourceFile(openFile.getFilePath());
-            String previous = lastCheckedContents.get(openFile.getFilePath());
-            if (previous == null || !previous.equals(openFile.getContent())) {
-                try (FileOutputStream fos = new FileOutputStream(sourceFile)) {
-                    fos.write(openFile.getContent().getBytes(StandardCharsets.UTF_8));
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to write source file", e);
-                    return new CompilationResult(false, List.of(), List.of(
-                        new Diagnostic(openFile.getFilePath(), 0, 0,
-                            "Failed to write source file: " + e.getMessage(), Diagnostic.Severity.ERROR)
-                    ), "Failed to write source file: " + e.getMessage());
-                }
+            // Always write: a skipped rewrite is a stale-compile bug waiting
+            // to happen (the "prints old code" class). Disk writes are cheap.
+            try (FileOutputStream fos = new FileOutputStream(sourceFile)) {
+                fos.write(openFile.getContent().getBytes(StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to write source file", e);
+                return new CompilationResult(false, List.of(), List.of(
+                    new Diagnostic(openFile.getFilePath(), 0, 0,
+                        "Failed to write source file: " + e.getMessage(), Diagnostic.Severity.ERROR)
+                ), "Failed to write source file: " + e.getMessage());
             }
             sourceFiles.add(sourceFile);
             fileContents.put(openFile.getFileName(), openFile.getContent());

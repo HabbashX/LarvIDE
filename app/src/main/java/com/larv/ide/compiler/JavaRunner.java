@@ -93,6 +93,15 @@ public class JavaRunner {
     private ClassLoader createClassLoader(File dexFile) throws Exception {
         File optimizedDir = new File(context.getCacheDir(), "dexopt");
         optimizedDir.mkdirs();
+        // Clear stale oat cache: a fixed dexopt dir + reused dex names could
+        // otherwise execute the PREVIOUS run's code ("prints old code").
+        File[] cached = optimizedDir.listFiles();
+        if (cached != null) {
+            for (File f : cached) {
+                //noinspection ResultOfMethodCallIgnored
+                f.delete();
+            }
+        }
 
         return new dalvik.system.PathClassLoader(
             dexFile.getAbsolutePath(),

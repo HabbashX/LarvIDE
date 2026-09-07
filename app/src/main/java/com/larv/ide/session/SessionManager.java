@@ -53,6 +53,7 @@ public class SessionManager {
 
     private boolean restoring = false;
     private int restoreRemaining = 0;
+    private int restoreGen = 0;
     private String pendingCursorPositions = null;
 
     public SessionManager(Host host) {
@@ -97,6 +98,20 @@ public class SessionManager {
         return project != null && sessionFile(project).exists();
     }
 
+    /**
+     * Blocking write on the caller thread. Use when the app may die right
+     * after (onStop) — the async saveNow might never run, leaving stale
+     * dirty-buffers that would override fresh disk content on next open
+     * (the "old Main reopens" bug).
+     */
+    public void saveNowSync() {
+        final Project project = host.currentProject();
+        if (project == null) return;
+        List<OpenFile> snapshot = new ArrayList<>(host.openFiles());
+        if (snapshot.isEmpty()) return;
+        writeSession(project, snapshot, host.activeFile());
+    }
+
     private void writeSession(Project project, List<OpenFile> files, String active) {
         try {
             JSONObject root = new JSONObject();
@@ -131,10 +146,27 @@ public class SessionManager {
     public void reset() {
         restoring = false;
         restoreRemaining = 0;
+        restoreGen++; // orphan any late callbacks from a previous restore
         cancelSave();
     }
 
     public void restore(Project project) {
+        // Abandon any in-flight restore first: its late callbacks must not
+        // corrupt this run's counter (rapid project switching) or wedge the
+        // restoring flag forever (which would drop all future session saves
+        // and leave tabs unrestored — the "bar empties" bug).
+        restoring = false;
+        restoreRemaining = 0;
+        restoreGen++;
+        final int gen = restoreGen;
+        // Watchdog: never stay stuck restoring no matter what fails below.
+        handler.postDelayed(() -> {
+            if (restoring && restoreGen == gen) {
+                Log.w(TAG, "restore watchdog: forcing finish");
+                restoring = false;
+                restoreRemaining = 0;
+            }
+        }, 15000);
         host.executor().execute(() -> {
             String json = readSessionFile(project);
             if (json == null || json.isEmpty()) return;
@@ -168,6 +200,7 @@ public class SessionManager {
 
                 List<String> openOrder = new ArrayList<>(tabs);
                 final String activePath = active.isEmpty() ? tabs.get(0) : active;
+                if (restoreGen != gen) return; // superseded by a newer restore
                 restoring = true;
                 int existing = 0;
                 for (String path : openOrder) {
@@ -183,19 +216,24 @@ public class SessionManager {
                     if (!f.exists()) continue;
                     final String buffered = buffers != null ? buffers.optString(path, null) : null;
                     final boolean hasBuffer = buffered != null;
-                    host.projectManager().readFile(f, new ProjectManager.OnFileReadCallback() {
-                        @Override
-                        public void onContent(String content) {
-                            String useContent = hasBuffer ? buffered : content;
-                            host.runOnUiThread(() -> openRestoredTab(path, f,
-                                useContent, hasBuffer, activePath));
-                        }
+                    try {
+                        host.projectManager().readFile(f, new ProjectManager.OnFileReadCallback() {
+                            @Override
+                            public void onContent(String content) {
+                                String useContent = hasBuffer ? buffered : content;
+                                host.runOnUiThread(() -> openRestoredTab(gen, path, f,
+                                    useContent, hasBuffer, activePath));
+                            }
 
-                        @Override
-                        public void onError(String error) {
-                            finishRestoreTab(activePath);
-                        }
-                    });
+                            @Override
+                            public void onError(String error) {
+                                finishRestoreTab(gen, activePath);
+                            }
+                        });
+                    } catch (Exception e) {
+                        Log.w(TAG, "restore dispatch failed for " + path, e);
+                        finishRestoreTab(gen, activePath);
+                    }
                 }
                 host.runOnUiThread(() -> {
                     EditorFragment fragment = host.editorFragment();
@@ -207,12 +245,17 @@ public class SessionManager {
                 });
             } catch (Exception e) {
                 Log.w(TAG, "restoreSession parse failed", e);
+                if (restoreGen == gen) {
+                    restoring = false;
+                    restoreRemaining = 0;
+                }
             }
         });
     }
 
-    private void openRestoredTab(String path, File f, String content, boolean hasBuffer,
+    private void openRestoredTab(int gen, String path, File f, String content, boolean hasBuffer,
                                  String activePath) {
+        if (gen != restoreGen) return; // stale restore — a newer one owns the bar
         OpenFile existing = host.filesByPath().get(path);
         if (existing == null) {
             OpenFile created = new OpenFile(path, content);
@@ -226,11 +269,12 @@ public class SessionManager {
         } else if (hasBuffer) {
             existing.setContent(content);
         }
-        finishRestoreTab(activePath);
+        finishRestoreTab(gen, activePath);
     }
 
-    private void finishRestoreTab(String activePath) {
+    private void finishRestoreTab(int gen, String activePath) {
         host.runOnUiThread(() -> {
+            if (gen != restoreGen) return; // stale restore — ignore
             restoreRemaining--;
             if (restoreRemaining > 0) {
                 return;

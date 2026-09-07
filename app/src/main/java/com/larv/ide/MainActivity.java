@@ -738,12 +738,9 @@ public class MainActivity extends AppCompatActivity
         return ContextCompat.getColor(this, fallbackRes);
     }
 
-    @Override
-    public void onEditorReady() {
+    /** Push saved prefs (font size, theme, etc.) to the live editor. Idempotent. */
+    private void applyPrefsToEditor() {
         if (editorFragment != null) {
-            if (sessionManager.hasPendingCursorPositions()) {
-                editorFragment.setCursorPositions(sessionManager.consumePendingCursorPositions());
-            }
             editorFragment.applyEditorSettings(
                 prefs.getInt("editorFontSize", 14),
                 prefs.getInt("editorTabSize", 4),
@@ -754,6 +751,16 @@ public class MainActivity extends AppCompatActivity
                 prefs.getBoolean("editorHighlightLine", true),
                 prefs.getString("editorFontFamily", "jetbrains"));
             editorFragment.applyEditorTheme(prefs.getString("editorTheme", "islands-dark"));
+        }
+    }
+
+    @Override
+    public void onEditorReady() {
+        if (editorFragment != null) {
+            if (sessionManager.hasPendingCursorPositions()) {
+                editorFragment.setCursorPositions(sessionManager.consumePendingCursorPositions());
+            }
+            applyPrefsToEditor();
         }
         if (!currentEditorFile.isEmpty()) {
             OpenFile openFile = findOpenFile(currentEditorFile);
@@ -822,6 +829,9 @@ public class MainActivity extends AppCompatActivity
         if (openFile != null) {
             editorFragment.setContent(filePath, openFile.getContent());
         }
+        // Re-assert prefs on every switch: guarantees font/theme survive
+        // fragment recreation, project switches, and restores.
+        applyPrefsToEditor();
         if (openFiles.isEmpty()) {
             noEditorPlaceholder.setVisibility(View.VISIBLE);
         }
@@ -889,6 +899,9 @@ public class MainActivity extends AppCompatActivity
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             runQueued = false;
             saveAllModifiedFilesSync();
+            // Buffers just hit disk with modified=false — refresh the session
+            // now so a reopen reads these fresh files, not stale buffers.
+            sessionManager.saveNow();
             runDispatcher.dispatch();
         }, 250);
     }
@@ -1394,17 +1407,13 @@ public class MainActivity extends AppCompatActivity
             }
             @Override public void onEditorSettingsApplied(String themeId, String fontFamily,
                                                           int fontSize, int tabSize) {
-                // Prefs are already saved by the dialog; apply live if the editor
-                // exists, otherwise onEditorReady picks them up on next open.
+                // Prefs are already saved by the dialog; apply live now + once
+                // more after a beat (covers a WebView that is still loading).
+                // onEditorReady re-applies on next open regardless.
                 if (editorFragment != null) {
-                    editorFragment.applyEditorSettings(fontSize, tabSize,
-                        prefs.getBoolean("editorLineNumbers", true),
-                        prefs.getBoolean("editorWordWrap", false),
-                        prefs.getBoolean("editorMinimap", false),
-                        prefs.getBoolean("editorIndentGuides", true),
-                        prefs.getBoolean("editorHighlightLine", true),
-                        fontFamily);
-                    editorFragment.applyEditorTheme(themeId);
+                    applyPrefsToEditor();
+                    new Handler(Looper.getMainLooper()).postDelayed(
+                        () -> applyPrefsToEditor(), 600);
                     Toast.makeText(MainActivity.this,
                         "Editor: " + fontSize + " pt applied", Toast.LENGTH_SHORT).show();
                 } else {
@@ -1547,7 +1556,9 @@ public class MainActivity extends AppCompatActivity
         super.onStop();
         autosaveHandler.removeCallbacks(autosaveRunnable);
         saveAllModifiedFilesSync();
-        sessionManager.saveNow();
+        // Blocking: the process may die before an async save runs, which used
+        // to leave stale buffers overriding fresh files on next open.
+        sessionManager.saveNowSync();
     }
 
     private void openTermuxShell() {
