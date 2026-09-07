@@ -171,7 +171,7 @@ public class MainActivity extends AppCompatActivity
         handleIntent(getIntent());
         restoreLastProject();
         showWelcome(currentProject == null);
-        maybeShowSetupWizard();
+        enforceRuntimeGate();
     }
 
     /** First-launch onboarding: languages → runtime → toolchains. Skippable. */
@@ -184,13 +184,136 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    private boolean runtimeGateShowing = false;
+
+    /**
+     * The Linux runtime is MANDATORY: LarvIDE has no built-in compilers, so
+     * nothing can execute without it. Every launch with a missing runtime
+     * blocks on this gate — Download, or Exit. The only exception is non-arm64
+     * devices, where the runtime can never install (limited mode instead).
+     */
+    private void enforceRuntimeGate() {
+        if (runtimeGateShowing) return;
+        if (com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this)) {
+            maybeShowSetupWizard();
+            return;
+        }
+        if (!com.larv.ide.run.backend.embedded.EmbeddedRuntime.isArm64()) {
+            new AlertDialog.Builder(this)
+                .setTitle("Device not supported")
+                .setMessage("The Linux runtime needs arm64 — this device cannot install it. "
+                    + "You can still browse and edit code, but Run is disabled.")
+                .setPositiveButton("Continue in limited mode", null)
+                .setCancelable(true)
+                .show();
+            return;
+        }
+        runtimeGateShowing = true;
+
+        android.widget.LinearLayout root = new android.widget.LinearLayout(this);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = dp(24);
+        root.setPadding(pad, dp(8), pad, dp(4));
+
+        android.widget.TextView msg = new android.widget.TextView(this);
+        msg.setText("LarvIDE cannot run any code without the Linux Environment "
+            + "(~100–150 MB, one-time download, WiFi recommended).\n\n"
+            + "Download it now to unlock Java, C/C++, Python and Node.js.");
+        msg.setTextSize(14);
+        msg.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        root.addView(msg);
+
+        android.widget.ProgressBar progress = new android.widget.ProgressBar(this, null,
+            android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(100);
+        progress.setVisibility(View.GONE);
+        root.addView(progress);
+
+        android.widget.TextView status = new android.widget.TextView(this);
+        status.setTextSize(12);
+        status.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        status.setPadding(0, dp(6), 0, 0);
+        root.addView(status);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Linux Environment required")
+            .setView(wrapDialogView(root))
+            .setCancelable(false)
+            .create();
+
+        android.widget.LinearLayout buttons = new android.widget.LinearLayout(this);
+        buttons.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        buttons.setPadding(0, dp(12), 0, 0);
+
+        android.widget.Button downloadBtn = new android.widget.Button(this, null, 0);
+        downloadBtn.setText("Download");
+        downloadBtn.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        buttons.addView(downloadBtn);
+
+        android.widget.Button exitBtn = new android.widget.Button(this, null, 0);
+        exitBtn.setText("Exit app");
+        exitBtn.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        buttons.addView(exitBtn);
+        root.addView(buttons);
+
+        downloadBtn.setOnClickListener(v -> {
+            downloadBtn.setEnabled(false);
+            exitBtn.setEnabled(false);
+            progress.setVisibility(View.VISIBLE);
+            progress.setIndeterminate(true);
+            status.setText("Downloading…");
+            embeddedBackend.installer().installAsync(
+                prefs.getString("embeddedBootstrapUrl", null),
+                new com.larv.ide.run.backend.embedded.PrefixInstaller.Listener() {
+                    @Override public void onProgress(String stage, int percent) {
+                        runOnUiThread(() -> {
+                            status.setText(stage);
+                            if (percent > 0) {
+                                progress.setIndeterminate(false);
+                                progress.setProgress(Math.min(100, percent));
+                            }
+                        });
+                    }
+                    @Override public void onComplete() {
+                        runOnUiThread(() -> {
+                            runtimeGateShowing = false;
+                            ProjectManager.setCppEnabled(true);
+                            statusText.setText("Linux runtime ready");
+                            Toast.makeText(MainActivity.this,
+                                "Linux runtime ready", Toast.LENGTH_LONG).show();
+                            dialog.dismiss();
+                            maybeShowSetupWizard();
+                        });
+                    }
+                    @Override public void onError(String message) {
+                        runOnUiThread(() -> {
+                            progress.setVisibility(View.GONE);
+                            status.setText("Failed: " + message
+                                + "\nCheck your connection and tap Download to retry.");
+                            status.setTextColor(
+                                ContextCompat.getColor(MainActivity.this, R.color.error));
+                            downloadBtn.setEnabled(true);
+                            exitBtn.setEnabled(true);
+                        });
+                    }
+                });
+        });
+        exitBtn.setOnClickListener(v -> finish());
+
+        dialog.show();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         // The runtime may have been installed while we were away (wizard,
-        // Settings) — re-evaluate the C++ gate every return.
+        // Settings) — re-evaluate the C++ gate every return. If it was
+        // removed, the mandatory gate re-appears.
         ProjectManager.setCppEnabled(
             com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this));
+        enforceRuntimeGate();
     }
 
     @Override
