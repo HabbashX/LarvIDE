@@ -46,7 +46,7 @@ public class SettingsDialog {
         final String[] accentNames = {"Blue", "Purple", "Green", "Orange", "Pink", "Cyan"};
         root.addView(label(activity, "Accent color"));
         final Spinner accentSpinner = spinner(activity, accentNames,
-                java.util.Arrays.asList(accentNames).indexOf(savedAccent));
+                Math.max(0, java.util.Arrays.asList(accentKeys).indexOf(savedAccent)));
         root.addView(accentSpinner);
 
         root.addView(label(activity, "Editor theme", true));
@@ -71,9 +71,19 @@ public class SettingsDialog {
         root.addView(label(activity, "Editor font size", true));
         final SeekBar fontSeek = new SeekBar(activity);
         final int savedFont = prefs.getInt("editorFontSize", 14);
-        fontSeek.setMin(10);
-        fontSeek.setMax(24);
-        fontSeek.setProgress(savedFont);
+        // SeekBar.setMin exists only on API 26+ (minSdk is 21): emulate with offset below.
+        final boolean hasNativeMin =
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O;
+        final int fontMin = 10;
+        final int fontMax = 24;
+        if (hasNativeMin) {
+            fontSeek.setMin(fontMin);
+            fontSeek.setMax(fontMax);
+            fontSeek.setProgress(Math.min(fontMax, Math.max(fontMin, savedFont)));
+        } else {
+            fontSeek.setMax(fontMax - fontMin);
+            fontSeek.setProgress(Math.min(fontMax - fontMin, Math.max(0, savedFont - fontMin)));
+        }
         fontSeek.getProgressDrawable().setColorFilter(
                 callbacks.accentColor(), PorterDuff.Mode.SRC_IN);
         fontSeek.getThumb().setColorFilter(
@@ -138,7 +148,8 @@ public class SettingsDialog {
                     String newAccent = accentKeys[accentSpinner.getSelectedItemPosition()];
                     String newTheme = themeIds[themeSpinner.getSelectedItemPosition()];
                     String newFamily = familyKeys[familySpinner.getSelectedItemPosition()];
-                    int newSize = fontSeek.getProgress();
+                    int newSize = hasNativeMin ? fontSeek.getProgress()
+                        : fontSeek.getProgress() + fontMin;
                     int newTabSize = Integer.parseInt(
                             (String) tabSpinner.getSelectedItem());
                     prefs.edit()

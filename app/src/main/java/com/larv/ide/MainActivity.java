@@ -429,6 +429,18 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    /**
+     * Switch projects without losing work: flush dirty buffers to disk and
+     * persist the OLD project's session BEFORE opening the new one.
+     */
+    private void switchToProject(@NonNull Project project) {
+        if (currentProject != null && !currentProject.getPath().equals(project.getPath())) {
+            saveAllModifiedFilesSync();
+            sessionManager.saveProjectNow(currentProject);
+        }
+        projectManager.openProject(project);
+    }
+
     @Override
     public void onProjectOpened(@NonNull Project project) {
         currentProject = project;
@@ -437,6 +449,7 @@ public class MainActivity extends AppCompatActivity
             prefs.edit().putString(PREF_LAST_PROJECT, project.getPath()).apply();
         }
         closeAllOpenTabs();
+        final boolean hadSession = sessionManager.hasSession(project);
         runOnUiThread(() -> {
             bottomToolWindow.setVisibility(editorMaximized ? View.GONE : View.VISIBLE);
             bottomWindowVisible = true;
@@ -445,6 +458,14 @@ public class MainActivity extends AppCompatActivity
             showWelcome(false);
         });
         sessionManager.restore(project);
+        if (!hadSession) {
+            // Fresh project (or pre-session era): open the entry file so the
+            // user never lands on an empty editor.
+            File main = new File(project.getRootDir(), "Main.java");
+            if (main.exists()) {
+                runOnUiThread(() -> openFileInEditor(main));
+            }
+        }
         indexerExecutor.execute(() -> {
             ProjectRecognizer.Detection detection = ProjectRecognizer.detect(project.getRootDir(), "");
             if (!detection.languages.isEmpty()) {
@@ -456,6 +477,10 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void onProjectClosed() {
+        if (currentProject != null) {
+            saveAllModifiedFilesSync();
+            sessionManager.saveProjectNow(currentProject);
+        }
         currentProject = null;
         sessionManager.reset();
         openFiles.clear();
@@ -505,7 +530,7 @@ public class MainActivity extends AppCompatActivity
         if (node.getType() == FileNode.Type.DIRECTORY) {
             selectedDirectory = node.getPath();
             fileTreeAdapter.toggleExpansion(node);
-        } else if (node.isJavaFile()) {
+        } else if (node.getType() == FileNode.Type.FILE) {
             openFileInEditor(new File(node.getPath()));
         }
     }
@@ -849,8 +874,23 @@ public class MainActivity extends AppCompatActivity
         return filePath != null ? openFilesByPath.get(filePath) : null;
     }
 
+    private boolean runQueued = false;
+
     private void compileAndRun() {
-        runDispatcher.dispatch();
+        if (isCompiling || runQueued) return;
+        runQueued = true;
+        // 1. Push Monaco's debounced edits into OpenFile (RAM) NOW…
+        if (editorFragment != null) {
+            editorFragment.flushContent();
+        }
+        // 2. …then, after the JS-bridge round trip lands (~250ms), flush the
+        // fresh RAM to disk (embedded javac/clang compile files on disk) and run.
+        // The compiler never sees the "old Main" again.
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            runQueued = false;
+            saveAllModifiedFilesSync();
+            runDispatcher.dispatch();
+        }, 250);
     }
 
     private class RunHost implements RunDispatcher.Host {
@@ -1145,7 +1185,7 @@ public class MainActivity extends AppCompatActivity
         builder.setTitle("New File");
         builder.setMessage("In: " + new File(parentPath).getName());
 
-        EditText input = createIdeInput("File name (e.g., MyClass)");
+        EditText input = createIdeInput("File name with extension (e.g., Main.java)");
         builder.setView(wrapDialogView(input));
 
         builder.setPositiveButton("Create", (dialog, which) -> {
@@ -1354,6 +1394,8 @@ public class MainActivity extends AppCompatActivity
             }
             @Override public void onEditorSettingsApplied(String themeId, String fontFamily,
                                                           int fontSize, int tabSize) {
+                // Prefs are already saved by the dialog; apply live if the editor
+                // exists, otherwise onEditorReady picks them up on next open.
                 if (editorFragment != null) {
                     editorFragment.applyEditorSettings(fontSize, tabSize,
                         prefs.getBoolean("editorLineNumbers", true),
@@ -1363,6 +1405,11 @@ public class MainActivity extends AppCompatActivity
                         prefs.getBoolean("editorHighlightLine", true),
                         fontFamily);
                     editorFragment.applyEditorTheme(themeId);
+                    Toast.makeText(MainActivity.this,
+                        "Editor: " + fontSize + " pt applied", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(MainActivity.this,
+                        "Saved — applies when you open a file", Toast.LENGTH_SHORT).show();
                 }
             }
         });
@@ -1385,7 +1432,7 @@ public class MainActivity extends AppCompatActivity
                 projectManager.createProject(name, new ProjectManager.OnProjectCreatedCallback() {
                     @Override
                     public void onCreated(Project project) {
-                        projectManager.openProject(project);
+                        switchToProject(project);
                     }
                     @Override
                     public void onError(String error) {
@@ -1412,7 +1459,7 @@ public class MainActivity extends AppCompatActivity
 
         new AlertDialog.Builder(this)
             .setTitle("Open Project")
-            .setItems(names, (dialog, which) -> projectManager.openProject(projects.get(which)))
+            .setItems(names, (dialog, which) -> switchToProject(projects.get(which)))
             .show();
     }
 

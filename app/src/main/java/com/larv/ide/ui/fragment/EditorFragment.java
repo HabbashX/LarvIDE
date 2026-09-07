@@ -42,6 +42,8 @@ public class EditorFragment extends Fragment {
     private WebView webView;
     private EditorListener listener;
     private boolean isReady = false;
+    /** Settings applied before the page finished loading — flushed on ready. */
+    private String pendingSettingsJs = null;
 
 
     public void setListener(EditorListener listener) {
@@ -93,6 +95,11 @@ public class EditorFragment extends Fragment {
                 super.onPageFinished(view, url);
                 isReady = true;
                 view.requestFocus();
+                if (pendingSettingsJs != null) {
+                    final String pending = pendingSettingsJs;
+                    pendingSettingsJs = null;
+                    view.post(() -> view.evaluateJavascript(pending, null));
+                }
                 if (listener != null) {
                     listener.onEditorReady();
                 }
@@ -116,6 +123,17 @@ public class EditorFragment extends Fragment {
         if (isReady && webView != null) {
         }
         return "";
+    }
+
+    /**
+     * Ask Monaco to push debounced edits to the host immediately.
+     * Call before Run/compile so OpenFile content is never stale.
+     * Delivery is async (JS bridge); allow ~250ms before compiling.
+     */
+    public void flushContent() {
+        if (isReady && webView != null) {
+            webView.post(() -> webView.evaluateJavascript("window.flushContent();", null));
+        }
     }
 
     public void showDiagnostics(List<Diagnostic> diagnostics) {
@@ -157,7 +175,6 @@ public class EditorFragment extends Fragment {
     public void applyEditorSettings(int fontSize, int tabSize, boolean lineNumbers, boolean wordWrap,
                                     boolean minimap, boolean indentGuides, boolean highlightLine,
                                     String fontFamily) {
-        if (!isReady || webView == null) return;
         String js = "window.applyEditorSettings({fontSize:" + fontSize
             + ",tabSize:" + tabSize
             + ",lineNumbers:" + lineNumbers
@@ -165,7 +182,13 @@ public class EditorFragment extends Fragment {
             + ",minimap:" + minimap
             + ",indentGuides:" + indentGuides
             + ",highlightLine:" + highlightLine
-            + ",fontFamily:'" + fontFamily.replace("'", "") + "'});";
+            + ",fontFamily:'" + (fontFamily == null ? "jetbrains"
+                : fontFamily.replace("'", "")) + "'});";
+        if (!isReady || webView == null) {
+            // Never silently drop: deliver once the page finishes loading.
+            pendingSettingsJs = js;
+            return;
+        }
         webView.post(() -> webView.evaluateJavascript(js, null));
     }
 

@@ -143,27 +143,9 @@ public class ProjectManager {
                     Log.e(TAG, "Failed to create Main.java", e);
                 }
 
-                File buildFile = new File(projectDir, "larvbuild.json");
-                String buildTemplate = "{\n"
-                    + "  \"language\": \"Java\",\n"
-                    + "  \"main\": \"Main\",\n"
-                    + "  \"entry\": \"Main.java\",\n"
-                    + "  \"run\": {\n"
-                    + "    \"args\": [],\n"
-                    + "    \"stdin\": \"\"\n"
-                    + "  },\n"
-                    + "  \"dependencies\": [\n"
-                    + "  ],\n"
-                    + "  \"repositories\": [\n"
-                    + "    \"https://repo1.maven.org/maven2\"\n"
-                    + "  ]\n"
-                    + "}\n";
-                try (FileOutputStream fos = new FileOutputStream(buildFile)) {
-                    fos.write(buildTemplate.getBytes("UTF-8"));
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to create larvbuild.json", e);
-                }
-
+                // No larvbuild.json: Run auto-detects language + entry from the
+                // project (active tab wins). Users who need args/stdin can add
+                // one manually — see LarvBuildParser.
                 Project project = new Project(projectDir.getName(), projectDir.getAbsolutePath());
                 if (callback != null) {
                     callback.onCreated(project);
@@ -211,7 +193,8 @@ public class ProjectManager {
                     "C/C++ needs the Linux runtime — download it from Languages & Runtimes first");
                 return;
             }
-            final String finalFileName = hasKnownExtension(fileName) ? fileName : fileName + ".java";
+            // Create exactly what the user typed — never force an extension.
+            final String finalFileName = fileName;
             File newFile = new File(parentDir, finalFileName);
             if (newFile.exists()) {
                 if (callback != null) callback.onError("File already exists");
@@ -228,16 +211,6 @@ public class ProjectManager {
                 if (callback != null) callback.onError("Failed to create file: " + e.getMessage());
             }
         });
-    }
-
-    private static boolean hasKnownExtension(String name) {
-        String lower = name.toLowerCase();
-        return lower.endsWith(".java") || lower.endsWith(".py") || lower.endsWith(".js")
-            || lower.endsWith(".html") || lower.endsWith(".htm") || lower.endsWith(".css")
-            || lower.endsWith(".json") || lower.endsWith(".xml") || lower.endsWith(".md")
-            || lower.endsWith(".txt")
-            || lower.endsWith(".c") || lower.endsWith(".cpp") || lower.endsWith(".cc")
-            || lower.endsWith(".h") || lower.endsWith(".hpp");
     }
 
     public static String templateFor(String fileName) {
@@ -338,7 +311,8 @@ public class ProjectManager {
 
     public void renameFile(File file, String newName, OnFileOperationCallback callback) {
         executor.execute(() -> {
-            final String finalName = (!newName.endsWith(".java") && file.isFile()) ? newName + ".java" : newName;
+            // Rename to exactly what the user typed — never force an extension.
+            final String finalName = newName;
 
             File newFile = new File(file.getParent(), finalName);
             if (newFile.exists()) {

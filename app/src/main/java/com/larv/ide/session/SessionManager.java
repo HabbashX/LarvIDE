@@ -75,37 +75,57 @@ public class SessionManager {
 
     public void saveNow() {
         final Project project = host.currentProject();
-        if (project == null || host.openFiles().isEmpty() || restoring) return;
-        host.executor().execute(() -> {
-            try {
-                JSONObject root = new JSONObject();
-                JSONArray tabs = new JSONArray();
-                JSONObject cursors = new JSONObject();
-                JSONObject buffers = new JSONObject();
-                for (OpenFile f : host.openFiles()) {
-                    tabs.put(f.getFilePath());
-                    if (f.getCursorLine() > 0) {
-                        cursors.put(f.getFilePath(), new JSONObject()
-                            .put("lineNumber", f.getCursorLine())
-                            .put("column", f.getCursorColumn()));
-                    }
-                    if (f.isModified()) {
-                        buffers.put(f.getFilePath(), f.getContent());
-                    }
+        if (project == null || restoring) return;
+        // Snapshot on the caller thread: openFiles may be cleared right after
+        // (e.g. project switch) before the executor gets to run.
+        saveProjectNow(project);
+    }
+
+    /**
+     * Snapshot + persist the given project's session immediately. Safe to call
+     * right before clearing tabs / switching projects.
+     */
+    public void saveProjectNow(Project project) {
+        if (project == null || restoring) return;
+        final List<OpenFile> snapshot = new ArrayList<>(host.openFiles());
+        final String active = host.activeFile();
+        if (snapshot.isEmpty()) return;
+        host.executor().execute(() -> writeSession(project, snapshot, active));
+    }
+
+    public boolean hasSession(Project project) {
+        return project != null && sessionFile(project).exists();
+    }
+
+    private void writeSession(Project project, List<OpenFile> files, String active) {
+        try {
+            JSONObject root = new JSONObject();
+            JSONArray tabs = new JSONArray();
+            JSONObject cursors = new JSONObject();
+            JSONObject buffers = new JSONObject();
+            for (OpenFile f : files) {
+                tabs.put(f.getFilePath());
+                if (f.getCursorLine() > 0) {
+                    cursors.put(f.getFilePath(), new JSONObject()
+                        .put("lineNumber", f.getCursorLine())
+                        .put("column", f.getCursorColumn()));
                 }
-                root.put("tabs", tabs);
-                root.put("active", host.activeFile());
-                root.put("cursors", cursors);
-                root.put("buffers", buffers);
-                File file = sessionFile(project);
-                file.getParentFile().mkdirs();
-                try (FileOutputStream fos = new FileOutputStream(file)) {
-                    fos.write(root.toString().getBytes(StandardCharsets.UTF_8));
+                if (f.isModified()) {
+                    buffers.put(f.getFilePath(), f.getContent());
                 }
-            } catch (Exception e) {
-                Log.w(TAG, "saveSession failed", e);
             }
-        });
+            root.put("tabs", tabs);
+            root.put("active", active);
+            root.put("cursors", cursors);
+            root.put("buffers", buffers);
+            File file = sessionFile(project);
+            file.getParentFile().mkdirs();
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                fos.write(root.toString().getBytes(StandardCharsets.UTF_8));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "saveSession failed", e);
+        }
     }
 
     public void reset() {

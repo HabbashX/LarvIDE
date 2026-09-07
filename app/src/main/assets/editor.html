@@ -538,6 +538,12 @@
             }
         }
 
+        // Push any debounced edits to the host NOW (called before Run so the
+        // compiler never sees 300ms-old content).
+        window.flushContent = function() {
+            flushPending();
+        };
+
         window.setContent = function(file, content) {
             flushPending();
             if (currentFile && currentFile !== file && editor) {
