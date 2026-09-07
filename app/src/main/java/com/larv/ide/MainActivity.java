@@ -36,13 +36,10 @@ import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
-import com.google.gson.Gson;
+
 import com.larv.ide.build.LarvBuildParser;
 import com.larv.ide.compiler.Dexer;
-import com.larv.ide.compiler.JavaCompiler;
 import com.larv.ide.compiler.JavaRunner;
-import com.larv.ide.compiler.JavascriptRunner;
-import com.larv.ide.compiler.PythonRunner;
 import com.larv.ide.completion.CompletionItem;
 import com.larv.ide.completion.ProjectIndexer;
 import com.larv.ide.model.FileNode;
@@ -128,18 +125,14 @@ public class MainActivity extends AppCompatActivity
 
     private EditorFragment editorFragment;
     private String currentEditorFile = "";
-    private final java.util.concurrent.atomic.AtomicBoolean typeCheckRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
     private int lastStatusLine = -1;
     private int lastStatusColumn = -1;
 
     private final Handler typeCheckHandler = new Handler(Looper.getMainLooper());
-    private final Runnable syntaxCheckRunnable = this::runSyntaxCheck;
-    private final Runnable typeCheckRunnable = this::runTypeCheck;
     private ProjectManager projectManager;
-    private JavaCompiler javaCompiler;
+    // NOTE: R8/D8 (Dexer) is the only retained built-in: ART runs .dex and no
+    // Termux package provides a dexer. All language frontends run in-prefix.
     private Dexer dexer;
-    private JavascriptRunner javascriptRunner;
-    private PythonRunner pythonRunner;
     private JavaRunner javaRunner;
     private ProjectIndexer projectIndexer;
     private final ExecutorService compilerExecutor = Executors.newSingleThreadExecutor();
@@ -147,7 +140,6 @@ public class MainActivity extends AppCompatActivity
     private Project currentProject;
     private final List<OpenFile> openFiles = new ArrayList<>();
     private final Map<String, OpenFile> openFilesByPath = new HashMap<>();
-    private static final Gson GSON = new Gson();
     private volatile boolean isCompiling = false;
     private String selectedDirectory = "";
     private boolean leftWindowVisible = true;
@@ -272,9 +264,7 @@ public class MainActivity extends AppCompatActivity
         projectManager = new ProjectManager(getApplicationContext());
         projectManager.setListener(this);
 
-        javaCompiler = new JavaCompiler(getApplicationContext());
         dexer = new Dexer(getApplicationContext());
-        javascriptRunner = new JavascriptRunner();
         termuxBackend = new TermuxCommandBackend(getApplicationContext());
         embeddedBackend = new com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend(
             getApplicationContext());
@@ -300,7 +290,6 @@ public class MainActivity extends AppCompatActivity
             @Override public java.util.concurrent.ExecutorService executor() { return indexerExecutor; }
             @Override public void runOnUiThread(Runnable action) { MainActivity.this.runOnUiThread(action); }
         });
-        pythonRunner = new PythonRunner(getApplicationContext());
         javaRunner = new JavaRunner(getApplicationContext());
         projectIndexer = new ProjectIndexer();
     }
@@ -485,7 +474,6 @@ public class MainActivity extends AppCompatActivity
         sessionManager.reset();
         openFiles.clear();
         openFilesByPath.clear();
-        javaCompiler.resetCheckState();
         typeCheckHandler.removeCallbacksAndMessages(null);
         if (editorFragment != null) {
             if (editorFragment.isAdded()) {
@@ -674,7 +662,6 @@ public class MainActivity extends AppCompatActivity
                         autosaveHandler.postDelayed(autosaveRunnable, 1000);
                     }
                 });
-                scheduleTypeCheck();
             }
         }
         sessionManager.scheduleSave();
@@ -912,7 +899,6 @@ public class MainActivity extends AppCompatActivity
         @Override public Project currentProject() { return currentProject; }
         @Override public String activeFilePath() { return currentEditorFile; }
         @Override public List<OpenFile> openFiles() { return openFiles; }
-        @Override public JavaCompiler javaCompiler() { return javaCompiler; }
         @Override public Dexer dexer() { return dexer; }
         @Override public LarvBuildParser.BuildSpec loadBuildSpec() {
             if (currentProject == null) return null;
@@ -926,9 +912,18 @@ public class MainActivity extends AppCompatActivity
             }
             return null;
         }
-        @Override public JavascriptRunner javascriptRunner() { return javascriptRunner; }
-        @Override public PythonRunner pythonRunner() { return pythonRunner; }
         @Override public JavaRunner javaRunner() { return javaRunner; }
+        @Override public int captureEmbedded(
+                com.larv.ide.run.backend.ExecRequest request,
+                com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.OutputSink sink)
+                throws Exception {
+            if (embeddedBackend == null || !embeddedBackend.isAvailable()) {
+                throw new com.larv.ide.run.backend.BackendUnavailableException(
+                    embeddedBackend != null ? embeddedBackend.setupState()
+                        : com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
+            }
+            return embeddedBackend.executeCapture(request, sink);
+        }
         @Override public java.util.concurrent.ExecutorService executor() { return compilerExecutor; }
         @Override public android.os.Handler typeCheckHandler() { return typeCheckHandler; }
         @Override public RunDispatcher.RunStreams openRunTerminal(String statusLine) {
@@ -1134,50 +1129,9 @@ public class MainActivity extends AppCompatActivity
         return null;
     }
 
-    private void scheduleTypeCheck() {
-        typeCheckHandler.removeCallbacksAndMessages(null);
-        if (isCompiling) return;
-        typeCheckHandler.postDelayed(syntaxCheckRunnable, 350);
-        typeCheckHandler.postDelayed(typeCheckRunnable, 1400);
-    }
-
-    private void runSyntaxCheck() {
-        String file = currentEditorFile;
-        if (file.isEmpty() || editorFragment == null || isCompiling) return;
-        OpenFile active = findOpenFile(file);
-        if (active == null) return;
-        compilerExecutor.execute(() -> {
-            if (!javaCompiler.hasChanges(active)) return;
-            List<Diagnostic> diagnostics = javaCompiler.syntaxCheck(active);
-            String json = GSON.toJson(diagnostics);
-            runOnUiThread(() -> {
-                if (editorFragment == null) return;
-                if (!currentEditorFile.equals(active.getFilePath())) return;
-                editorFragment.showDiagnosticsJson(json);
-            });
-        });
-    }
-
-    private void runTypeCheck() {
-        if (openFiles.isEmpty() || isCompiling) return;
-        if (!typeCheckRunning.compareAndSet(false, true)) return;
-        if (!javaCompiler.needsCheck(openFiles)) {
-            typeCheckRunning.set(false);
-            return;
-        }
-        compilerExecutor.execute(() -> {
-            JavaCompiler.CompilationResult result = javaCompiler.typeCheck(openFiles);
-            String json = GSON.toJson(result.getDiagnostics());
-            runOnUiThread(() -> {
-                if (openFiles.isEmpty()) return;
-                bottomPanelAdapter.getErrorsFragment().setErrors(result.getDiagnostics());
-                if (!currentEditorFile.isEmpty() && editorFragment != null) {
-                    editorFragment.showDiagnosticsJson(json);
-                }
-            });
-            typeCheckRunning.set(false);
-        });
-    }
+    // NOTE: live ECJ diagnostics were removed with the built-in compilers.
+    // The Problems tab is now fed by parsed prefix-compiler output (P3).
+    // Kept: typeCheckHandler (run coordination) + editor squiggle APIs.
 
     private String resolveTargetDirectory() {
         if (selectedDirectory != null && !selectedDirectory.isEmpty()) {
@@ -1645,7 +1599,6 @@ public class MainActivity extends AppCompatActivity
             openFilesByPath.clear();
             tabLayout.removeAllTabs();
             projectIndexer.clear();
-            javaCompiler.resetCheckState();
             currentEditorFile = "";
             if (editorFragment != null && editorFragment.isAdded()) {
                 editorFragment.setContent("", "");
@@ -1831,8 +1784,26 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void clearBuildOutput() {
-        javaCompiler.clearOutputDirectory();
-        statusText.setText("Build output cleared");
+        // Prefix .class output lives next to sources; dex scratch is per-run.
+        // Full clean = drop dex scratch dirs.
+        compilerExecutor.execute(() -> {
+            File dexScratch = new File(getCacheDir(), "dexoutput");
+            deleteRecursive(dexScratch);
+            dexScratch.mkdirs();
+            runOnUiThread(() -> statusText.setText("Build output cleared"));
+        });
+    }
+
+    private static void deleteRecursive(File f) {
+        if (f == null || !f.exists()) return;
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) {
+                for (File c : children) deleteRecursive(c);
+            }
+        }
+        //noinspection ResultOfMethodCallIgnored
+        f.delete();
     }
 
     @NonNull

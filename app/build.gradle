@@ -108,24 +108,16 @@ dependencies {
     // JSON parsing
     implementation 'com.google.code.gson:gson:2.10.1'
     
-    // ECJ - Eclipse Compiler for Java.
-    // 3.26.0 is the last version that runs on a Java 8 runtime / Android < API 33:
-    // Util.getInputStreamAsByteArray still uses a manual read loop. ECJ 3.27+
-    // switched to InputStream.readAllBytes() (missing on Android below API 33),
-    // and 3.28+ additionally requires a Java 11 runtime.
-    implementation 'org.eclipse.jdt:ecj:3.26.0'
-    
+    // R8 kept STRICTLY as the on-device dexer (D8): prefix javac outputs
+    // .class files and ART only runs .dex — nothing in any Termux package
+    // replaces this. All compiler frontends (ECJ/Rhino) were removed; Java
+    // compiles via prefix OpenJDK, JS/Python/Clang run 100% in-prefix.
     implementation 'com.android.tools:r8:8.6.27'
 
-    implementation 'commons-io:commons-io:2.15.1'
-    
     // Real terminal emulator (jackpal emulatorview).
     // Pure-Java VT100 emulator: TermSession accepts custom in/out streams,
     // so no subprocess/PTY is required for in-process program execution.
     implementation 'com.github.jackpal.Android-Terminal-Emulator:emulatorview:v1.0.70'
-
-    // JavaScript engine (pure-Java, runs on ART in interpreter mode)
-    implementation 'org.mozilla:rhino:1.7.14'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20231013'

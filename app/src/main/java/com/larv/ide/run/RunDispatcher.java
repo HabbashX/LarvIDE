@@ -6,12 +6,10 @@ import androidx.annotation.Nullable;
 
 import com.larv.ide.build.LarvBuildParser;
 import com.larv.ide.compiler.Dexer;
-import com.larv.ide.compiler.JavaCompiler;
 import com.larv.ide.compiler.JavaRunner;
-import com.larv.ide.compiler.JavascriptRunner;
-import com.larv.ide.compiler.PythonRunner;
 import com.larv.ide.model.Diagnostic;
 import com.larv.ide.model.OpenFile;
+import com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend;
 import com.larv.ide.model.Project;
 import com.larv.ide.model.Project;
 import com.larv.ide.project.ProjectRecognizer;
@@ -39,11 +37,10 @@ public class RunDispatcher {
         Project currentProject();
         String activeFilePath();
         List<OpenFile> openFiles();
-        JavaCompiler javaCompiler();
+        // NOTE: R8/D8 (Dexer) is the only retained built-in: ART runs .dex and
+        // no Termux package provides a dexer. All frontends run in-prefix.
         Dexer dexer();
         LarvBuildParser.BuildSpec loadBuildSpec();
-        JavascriptRunner javascriptRunner();
-        PythonRunner pythonRunner();
         JavaRunner javaRunner();
         ExecutorService executor();
         android.os.Handler typeCheckHandler();
@@ -61,6 +58,16 @@ public class RunDispatcher {
         void executeTermux(ExecRequest request) throws BackendUnavailableException;
         // Embedded in-app Linux runtime (no external app).
         default void executeEmbedded(ExecRequest request) throws BackendUnavailableException {
+            throw new BackendUnavailableException(
+                com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
+        }
+        /**
+         * Blocking capture of a prefix command (javac, pkg installs). Streams
+         * output to {@code sink}, returns the exit code. Stdin is unavailable
+         * here — use {@link #runEmbeddedInteractive} for programs that read input.
+         */
+        default int captureEmbedded(ExecRequest request,
+                EmbeddedLinuxBackend.OutputSink sink) throws Exception {
             throw new BackendUnavailableException(
                 com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
         }
@@ -342,12 +349,14 @@ public class RunDispatcher {
 
     private void runScriptProgram(LarvBuildParser.BuildSpec spec, String entryPath,
                                   boolean python) {
+        // Built-in Rhino/Chaquopy are gone: Python and JS run 100% in-prefix
+        // as real interactive sessions (stdin stays open for input()).
         host.setBusy(true);
         host.typeCheckHandler().removeCallbacksAndMessages(null);
 
+        String lang = python ? "Python" : "JavaScript";
         if (entryPath == null) {
-            host.toast("No " + (python ? "Python" : "JavaScript")
-                + " entry file found (main.py / index.js or the active tab)");
+            host.toast("No " + lang + " entry file found (main.py / index.js or the active tab)");
             host.setBusy(false);
             return;
         }
@@ -358,47 +367,27 @@ public class RunDispatcher {
             return;
         }
 
-        final String source = readFileString(entryFile);
-        RunStreams rs = host.openRunTerminal(python ? "Running Python..." : "Running JavaScript...");
-
-        host.executor().execute(() -> {
-            List<File> preloads = new ArrayList<>();
-            List<File> pyDirs = new ArrayList<>();
-            host.writeTerm(rs.programOut(), "\n");
-
-            String[] programArgs = spec != null
-                ? spec.runArgs.toArray(new String[0]) : new String[0];
-            if (programArgs.length > 0) {
-                host.writeTerm(rs.programOut(),
-                    "Arguments: " + String.join(" ", programArgs) + "\n");
-            }
-
-            if (python) {
-                PythonRunner.RunResult result = host.pythonRunner().run(source, pyDirs,
-                    rs.programOut(), rs.programOut(), programArgs);
-                if (result.error != null
-                    && !"Python execution requires the native runtime module."
-                        .equals(result.error)) {
-                    host.writeTerm(rs.programOut(), result.error + "\n");
-                }
-                host.writeTerm(rs.programOut(),
-                    "\nProcess finished in " + result.durationMs + " ms\n");
-                host.closeTermStreams(rs.programOut(), rs.stdinOut());
-                host.setBusy(false);
-                host.setStatus(result.success ? "Done" : "Finished with errors");
-            } else {
-                JavascriptRunner.RunResult result = host.javascriptRunner().run(source, entryFile.getName(),
-                    preloads, rs.programOut(), rs.programOut(), programArgs);
-                if (result.error != null) {
-                    host.writeTerm(rs.programOut(), result.error + "\n");
-                }
-                host.writeTerm(rs.programOut(),
-                    "\nProcess finished in " + result.durationMs + " ms\n");
-                host.closeTermStreams(rs.programOut(), rs.stdinOut());
-                host.setBusy(false);
-                host.setStatus(result.success ? "Done" : "Finished with errors");
-            }
-        });
+        StringBuilder shell = new StringBuilder();
+        shell.append(python ? "python3 " : "node ").append(q(entryFile.getName()));
+        if (spec != null) {
+            for (String a : spec.runArgs) shell.append(' ').append(q(a));
+        }
+        File workdir = entryFile.getParentFile() != null ? entryFile.getParentFile()
+            : host.currentProject() != null ? host.currentProject().getRootDir()
+            : new File("/");
+        byte[] prefeed = readStdinPrefeed(spec);
+        try {
+            host.runEmbeddedInteractive(
+                new ExecRequest(java.util.Arrays.asList("bash", "-c", shell.toString()),
+                    workdir.getAbsolutePath(), true),
+                prefeed);
+            host.setStatus("Running " + lang + " via embedded Linux");
+            host.setBusy(false);
+        } catch (BackendUnavailableException ex) {
+            host.setBusy(false);
+            host.toast(lang + " needs the Linux runtime (" + ex.getState() + ")");
+            host.openEmbeddedSetup();
+        }
     }
 
     private void runWebPreview(@Nullable String entryPath) {
@@ -460,39 +449,113 @@ public class RunDispatcher {
             ? path.substring(root.length() + 1) : new File(path).getName();
     }
 
+    /**
+     * Java pipeline without ECJ: prefix OpenJDK {@code javac} compiles every
+     * open .java file to {@code .larv-classes/}, the retained D8 library dexes
+     * to a per-run dir, and ART runs it. Needs the embedded runtime +
+     * {@code openjdk-17} package; otherwise guides to setup.
+     */
     private void compileAndRunJava(LarvBuildParser.BuildSpec buildSpec) {
         host.setBusy(true);
         host.typeCheckHandler().removeCallbacksAndMessages(null);
 
-        RunStreams rs = host.openRunTerminal("Compiling...");
+        List<String> sources = new ArrayList<>();
+        for (OpenFile f : host.openFiles()) {
+            if (f.getFilePath().toLowerCase().endsWith(".java")) {
+                sources.add(f.getFilePath());
+            }
+        }
+        if (sources.isEmpty()) {
+            host.toast("No Java file open");
+            host.setBusy(false);
+            return;
+        }
+
+        Project project = host.currentProject();
+        File classesDir = project != null
+            ? new File(project.getRootDir(), ".larv-classes")
+            : new File(System.getProperty("java.io.tmpdir", "/tmp"), "larv-classes");
+        //noinspection ResultOfMethodCallIgnored
+        classesDir.mkdirs();
+
+        StringBuilder shell = new StringBuilder();
+        shell.append("javac -encoding UTF-8 -d ").append(q(classesDir.getAbsolutePath()));
+        for (String s : sources) shell.append(' ').append(q(s));
+
+        RunStreams rs = host.openRunTerminal("Compiling with javac…");
+        host.writeTerm(rs.programOut(), "$ javac (" + sources.size() + " file(s))\n");
 
         host.executor().execute(() -> {
-            List<File> dependencyJars = new ArrayList<>();
-                JavaCompiler.CompilationResult compileResult = host.javaCompiler().compile(
-                host.openFiles(), dependencyJars,
-                host.prefs().getString("javaLevel", "16"));
-            if (!compileResult.isSuccess() && compileResult.getRawOutput() != null
-                && !compileResult.getRawOutput().isEmpty()) {
-                host.writeTerm(rs.programOut(), compileResult.getRawOutput());
-            }
-            if (!compileResult.isSuccess()) {
-                host.showErrors(compileResult.getDiagnostics());
+            StringBuilder javacOut = new StringBuilder();
+            EmbeddedLinuxBackend.OutputSink sink = new EmbeddedLinuxBackend.OutputSink() {
+                @Override public void onStdout(byte[] data, int len) {
+                    String text = new String(data, 0, len, StandardCharsets.UTF_8);
+                    synchronized (javacOut) {
+                        javacOut.append(text);
+                    }
+                    EmbeddedLinuxBackend.copyTo(rs.programOut(), data, len);
+                }
+                @Override public void onStderr(byte[] data, int len) {
+                    onStdout(data, len);
+                }
+                @Override public void onExit(int exitCode) {
+                }
+            };
+            int exit;
+            try {
+                exit = host.captureEmbedded(
+                    new ExecRequest(java.util.Arrays.asList("bash", "-c", shell.toString()),
+                        project != null ? project.getRootDir().getAbsolutePath() : null,
+                        false),
+                    sink);
+            } catch (BackendUnavailableException ex) {
+                host.writeTerm(rs.programOut(), "Linux runtime not ready: " + ex.getState() + "\n");
+                host.closeTermStreams(rs.programOut(), rs.stdinOut());
+                host.setBusy(false);
+                host.setStatus("Linux runtime not ready");
+                host.openEmbeddedSetup();
+                return;
+            } catch (Exception ex) {
+                host.writeTerm(rs.programOut(), "javac failed: " + ex.getMessage() + "\n");
+                host.closeTermStreams(rs.programOut(), rs.stdinOut());
                 host.setBusy(false);
                 host.setStatus("Compilation failed");
-                host.showErrorTab();
+                return;
+            }
+            String output;
+            synchronized (javacOut) {
+                output = javacOut.toString();
+            }
+            if (exit == 127 || output.contains("command not found")
+                    || output.contains("javac: not found")
+                    || output.contains("package not found")) {
+                host.writeTerm(rs.programOut(),
+                    "\nOpenJDK is not installed in the Linux runtime.\n");
                 host.closeTermStreams(rs.programOut(), rs.stdinOut());
+                host.setBusy(false);
+                host.setStatus("Install openjdk-17 first");
+                host.toast("Install OpenJDK: Languages → openjdk-17");
+                host.openEmbeddedSetup();
+                return;
+            }
+            if (exit != 0) {
+                // Raw javac errors stay visible; P3 parses them into Problems.
+                host.closeTermStreams(rs.programOut(), rs.stdinOut());
+                host.setBusy(false);
+                host.setStatus("Compilation failed");
+                host.toast("Compilation failed — see output");
                 return;
             }
 
-            host.writeTerm(rs.programOut(), "Compilation successful");
+            host.writeTerm(rs.programOut(), "Compilation successful, dexing…\n");
 
             Dexer.DexResult dexResult = host.dexer().dex(
-                compileResult.getClassFiles(), dependencyJars, null);
+                java.util.Collections.singletonList(classesDir), null, null);
             if (!dexResult.isSuccess()) {
                 host.writeTerm(rs.programOut(), "Dex error: " + dexResult.getError());
+                host.closeTermStreams(rs.programOut(), rs.stdinOut());
                 host.setBusy(false);
                 host.setStatus("Dex error");
-                host.closeTermStreams(rs.programOut(), rs.stdinOut());
                 return;
             }
 
@@ -503,24 +566,24 @@ public class RunDispatcher {
             }
             if (mainClass == null) {
                 host.writeTerm(rs.programOut(), "Error: No main class found");
+                host.closeTermStreams(rs.programOut(), rs.stdinOut());
                 host.setBusy(false);
                 host.setStatus("No main class");
-                host.closeTermStreams(rs.programOut(), rs.stdinOut());
                 return;
             }
 
-            host.writeTerm(rs.programOut(), "Dex successful, running " + mainClass + "...");
+            host.writeTerm(rs.programOut(), "Dex successful, running " + mainClass + "...\n");
 
             String[] programArgs = buildSpec != null
                 ? buildSpec.runArgs.toArray(new String[0]) : new String[0];
             if (programArgs.length > 0) {
                 host.writeTerm(rs.programOut(),
-                    "Arguments: " + String.join(" ", programArgs));
+                    "Arguments: " + String.join(" ", programArgs) + "\n");
             }
 
             boolean stdinFed = pushStdinFile(rs, buildSpec);
             if (stdinFed) {
-                host.writeTerm(rs.programOut(), "stdin: " + buildSpec.stdinFile);
+                host.writeTerm(rs.programOut(), "stdin: " + buildSpec.stdinFile + "\n");
             }
 
             JavaRunner.RunResult runResult = host.javaRunner().run(
@@ -528,10 +591,10 @@ public class RunDispatcher {
                 rs.programOut(), rs.programOut(), rs.stdinIn);
 
             if (runResult.getError() != null) {
-                host.writeTerm(rs.programOut(), runResult.getError());
+                host.writeTerm(rs.programOut(), runResult.getError() + "\n");
             }
             if (runResult.isSuccess()) {
-                host.writeTerm(rs.programOut(), "Program finished (exit code 0)");
+                host.writeTerm(rs.programOut(), "Program finished (exit code 0)\n");
             }
 
             host.closeTermStreams(rs.programOut(), rs.stdinOut());
