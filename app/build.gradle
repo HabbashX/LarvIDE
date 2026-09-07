@@ -70,24 +70,9 @@ android {
     }
 }
 
-// Bundle android.jar so the on-device ECJ compiler can resolve java.* types
-tasks.register('copyBootclasspath') {
-    def sdkDir = android.sdkDirectory
-    def platform = new File(sdkDir, "platforms/android-34/android.jar")
-    def outFile = file("$buildDir/generated/assets/bootclasspath/android.jar")
-    inputs.file(platform)
-    outputs.file(outFile)
-    doLast {
-        outFile.parentFile.mkdirs()
-        copy {
-            from platform
-            into outFile.parentFile
-        }
-    }
-}
-
+// NOTE: the on-device ECJ compiler was removed (prefix javac resolves java.*
+// from the OpenJDK in the embedded runtime), so no bootclasspath is bundled.
 tasks.named('preBuild') {
-    dependsOn 'copyBootclasspath'
 }
 
 dependencies {
