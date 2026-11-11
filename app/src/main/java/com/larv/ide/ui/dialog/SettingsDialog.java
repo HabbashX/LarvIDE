@@ -4,9 +4,11 @@ import android.app.Activity;
 import android.content.SharedPreferences;
 import android.graphics.PorterDuff;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -42,12 +44,27 @@ public class SettingsDialog {
         scroller.addView(root);
 
         final String savedAccent = prefs.getString("appAccent", "blue");
-        final String[] accentKeys = {"blue", "purple", "green", "orange", "pink", "cyan"};
-        final String[] accentNames = {"Blue", "Purple", "Green", "Orange", "Pink", "Cyan"};
+        final String[] accentKeys = {"blue", "purple", "green", "orange", "pink", "cyan", "custom"};
+        final String[] accentNames = {"Blue", "Purple", "Green", "Orange", "Pink", "Cyan", "Custom"};
         root.addView(label(activity, "Accent color"));
         final Spinner accentSpinner = spinner(activity, accentNames,
                 Math.max(0, java.util.Arrays.asList(accentKeys).indexOf(savedAccent)));
         root.addView(accentSpinner);
+
+        final EditText customAccent = new EditText(activity);
+        customAccent.setHint("#RRGGBB");
+        customAccent.setText(prefs.getString("customAccentColor", ""));
+        customAccent.setVisibility("custom".equals(savedAccent)
+            ? View.VISIBLE : View.GONE);
+        root.addView(customAccent);
+        accentSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View v,
+                                                int position, long id) {
+                customAccent.setVisibility("custom".equals(accentKeys[position])
+                    ? View.VISIBLE : View.GONE);
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+        });
 
         root.addView(label(activity, "Editor theme", true));
         final String savedTheme = prefs.getString("editorTheme", "islands-dark");
@@ -149,15 +166,26 @@ public class SettingsDialog {
                         : fontSeek.getProgress() + fontMin;
                     int newTabSize = Integer.parseInt(
                             (String) tabSpinner.getSelectedItem());
-                    prefs.edit()
+                    android.content.SharedPreferences.Editor ed = prefs.edit()
                             .putString("appAccent", newAccent)
                             .putString("editorTheme", newTheme)
                             .putString("editorFontFamily", newFamily)
                             .putInt("editorFontSize", newSize)
                             .putInt("editorTabSize", newTabSize)
                             .putString("javaLevel",
-                                    (String) levelSpinner.getSelectedItem())
-                            .apply();
+                                    (String) levelSpinner.getSelectedItem());
+                    if ("custom".equals(newAccent)) {
+                        String hex = customAccent.getText().toString().trim();
+                        try {
+                            int color = android.graphics.Color.parseColor(hex);
+                            ed.putInt("customAccentColor", color);
+                        } catch (IllegalArgumentException e) {
+                            ed.remove("customAccentColor");
+                        }
+                    } else {
+                        ed.remove("customAccentColor");
+                    }
+                    ed.apply();
                     if (!newAccent.equals(savedAccent)) {
                         callbacks.onAccentChanged(newAccent);
                     } else {

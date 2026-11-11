@@ -865,6 +865,11 @@ public class MainActivity extends AppCompatActivity
     }
 
     private int themeColor(int attr) {
+        if (attr == android.R.attr.colorPrimary
+            && "custom".equals(prefs.getString("appAccent", "blue"))) {
+            int c = prefs.getInt("customAccentColor", 0);
+            if (c != 0) return c;
+        }
         android.util.TypedValue tv = new android.util.TypedValue();
         getTheme().resolveAttribute(attr, tv, true);
         return tv.data;
@@ -1615,6 +1620,7 @@ public class MainActivity extends AppCompatActivity
         String q = query.toLowerCase(java.util.Locale.ROOT);
         for (File f : files) {
             if (out.size() >= 300) break;
+            if (f.length() > 2 * 1024 * 1024) continue;
             try (java.io.BufferedReader br = new java.io.BufferedReader(
                     new java.io.InputStreamReader(new java.io.FileInputStream(f),
                         java.nio.charset.StandardCharsets.UTF_8))) {
