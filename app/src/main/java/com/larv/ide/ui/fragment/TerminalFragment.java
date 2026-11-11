@@ -66,6 +66,15 @@ public class TerminalFragment extends Fragment {
             startPending = true;
             return;
         }
+        if (!com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(requireContext())) {
+            closeSession();
+            terminalContainer.setVisibility(View.GONE);
+            emptyView.setVisibility(View.VISIBLE);
+            emptyView.setText("Linux runtime not installed.\\n\\n"
+                + "Download it from Languages & Toolchains (or the setup wizard) "
+                + "to open a real Linux terminal.");
+            return;
+        }
         closeSession();
         emptyView.setVisibility(View.GONE);
         terminalContainer.setVisibility(View.VISIBLE);

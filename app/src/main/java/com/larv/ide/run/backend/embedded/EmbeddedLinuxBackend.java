@@ -210,20 +210,60 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         List<String> cmd = new ArrayList<>();
         File nativeDir = new File(appContext.getApplicationInfo().nativeLibraryDir);
         File proot = new File(nativeDir, "libproot.so");
+        File prefix = new File(appContext.getFilesDir(), "usr");
         String bashPath = EmbeddedRuntime.bashFile(appContext).getAbsolutePath();
+        String homePath = new File(appContext.getFilesDir(), "home").getAbsolutePath();
+
         if (proot.exists()) {
             cmd.add(proot.getAbsolutePath());
+            // chroot into the prefix so /bin/bash is the prefix bash.
+            cmd.add("-r");
+            cmd.add(prefix.getAbsolutePath());
+            // Make host filesystems visible inside the prefix.
+            cmd.add("-b");
+            cmd.add("/dev");
+            cmd.add("-b");
+            cmd.add("/proc");
+            File sys = new File("/sys");
+            if (sys.isDirectory()) {
+                cmd.add("-b");
+                cmd.add("/sys");
+            }
+            File sdcard = android.os.Environment.getExternalStorageDirectory();
+            if (sdcard != null && sdcard.isDirectory()) {
+                cmd.add("-b");
+                cmd.add(sdcard.getAbsolutePath());
+            }
+            cmd.add("-b");
+            cmd.add(appContext.getFilesDir().getAbsolutePath());
+            cmd.add("-b");
+            cmd.add(appContext.getCacheDir().getAbsolutePath() + ":/tmp");
+            cmd.add("-b");
+            cmd.add(homePath + ":/home");
+            // Start in the project folder when it is reachable inside the prefix.
+            if (workdir != null) {
+                cmd.add("-w");
+                cmd.add(workdir);
+            } else {
+                cmd.add("-w");
+                cmd.add("/home");
+            }
             cmd.add(bashPath);
+            cmd.add("-l");
         } else {
+            // Spike fallback for devices without proot.
             cmd.add(bashPath);
+            cmd.add("-l");
         }
         ProcessBuilder pb = new ProcessBuilder(cmd);
-        if (workdir != null) pb.directory(new File(workdir));
+        if (workdir != null && !proot.exists()) {
+            pb.directory(new File(workdir));
+        }
         java.util.Map<String, String> env = pb.environment();
-        File prefix = new File(appContext.getFilesDir(), "usr");
-        env.put("PREFIX", prefix.getAbsolutePath());
+        env.put("PREFIX", "/");
+        env.put("HOME", "/home");
         env.put("TERM", "xterm-256color");
-        env.put("PATH", prefix.getAbsolutePath() + "/bin:/system/bin:/system/xbin");
+        env.put("PATH", "/bin:/usr/bin:/usr/local/bin:/system/bin:/system/xbin");
         pb.redirectErrorStream(true);
         return pb.start();
     }
