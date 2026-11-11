@@ -802,8 +802,8 @@ public class MainActivity extends AppCompatActivity
                     if (newlyModified) {
                         // The tab already reads "* name" after the first edit.
                         updateTabModified(file, true);
+                        statusText.setText("Updated: " + fileName);
                     }
-                    statusText.setText("Updated: " + fileName);
                     scheduleRunActionState(file, content);
                     if (prefs.getBoolean("autosaveEnabled", true)) {
                         autosaveHandler.removeCallbacks(autosaveRunnable);
