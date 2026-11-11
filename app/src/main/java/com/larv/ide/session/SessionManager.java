@@ -135,25 +135,7 @@ public class SessionManager {
             root.put("buffers", buffers);
             File file = sessionFile(project);
             file.getParentFile().mkdirs();
-            File tmp = new File(file.getParentFile(), "session.json.tmp");
-            try (FileOutputStream fos = new FileOutputStream(tmp)) {
-                fos.write(root.toString().getBytes(StandardCharsets.UTF_8));
-                fos.flush();
-                fos.getFD().sync();
-            }
-            if (file.exists() && !file.delete()) {
-                Log.w(TAG, "Could not replace old session file");
-            }
-            if (!tmp.renameTo(file)) {
-                // Fallback copy if rename fails across filesystems.
-                try (FileInputStream in = new FileInputStream(tmp);
-                     FileOutputStream out = new FileOutputStream(file)) {
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-                }
-                tmp.delete();
-            }
+            com.larv.ide.io.AtomicFileWriter.write(file, root.toString());
         } catch (Exception e) {
             Log.w(TAG, "saveSession failed", e);
         }
