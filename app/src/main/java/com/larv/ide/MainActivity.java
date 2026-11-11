@@ -1586,6 +1586,85 @@ public class MainActivity extends AppCompatActivity
             com.larv.ide.ui.setup.ProjectCreatorActivity.class));
     }
 
+    private void showProjectSearchDialog() {
+        if (currentProject == null) {
+            Toast.makeText(this, "Open a project first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final EditText input = createIdeInput("Search text");
+        new AlertDialog.Builder(this)
+            .setTitle("Search in Project")
+            .setView(wrapDialogView(input))
+            .setPositiveButton("Search", (dialog, which) -> {
+                String query = input.getText().toString();
+                if (query.trim().isEmpty()) return;
+                compilerExecutor.execute(() -> {
+                    List<String[]> found = searchProjectFiles(query);
+                    runOnUiThread(() -> showSearchResults(query, found));
+                });
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private List<String[]> searchProjectFiles(String query) {
+        List<String[]> out = new ArrayList<>();
+        File root = currentProject.getRootDir();
+        List<File> files = new ArrayList<>();
+        collectProjectFiles(root, files, 0);
+        String q = query.toLowerCase(java.util.Locale.ROOT);
+        for (File f : files) {
+            if (out.size() >= 300) break;
+            try (java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(f),
+                        java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                int no = 0;
+                while ((line = br.readLine()) != null) {
+                    no++;
+                    if (line.toLowerCase(java.util.Locale.ROOT).contains(q)) {
+                        out.add(new String[]{f.getAbsolutePath(),
+                            String.valueOf(no), line.trim()});
+                        if (out.size() >= 300) break;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return out;
+    }
+
+    private void collectProjectFiles(File dir, List<File> out, int depth) {
+        if (depth > 8 || dir == null) return;
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File c : children) {
+            if (c.getName().startsWith(".")) continue;
+            if (c.isDirectory()) collectProjectFiles(c, out, depth + 1);
+            else out.add(c);
+        }
+    }
+
+    private void showSearchResults(String query, List<String[]> results) {
+        if (results.isEmpty()) {
+            Toast.makeText(this, "No matches for \"" + query + "\"",
+                Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] labels = new String[results.size()];
+        for (int i = 0; i < results.size(); i++) {
+            String[] r = results.get(i);
+            labels[i] = new File(r[0]).getName() + ":" + r[1] + "  " + r[2];
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("Search results (" + results.size() + ")")
+            .setItems(labels, (dialog, which) -> {
+                String[] r = results.get(which);
+                openFileInEditor(new File(r[0]));
+            })
+            .show();
+    }
+
     private void showOpenProjectDialog() {
         List<Project> projects = projectManager.getProjects();
         if (projects.isEmpty()) {
@@ -1885,6 +1964,9 @@ public class MainActivity extends AppCompatActivity
             return true;
         } else if (itemId == R.id.menu_find_previous) {
             runOnCurrentEditor(f -> f.execAction("findPrevious"));
+            return true;
+        } else if (itemId == R.id.menu_search_project) {
+            showProjectSearchDialog();
             return true;
         } else if (itemId == R.id.menu_toggle_project) {
             toggleLeftWindow();
