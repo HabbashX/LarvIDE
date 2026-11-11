@@ -1221,9 +1221,12 @@ public class MainActivity extends AppCompatActivity
             Thread watcher = new Thread(() -> {
                 byte[] buf = new byte[8192];
                 int exit = -1;
+                StringBuilder output = new StringBuilder();
                 try {
                     int n;
                     while ((n = procOut.read(buf)) > 0) {
+                        String chunk = new String(buf, 0, n, StandardCharsets.UTF_8);
+                        output.append(chunk);
                         bridge.write(buf, 0, n);
                         bridge.flush();
                     }
@@ -1246,8 +1249,16 @@ public class MainActivity extends AppCompatActivity
                 }
                 final int code = exit;
                 if (runningProcess == proc) runningProcess = null;
-                runOnUiThread(() ->
-                    statusText.setText(code == 0 ? "Done" : "Finished with errors"));
+                java.util.List<com.larv.ide.model.Diagnostic> diagnostics =
+                    parseCompilerDiagnostics(output.toString());
+                runOnUiThread(() -> {
+                    statusText.setText(code == 0 ? "Done" : "Finished with errors");
+                    if (!diagnostics.isEmpty()) {
+                        bottomPanelAdapter.getErrorsFragment().setErrors(
+                            new ArrayList<>(diagnostics));
+                        bottomViewPager.setCurrentItem(1);
+                    }
+                });
             }, "emb-watch");
             watcher.setDaemon(true);
             watcher.start();
@@ -1722,6 +1733,32 @@ public class MainActivity extends AppCompatActivity
             })
             .setNegativeButton("Later", null)
             .show();
+    }
+
+    private java.util.List<com.larv.ide.model.Diagnostic> parseCompilerDiagnostics(String output) {
+        java.util.List<com.larv.ide.model.Diagnostic> result = new ArrayList<>();
+        if (output == null || output.isEmpty()) return result;
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+            "(.+?):(\\d+)(?::(\\d+))?:\\s*(error|warning):\\s*(.+)");
+        String root = currentProject != null ? currentProject.getRootDir().getAbsolutePath() : null;
+        for (String rawLine : output.split("\\r?\\n")) {
+            java.util.regex.Matcher m = p.matcher(rawLine);
+            if (!m.find()) continue;
+            String file = m.group(1).trim();
+            int line = 0;
+            try { line = Integer.parseInt(m.group(2)); } catch (NumberFormatException ignored) { }
+            String sev = m.group(4).toLowerCase(java.util.Locale.ROOT);
+            com.larv.ide.model.Diagnostic.Severity severity =
+                "warning".equals(sev)
+                    ? com.larv.ide.model.Diagnostic.Severity.WARNING
+                    : com.larv.ide.model.Diagnostic.Severity.ERROR;
+            if (!new java.io.File(file).isAbsolute() && root != null) {
+                file = new java.io.File(root, file).getAbsolutePath();
+            }
+            result.add(new com.larv.ide.model.Diagnostic(
+                file, line, 0, m.group(5).trim(), severity));
+        }
+        return result;
     }
 
     private void stopRunningProcess() {
