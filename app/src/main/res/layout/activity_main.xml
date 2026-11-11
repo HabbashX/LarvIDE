@@ -112,7 +112,7 @@
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="@string/new_file"
                             android:src="@drawable/ic_new_file"
-                            android:tint="@color/text_secondary"
+                            app:tint="@color/text_secondary"
                             android:scaleType="centerInside" />
 
                         <ImageButton
@@ -123,7 +123,7 @@
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="@string/new_folder"
                             android:src="@drawable/ic_new_folder"
-                            android:tint="@color/text_secondary"
+                            app:tint="@color/text_secondary"
                             android:scaleType="centerInside" />
 
                         <ImageButton
@@ -134,7 +134,7 @@
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="Refresh"
                             android:src="@drawable/ic_refresh"
-                            android:tint="@color/text_secondary"
+                            app:tint="@color/text_secondary"
                             android:scaleType="centerInside" />
 
                         <ImageButton
@@ -145,7 +145,7 @@
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="Collapse All"
                             android:src="@drawable/ic_collapse_all"
-                            android:tint="@color/text_secondary"
+                            app:tint="@color/text_secondary"
                             android:scaleType="centerInside" />
 
                         <View
@@ -161,7 +161,7 @@
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="Close project panel"
                             android:src="@drawable/ic_close"
-                            android:tint="@color/text_secondary"
+                            app:tint="@color/text_secondary"
                             android:scaleType="centerInside" />
                     </LinearLayout>
 
@@ -262,7 +262,7 @@
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:contentDescription="Expand editor"
                         android:src="@drawable/ic_expand"
-                        android:tint="@color/text_secondary"
+                        app:tint="@color/text_secondary"
                         android:scaleType="centerInside" />
 
                     <ImageButton
@@ -272,7 +272,7 @@
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:contentDescription="@string/new_file"
                         android:src="@drawable/ic_add"
-                        android:tint="@color/text_secondary"
+                        app:tint="@color/text_secondary"
                         android:scaleType="centerInside" />
                 </LinearLayout>
 
@@ -471,7 +471,7 @@
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:contentDescription="Close panel"
                         android:src="@drawable/ic_close"
-                        android:tint="@color/text_secondary"
+                        app:tint="@color/text_secondary"
                         android:scaleType="centerInside" />
                 </LinearLayout>
 

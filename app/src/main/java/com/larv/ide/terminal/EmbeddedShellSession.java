@@ -45,7 +45,17 @@ public class EmbeddedShellSession {
     }
 
     public boolean isAlive() {
-        return process != null && process.isAlive();
+        return isProcessAlive(process);
+    }
+
+    private static boolean isProcessAlive(Process p) {
+        if (p == null) return false;
+        try {
+            p.exitValue();
+            return false;
+        } catch (IllegalThreadStateException running) {
+            return true;
+        }
     }
 
     public void destroy() {
