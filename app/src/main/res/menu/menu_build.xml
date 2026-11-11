@@ -14,6 +14,10 @@
         android:title="Open Terminal" />
 
     <item
+        android:id="@+id/menu_fullscreen_terminal"
+        android:title="Full-Screen Terminal" />
+
+    <item
         android:id="@+id/menu_clean"
         android:title="Clean Project" />
 </menu>

@@ -75,12 +75,28 @@ public class TerminalFragment extends Fragment {
                 + "to open a real Linux terminal.");
             return;
         }
+        // Reuse a still-running shell instead of killing it on every open.
+        if (activeSession != null && isSessionAlive()) {
+            emptyView.setVisibility(View.GONE);
+            terminalContainer.setVisibility(View.VISIBLE);
+            if (terminalView == null || terminalView.getParent() == null) {
+                attachView(activeSession);
+            }
+            if (terminalView != null) terminalView.requestFocus();
+            showExtraKeysBar();
+            return;
+        }
         closeSession();
         emptyView.setVisibility(View.GONE);
         terminalContainer.setVisibility(View.VISIBLE);
 
         TermSession session = newEmbeddedSession(workingDirectory);
 
+        attachView(session);
+        showExtraKeysBar();
+    }
+
+    private void attachView(TermSession session) {
         SafeEmulatorView view = new SafeEmulatorView(requireContext(), session,
             getResources().getDisplayMetrics());
         view.setTextSize(13);
@@ -98,7 +114,11 @@ public class TerminalFragment extends Fragment {
             imm.showSoftInput(view,
                 android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
         }
-        showExtraKeysBar();
+    }
+
+    private boolean isSessionAlive() {
+        if (linuxSession != null) return linuxSession.isAlive();
+        return activeSession != null;
     }
 
     @SuppressLint("SetJavaScriptEnabled")

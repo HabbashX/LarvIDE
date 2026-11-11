@@ -50,6 +50,7 @@ import com.larv.ide.run.RunDispatcher;
 import com.larv.ide.run.RunEligibility;
 import com.larv.ide.session.SessionManager;
 import com.larv.ide.ui.dialog.SettingsDialog;
+import com.larv.ide.ui.TerminalActivity;
 import com.larv.ide.ui.adapter.BottomPanelAdapter;
 import com.larv.ide.ui.adapter.FileTreeAdapter;
 import com.larv.ide.ui.fragment.EditorFragment;
@@ -135,6 +136,8 @@ public class MainActivity extends AppCompatActivity
     private final List<OpenFile> openFiles = new ArrayList<>();
     private final Map<String, OpenFile> openFilesByPath = new HashMap<>();
     private volatile boolean isCompiling = false;
+    /** Currently running embedded program, if any — killed by the Stop button. */
+    private volatile Process runningProcess;
     private String selectedDirectory = "";
     private boolean leftWindowVisible = true;
     private boolean bottomWindowVisible = true;
@@ -1191,6 +1194,7 @@ public class MainActivity extends AppCompatActivity
      * No manual capture — the session is live until the process exits.
      */
     private void attachExternalProcess(Process proc, String banner, byte[] stdinPrefeed) {
+        runningProcess = proc;
         try {
             java.io.PipedInputStream sessionIn = new java.io.PipedInputStream(64 * 1024);
             java.io.PipedOutputStream bridge = new java.io.PipedOutputStream(sessionIn);
@@ -1241,6 +1245,7 @@ public class MainActivity extends AppCompatActivity
                 } catch (IOException ignored) {
                 }
                 final int code = exit;
+                if (runningProcess == proc) runningProcess = null;
                 runOnUiThread(() ->
                     statusText.setText(code == 0 ? "Done" : "Finished with errors"));
             }, "emb-watch");
@@ -1719,6 +1724,28 @@ public class MainActivity extends AppCompatActivity
             .show();
     }
 
+    private void stopRunningProcess() {
+        Process p = runningProcess;
+        if (p == null) {
+            Toast.makeText(this, "No running process", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            p.destroy();
+        } catch (Exception ignored) {
+        }
+        runningProcess = null;
+        runOnUiThread(() -> statusText.setText("Stopped"));
+    }
+
+    private void openFullscreenTerminal() {
+        File workdir = currentProject != null
+            ? currentProject.getRootDir() : getFilesDir();
+        Intent intent = new Intent(this, TerminalActivity.class);
+        intent.putExtra(TerminalActivity.EXTRA_WORKDIR, workdir.getAbsolutePath());
+        startActivity(intent);
+    }
+
     private void openEmbeddedTerminal() {
         File workdir = currentProject != null
             ? currentProject.getRootDir() : getFilesDir();
@@ -1826,11 +1853,17 @@ public class MainActivity extends AppCompatActivity
         } else if (itemId == R.id.menu_run) {
             compileAndRun();
             return true;
+        } else if (itemId == R.id.menu_stop) {
+            stopRunningProcess();
+            return true;
         } else if (itemId == R.id.menu_compile) {
             compileAndRun();
             return true;
         } else if (itemId == R.id.menu_open_terminal) {
             openEmbeddedTerminal();
+            return true;
+        } else if (itemId == R.id.menu_fullscreen_terminal) {
+            openFullscreenTerminal();
             return true;
         } else if (itemId == R.id.menu_languages) {
             com.larv.ide.ui.dialog.LanguagesDialog.show(this,

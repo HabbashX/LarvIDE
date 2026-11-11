@@ -55,6 +55,10 @@
             android:theme="@style/Theme.LarvIDE.NoActionBar" />
 
         <activity
+            android:name=".ui.TerminalActivity"
+            android:exported="false"
+            android:theme="@style/Theme.LarvIDE.NoActionBar" />
+        <activity
             android:name=".ui.setup.ProjectCreatorActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
