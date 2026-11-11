@@ -317,6 +317,14 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void handleIntent(Intent intent) {
+        if (intent != null && intent.hasExtra(com.larv.ide.ui.ProjectHomeActivity.EXTRA_PROJECT_PATH)) {
+            String path = intent.getStringExtra(
+                com.larv.ide.ui.ProjectHomeActivity.EXTRA_PROJECT_PATH);
+            File dir = new File(path);
+            if (dir.exists() && dir.isDirectory()) {
+                projectManager.openProject(new Project(dir.getName(), dir.getAbsolutePath()));
+            }
+        }
         if (intent != null && intent.getData() != null) {
             Uri uri = intent.getData();
             String path = uri.getPath();
@@ -1901,6 +1909,9 @@ public class MainActivity extends AppCompatActivity
             return true;
         } else if (itemId == R.id.menu_fullscreen_terminal) {
             openFullscreenTerminal();
+            return true;
+        } else if (itemId == R.id.menu_project_home) {
+            startActivity(new Intent(this, com.larv.ide.ui.ProjectHomeActivity.class));
             return true;
         } else if (itemId == R.id.menu_languages) {
             com.larv.ide.ui.dialog.LanguagesDialog.show(this,
