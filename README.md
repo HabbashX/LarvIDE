@@ -31,17 +31,18 @@ A lightweight, **offline-first** IDE for students who have an Android phone but 
 
 ### Execution
 - **`larvbuild.json`** (fallback `larv.json`): `language` / `entry` / `main` / `run{args,cmd,stdin}` / `repositories`
-- **RunDispatcher** — single router: `language → engine` (built-in ECJ/D8/Rhino/WebView vs Termux `bash -c` command templates for Java/C++)
-- **`run.args` + `run.stdin`** wired: Java `main(String[] args)` + `System.in` file feed (async pipe feeder, no deadlock), JS `arguments` global, Python `pendingArgs` slot
-- **Dedicated runtimes**: `JavaRunner` (PathClassLoader), `JavascriptRunner` (Rhino), `PythonRunner` (Chaquopy-slot reflection — guidance message until CPython fully wired), `PreviewFragment` (WebView `loadDataWithBaseURL`), `EmbeddedShellSession` (`/system/bin/sh` → `TermSession` → `SafeEmulatorView`)
-- **D8 per-run isolation**: unique `run_<ts>` dex output dir (pruned to 3) — fixes stale OatDexFile warning
+- **`RunEligibility`** — a file runs only if its type is runnable *and* it has a real entry point (`static void main(String[])` for Java, `int main` for C/C++); scripts (`.py`/`.js`) just need content
+- **RunDispatcher** — one path only: every language is compiled/executed by toolchains inside the embedded Linux prefix
+- **Java**: prefix `javac` → `.larv-classes` → prefix **JRE** `java` (package-aware fully-qualified main class, stdin open). No D8, no ART dexing
+- **Python** → `python3`, **JavaScript** → `node`, **C/C++** → `clang++`, all as live interactive sessions
+- **`run.args` + `run.stdin`** wired through the interactive session; HTML/CSS open the in-app preview
 
-### Termux Integration
-- **ExecutionBackend** abstraction (`READY / TERMUX_MISSING / PLAY_BUILD / PERMISSION_NOT_GRANTED / EXTERNAL_APPS_UNKNOWN`)
-- **TermuxCommandBackend** — explicit `RUN_COMMAND` intent to `com.termux/.RunCommandService` (`TERMUX_BIN=/data/data/com.termux/files/usr/bin`, `BACKGROUND` ↔ interactive)
-- **TermuxSetupWizard** — 4-step diagnosis with per-step deep-links (F-Droid) + permission request; disabled placeholder menu `Run with Termux` / `Terminal (Termux)`
+### Embedded Linux Runtime
+- **One execution environment**: Termux bootstrap + proot in app-private storage (`EmbeddedRuntime`, `PrefixInstaller`, `EmbeddedLinuxBackend`)
+- **First launch is gated**: Download the Linux environment or exit; no language runs without it
+- **Toolchains are `pkg install` only** — `openjdk-17`, `python`, `nodejs`, `clang`, `rust`, `ruby`; nothing bundled in the APK
+- **Real terminal**: `TerminalFragment` + `SafeEmulatorView` with cooked IME and extra-keys bar; programs keep stdin open (`Scanner`, `input()`, readline)
 - **Workspace** is the contract: default project root → `/sdcard/LarvIDE/projects` (MANAGE_EXTERNAL_STORAGE prompt, legacy internal `getExternalFilesDir/JavaProjects` auto-migrated once)
-- **Embedded Terminal tab** — real interactive `sh` session at project root; **"Terminal (Termux)"** opens a `bash` session in Termux's own window
 
 ### Project System
 - Auto-discovered languages (`ProjectRecognizer` scan ≤6 depth, 400-file cap): Java, Python, JS, C/C++, HTML/CSS
@@ -54,59 +55,56 @@ A lightweight, **offline-first** IDE for students who have an Android phone but 
 - Accent-aware switch/seekbar tints via `themeColor(R.attr.colorPrimary)`
 
 ### Quality
-- **40 JVM unit tests** (`testDebugUnitTest`): `DependencyResolver` routing/POM walk, recognizer, indexer/member completion, JsRunner capture/preload, syntaxCheck, templates, Termux intent-spec builder, RunDispatcher routing
-- `RuntimeRegistry` / `RuntimeProvisioner.java` (JEP 330, SHA-256 verified) — pins engine packs (`tools/packs/larv-python-arm64.zip` 10.7 MB → 84 `jniLibs/arm64-v8a/lib*.so` + `python_std.zip`)
+- **JVM unit tests** (`testDebugUnitTest`) covering run eligibility, run-command building, recognizer, indexer/completion, templates, session, setup config
+- **No native language packs**: no `.so` engines, no bundled Python, no bundled JDK — the APK only contains UI, Monaco, and the terminal
 
 ## What Works / Limitations
 
 | Area | Status |
 |------|--------|
-| Java 16–17 (`var`, records, patterns) via ECJ 3.26 + D8 | ✅ |
-| Core APIs (java.lang/util/io/nio/net/time), Collections/Streams, File I/O | ✅ |
-| Python 3.14 stdlib + 62 dynload extensions (zipimport + `sitecustomize` preloader) | ✅ bundled, wiring finalizing |
-| `int x = ;` / unquoted string diagnostics | ✅ |
+| Java 17 (records, patterns, `var`) | ✅ via prefix `openjdk-17` (javac + JRE) |
+| Python 3 / Node.js / C / C++ | ✅ via prefix toolchains installed on demand |
+| Real stdin in every language (`Scanner`, `input()`, readline) | ✅ live Linux sessions |
+| HTML/CSS preview | ✅ in-app WebView |
 | Swing/AWT/JavaFX, enterprise stacks, debugger, multi-module Maven | ❌ intentional |
-| JDK 17 / Clang via Termux (requires setup) vs bundled Python | Termux-gated; Java fallback remains the fast in-app compiler |
+| Bundled language runtimes | ❌ removed — Linux prefix is the only runtime |
 
 ## Architecture
 
 ```
 LarvIDE (Android App, API 21 / target 34)
 ├─ UI
-│  ├─ MainActivity ── RunDispatcher ─┬─ ExecutionBackend ─┬─ TermuxCommandBackend
-│  ├─ EditorFragment (Monaco WebView + JS bridge) │      └─ Built-in (ECJ/D8/Rhino)
+│  ├─ MainActivity ── RunDispatcher ── EmbeddedLinuxBackend ── prefix (proot)
+│  ├─ EditorFragment (Monaco WebView + JS bridge + symbol bar)
 │  ├─ BottomPanel: Output / Errors / Preview / Terminal
 │  ├─ SessionManager (.larv/session.json) + SettingsDialog + LanguagesDialog
 │  └─ FileTreeAdapter (stable IDs) + BottomPanelAdapter
 ├─ Services
 │  ├─ ProjectManager (shared workspace + migration)  ProjectRecognizer
-│  ├─ JavaCompiler (ECJ, async bootClasspath + path-hash cache)
-│  ├─ Dexer (per-run dir) + JavaRunner / JavascriptRunner / PythonRunner
+│  ├─ RunEligibility (type + entry point)  RunDispatcher (command builder)
 │  ├─ ProjectIndexer → MemberCatalog + Stdlib completion
-│  ├─ RuntimeRegistry / RuntimeProvisioner (jniLibs/arm64-v8a)
-│  └─ EmbeddedShellSession (/system/bin/sh → TermSession)
+│  └─ EmbeddedRuntime / PrefixInstaller / EmbeddedLinuxBackend
 ├─ Editor (Monaco)
 │  ├─ 5 themes + font stacks + applyEditorSettings (UI-thread posted)
 │  ├─ Completion provider (dot-context → memberOf) + CodeAction import
 │  └─ Diagnostic markers + positions{}
-└─ Tests (app/src/test/java, 40)
+└─ Tests (app/src/test/java)
 ```
 
 ## Dependencies
 
-- ECJ `3.26.0` (last Java-8-runtime-safe), R8 `8.6.27`, Rhino `1.7.14`
 - `jackpal/Android-Terminal-Emulator:emulatorview:v1.0.70`
 - `gson 2.10.1`, `kxml2 2.3.0` (POM parsing in tests), `androidx.webkit`, `material 1.11.0`
 - Test: `junit 4.13.2`, `org.json:json`, `net.sf.kxml:kxml2`
+- **Nothing else**: no ECJ, no R8/D8, no Rhino, no Python runtime, no bundled JDK
 
 ## Building
 
 ```bash
 # Requires Android SDK + JDK 17 + Gradle 8.3+
-./gradlew assembleDebug          # ~56 MB debug APK (includes Python runtime)
-./gradlew testDebugUnitTest      # 40 tests (DependencyResolver live network tests included)
-# Optional runtime pack provisioning
-java tools/RuntimeProvisioner.java
+./gradlew clean assembleDebug   # debug APK, no bundled runtimes
+./gradlew testDebugUnitTest     # unit tests
+./gradlew lintDebug             # Android Lint inspections
 ```
 
 ## Project Structure
@@ -116,22 +114,18 @@ LarvIDE/
 ├── app/src/main/
 │   ├── java/com/larv/ide/
 │   │   ├── build/         LarvBuildParser
-│   │   ├── compiler/      JavaCompiler, Dexer, JavaRunner, JavascriptRunner, PythonRunner
 │   │   ├── completion/    ProjectIndexer, MemberCatalog, CompletionItem
 │   │   ├── model/         Project, FileNode, Diagnostic, OpenFile
 │   │   ├── project/       ProjectManager (+templateFor), ProjectRecognizer
-│   │   ├── run/           RunDispatcher, backend/{ExecutionBackend,ExecRequest,TermuxCommandBackend,TermuxEnvironment}
-│   │   ├── runtime/       RuntimeRegistry
+│   │   ├── run/           RunDispatcher, RunEligibility, backend/{ExecutionBackend,ExecRequest} + embedded/
 │   │   ├── session/       SessionManager
-│   │   ├── terminal/      EmbeddedShellSession
+│   │   ├── terminal/      EmbeddedLinuxSession, EmbeddedShellSession
 │   │   ├── ui/adapter/    FileTreeAdapter, BottomPanelAdapter
 │   │   ├── ui/fragment/   EditorFragment, OutputFragment, ErrorsFragment, PreviewFragment, TerminalFragment
 │   │   └── ui/dialog/     SettingsDialog, LanguagesDialog
-│   ├── jniLibs/arm64-v8a/ libpyrun.so + 62 libext_*.so + dep libs
-│   ├── assets/            editor.html (+ 5 themes), runtimes/python/{python_std.zip, ext_manifest.json}, bootclasspath/android.jar
-│   └── res/               themes.xml (6 accents), drawables (dialog/edittext/popup), layouts inc. fragment_terminal
-├── tools/                 RuntimeProvisioner.java, runtime-manifest.json, packs/
-└── app/src/test/          40 JUnit tests
+│   ├── assets/            editor.html (+ 5 themes)
+│   └── res/               themes.xml (6 accents), drawables, layouts
+└── app/src/test/          JVM unit tests
 ```
 
 ## Target Audience

@@ -90,13 +90,13 @@ MainActivity (single-activity shell)
 
 ### Services initialized by `MainActivity.initServices()`
 - `ProjectManager` — file/project operations on a background executor.
-- `JavaCompiler` — ECJ wrapper (compile + type-check + diagnostics parsing).
-- `Dexer` — D8 via reflection, JAR fallback.
-- `JavaRunner` — loads dex and invokes the discovered `main`.
+- `EmbeddedLinuxBackend` — prefix command + interactive session execution.
+- `RunDispatcher` — single execution router (all languages via the prefix).
+- `RunEligibility` — decides if a file is runnable and has an entry point.
 
 ### Async model
 - **Project operations:** single-thread executor in `ProjectManager`.
-- **Compile/run pipeline:** single-thread `compilerExecutor` in `MainActivity`.
+- **Run sessions:** one live prefix process per Run; stdin stays open.
 - **UI updates:** always marshalled via `runOnUiThread(...)`.
 
 ---
@@ -206,41 +206,36 @@ newlines, `</`).
   PARAMETER, LOCAL_VARIABLE, PACKAGE, KEYWORD, SNIPPET — each with a `getKindOrder()` used
   in final sorting.
 
-**Compiler (`JavaCompiler`, ECJ):**
-- Writes each open file to `cache/javacache`, compiles with `-source/-target 21`,
-  `-encoding UTF-8`, `-proceedOnError`, `-nowarn`.
-- `compile()` full pipeline; `typeCheck()` lightweight variant used for live error
-  reporting (debounced ~400 ms after edits via `scheduleTypeCheck()`).
-- `parseDiagnostics()` parses ECJ output (`file:line: severity: message`) into `Diagnostic`
-  with `error/warning/info` severities (column parsed as 0).
+**Eligibility (`RunEligibility`):**
+- Runnable types: `.java`, `.py`, `.js`, `.c/.cpp/.cc`, plus HTML/CSS (preview).
+- Java requires `static void main(String[])` (all modifier orders / `String...`).
+- C/C++ requires `int main(` or `void main(`.
+- Python/JS scripts are their own entry point; empty files are rejected.
+- Java packages are honoured: `package a.b;` + `class Main` → FQN `a.b.Main`.
 
-**Dexer (`Dexer`):**
-- Primary: reflection into `com.android.tools.r8.D8` (DEBUG mode, DexIndexed,
-  minApiLevel 21, thread count = CPU count) → `classes.dex`.
-- Fallback: rolls class files into `classes.jar` via `JarOutputStream` when D8 is
-  unavailable or reflection fails.
-
-**Runner (`JavaRunner`):**
-- Captures `System.out`/`System.err` into byte streams, loads
-  `dalvik.system.PathClassLoader` on the dex/JAR, reflects `main(String[])`,
-  measures duration, restores original streams in `finally`.
-- `RunResult` exposes stdout, stderr, error message, duration, and a combined string.
+**Runner (`RunDispatcher`):**
+- Java: `javac -d .larv-classes $(find … '*.java') && java -cp .larv-classes <FQN>`.
+- Python: `python3 file.py`; Node: `node index.js`; C/C++: `clang++ … && ./binary`.
+- Every command runs as a live interactive prefix process so stdin stays open.
+- No dexing and no ART execution — the prefix JRE runs `.class` directly.
 
 ### 4.5 `MainActivity.compileAndRun()` pipeline
 
 ```
-clear output + errors → switch bottom panel to Run → show bottom window
-         ↓ (compilerExecutor)
-1. JavaCompiler.compile(openFiles)
-         ↓ success? no → "Compilation failed", show Problems tab, stop
-2. Dexer.dex(classFiles)            fail → "Dex error", stop
-3. findMainClass()                  none → "No main class", stop
-4. JavaRunner.run(dex, mainClass)   → stream stdout/stderr into Run tab
-5. status "Done"
+save buffers → RunDispatcher.dispatch()
+         ↓
+1. detect language from the active file's extension
+         ↓ not runnable → toast + status, stop
+2. resolve entry (larvbuild.entry → active file → project entry)
+         ↓
+3. RunEligibility.check(type + main) → not eligible → stop
+         ↓ (Java: fall back to another project file with main)
+4. build prefix command and open an interactive Linux session
+5. stream output, keep stdin open, report exit code
 ```
 
-`findMainClass()` scans open files for `public static void main(String[] args)` or
-`public static void main(String args[])` (class name = file name minus `.java`).
+`RunEligibility` replaces `findMainClass()`: it understands modifier order, package
+declarations, and commented-out mains.
 
 ### 4.6 Models
 
@@ -324,10 +319,11 @@ Root:
 Java (app/src/main/java/com/larv/ide/):
   MainActivity.java
   LarvApplication.java
-  compiler/    JavaCompiler, Dexer, JavaRunner
+  compiler/    (removed — all compilation happens in the Linux prefix)
   completion/  ProjectIndexer, CompletionItem
   model/       Project, OpenFile, FileNode, Diagnostic
   project/     ProjectManager
+  run/         RunDispatcher, RunEligibility, backend/{ExecutionBackend,ExecRequest} + embedded/
   ui/adapter/  FileTreeAdapter, OutputAdapter, ErrorAdapter, BottomPanelAdapter
   ui/fragment/ EditorFragment, OutputFragment, ErrorsFragment
 
