@@ -2056,6 +2056,9 @@ public class MainActivity extends AppCompatActivity
         } else if (itemId == R.id.menu_about) {
             showAboutDialog();
             return true;
+        } else if (itemId == R.id.menu_help) {
+            showHelpDialog();
+            return true;
         }
         return false;
     }
@@ -2134,6 +2137,36 @@ public class MainActivity extends AppCompatActivity
 
     private int dp(int v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    private void showHelpDialog() {
+        android.widget.ScrollView scroller = new android.widget.ScrollView(this);
+        android.widget.LinearLayout root = new android.widget.LinearLayout(this);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = dp(20);
+        root.setPadding(pad, dp(12), pad, dp(8));
+        scroller.addView(root);
+
+        android.widget.TextView t = new android.widget.TextView(this);
+        t.setText("LarvIDE Help\n\n"
+            + "1. Create a project from Build → (project creator) or the welcome screen.\n"
+            + "2. Open a file and edit it in Monaco.\n"
+            + "3. Run only works for runnable files with a real entry point:\n"
+            + "   Java needs static void main(String[]), C/C++ needs int main().\n"
+            + "4. Python/JavaScript scripts run directly; HTML/CSS open the preview.\n"
+            + "5. Install toolchains from Languages & Runtimes (nothing is bundled).\n"
+            + "6. Open a real Linux terminal from Build → Open Terminal.\n"
+            + "7. Use Search → Search in Project to find text across files.\n"
+            + "8. Sessions (tabs, cursors, unsaved buffers) are restored automatically.\n");
+        t.setTextSize(13);
+        t.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        root.addView(t);
+
+        new AlertDialog.Builder(this)
+            .setTitle("Help")
+            .setView(scroller)
+            .setPositiveButton("Close", null)
+            .show();
     }
 
     private void showAboutDialog() {

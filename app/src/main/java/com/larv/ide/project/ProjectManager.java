@@ -263,6 +263,27 @@ public class ProjectManager {
         if (lower.endsWith(".h") || lower.endsWith(".hpp")) {
             return "#pragma once\n";
         }
+        if (lower.endsWith(".kt")) {
+            return "fun main() {\n    println(\"Hello from LarvIDE!\")\n}\n";
+        }
+        if (lower.endsWith(".rs")) {
+            return "fn main() {\n    println!(\"Hello from LarvIDE!\");\n}\n";
+        }
+        if (lower.endsWith(".go")) {
+            return "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello from LarvIDE!\")\n}\n";
+        }
+        if (lower.endsWith(".rb")) {
+            return "puts \"Hello from LarvIDE!\"\n";
+        }
+        if (lower.endsWith(".ts")) {
+            return "function main(): void {\n    console.log(\"Hello from LarvIDE!\");\n}\n\nmain();\n";
+        }
+        if (lower.endsWith(".md")) {
+            return "# " + base + "\n\n";
+        }
+        if (lower.endsWith(".xml")) {
+            return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n    \n</root>\n";
+        }
         return "";
     }
 
