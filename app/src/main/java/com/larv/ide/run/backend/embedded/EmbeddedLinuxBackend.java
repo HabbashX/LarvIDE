@@ -37,10 +37,8 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
 
     private final Context appContext;
     private final PrefixInstaller installer;
-    private final ExecutorService executor = new java.util.concurrent.ThreadPoolExecutor(
-        1, 3, 60L, java.util.concurrent.TimeUnit.SECONDS,
-        new java.util.concurrent.LinkedBlockingQueue<>(8),
-        new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+    private final com.larv.ide.concurrent.IOExecutor executor =
+        new com.larv.ide.concurrent.IOExecutor(1, 3);
 
     public EmbeddedLinuxBackend(@NonNull Context context) {
         this.appContext = context.getApplicationContext();

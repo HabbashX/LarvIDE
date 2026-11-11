@@ -130,8 +130,10 @@ public class MainActivity extends AppCompatActivity
     private final Handler typeCheckHandler = new Handler(Looper.getMainLooper());
     private ProjectManager projectManager;
     private ProjectIndexer projectIndexer;
-    private final ExecutorService compilerExecutor = Executors.newSingleThreadExecutor();
-    private final ExecutorService indexerExecutor = Executors.newSingleThreadExecutor();
+    private final com.larv.ide.concurrent.CompilationExecutor compilerExecutor =
+        new com.larv.ide.concurrent.CompilationExecutor();
+    private final com.larv.ide.concurrent.CPUExecutor indexerExecutor =
+        new com.larv.ide.concurrent.CPUExecutor(1);
     private Project currentProject;
     private final List<OpenFile> openFiles = new ArrayList<>();
     private final Map<String, OpenFile> openFilesByPath = new HashMap<>();

@@ -24,7 +24,8 @@ public class ProjectManager {
     private static final String PROJECTS_DIR_NAME = "JavaProjects";
 
     private final Context context;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final com.larv.ide.concurrent.IOExecutor executor =
+        new com.larv.ide.concurrent.IOExecutor(1);
     private final com.larv.ide.io.FileIOManager fileIO =
         new com.larv.ide.io.FileIOManager(executor, 64, 800);
     /** When false, C/C++ file creation is hidden (needs embedded Linux runtime). */
