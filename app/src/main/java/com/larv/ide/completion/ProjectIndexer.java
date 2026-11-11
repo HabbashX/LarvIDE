@@ -66,7 +66,11 @@ public class ProjectIndexer {
     private final Map<String, FileSymbols> fileIndex = new ConcurrentHashMap<>();
     private final Map<String, List<CompletionItem>> stdlibIndex = new ConcurrentHashMap<>();
     private final Map<String, String> classToPackage = new ConcurrentHashMap<>();
-    private volatile Map<String, List<CompletionItem>> memberCache;
+
+    /** Built once — sorting used to rebuild this comparator on every keystroke. */
+    private static final Comparator<CompletionItem> COMPLETION_ORDER =
+        Comparator.comparingInt(CompletionItem::getSortPriority)
+            .thenComparingInt(CompletionItem::getKindOrder);
 
     public ProjectIndexer() {
         buildStdlibIndex();
@@ -138,29 +142,29 @@ public class ProjectIndexer {
 
     @RequiresApi(api = Build.VERSION_CODES.N)
     public List<CompletionItem> getCompletions(@NonNull String prefix, String currentFile, int line, int column) {
-        List<CompletionItem> completions = new ArrayList<>();
+        List<CompletionItem> completions = new ArrayList<>(48);
         Set<String> seen = new HashSet<>();
-        String prefixLower = prefix.toLowerCase();
 
         FileSymbols currentSymbols = resolveCurrentSymbols(currentFile);
-        Set<String> currentImports = currentSymbols != null ? currentSymbols.imports : new HashSet<>();
+        Set<String> currentImports = currentSymbols != null
+            ? currentSymbols.imports : java.util.Collections.emptySet();
 
         if (currentSymbols != null) {
-            addCompletionsFromSymbols(completions, seen, currentSymbols, prefixLower, true);
+            addCompletionsFromSymbols(completions, seen, currentSymbols, prefix, true);
         }
 
         for (Map.Entry<String, FileSymbols> entry : fileIndex.entrySet()) {
             if (!entry.getKey().equals(currentFile)) {
-                addCompletionsFromSymbols(completions, seen, entry.getValue(), prefixLower,
+                addCompletionsFromSymbols(completions, seen, entry.getValue(), prefix,
                     isAccessible(entry.getValue(), currentImports));
             }
         }
 
-        addStdlibCompletions(completions, seen, currentImports, prefixLower);
+        addStdlibCompletions(completions, seen, currentImports, prefix);
 
-        addKeywordsAndSnippets(completions, prefixLower);
+        addKeywordsAndSnippets(completions, prefix);
 
-        completions.sort(Comparator.comparingInt(CompletionItem::getSortPriority).thenComparingInt(CompletionItem::getKindOrder));
+        completions.sort(COMPLETION_ORDER);
 
         return completions;
     }
@@ -169,50 +173,42 @@ public class ProjectIndexer {
     public List<CompletionItem> getCompletions(@NonNull String prefix, String currentFile,
                                                int line, int column,
                                                String memberOf, String currentContent) {
-        if (memberOf != null && !memberOf.trim().isEmpty()) {
-            List<CompletionItem> members = getMemberCompletions(
-                memberOf.trim(), currentContent, line, resolveCurrentSymbols(currentFile));
-            if (prefix != null && !prefix.isEmpty()) {
-                String p = prefix.toLowerCase();
-                members.removeIf(i -> !i.getLabel().toLowerCase().startsWith(p));
-            }
-            return members;
+        if (!isBlank(memberOf)) {
+            return getMemberCompletions(
+                trimToSize(memberOf), currentContent, line,
+                resolveCurrentSymbols(currentFile), prefix);
         }
         return getCompletions(prefix == null ? "" : prefix, currentFile, line, column);
     }
 
     private List<CompletionItem> getMemberCompletions(String receiver, String content,
-                                                      int cursorLine, FileSymbols symbols) {
+                                                      int cursorLine, FileSymbols symbols,
+                                                      String prefix) {
         Map<String, String[][]> table = MemberCatalog.ALL;
         String type = resolveReceiverType(receiver, content, cursorLine, symbols, table);
         if (type == null) {
             type = MemberCatalog.knows(receiver) ? receiver : null;
         }
         if (type == null || !MemberCatalog.knows(type)) {
-            return new ArrayList<>();
+            return java.util.Collections.emptyList();
         }
-        List<CompletionItem> items = new ArrayList<>(MemberCatalog.itemsFor(type));
-        java.util.Set<String> seen = new java.util.HashSet<>();
-        for (CompletionItem item : items) {
-            seen.add(item.getLabel());
-        }
-        for (String[] row : MemberCatalog.OBJECT_MEMBERS) {
-            if (seen.add(row[0])) {
-                CompletionItem item = new CompletionItem(row[0], CompletionItem.Kind.METHOD);
-                item.setDetail(row[1]);
-                item.setInsertText(row[0] + "()");
-                item.setSortPriority(60);
-                items.add(item);
+        // Cached objects: only the filtered list is new, never the items.
+        List<CompletionItem> all = MemberCatalog.membersFor(type);
+        List<CompletionItem> out = new ArrayList<>(Math.min(all.size(), 32));
+        for (CompletionItem item : all) {
+            if (prefix == null || prefix.isEmpty()
+                || startsWithIgnoreCase(item.getLabel(), prefix)) {
+                out.add(item);
             }
         }
-        return items;
+        return out;
     }
 
 
     private String resolveReceiverType(String receiver, String content, int cursorLine,
                                        FileSymbols symbols, Map<String, String[][]> table) {
-        receiver = receiver.trim();
-        if (receiver.isEmpty()) return null;
+        if (isBlank(receiver)) return null;
+        receiver = trimToSize(receiver);
         if (table.containsKey(receiver)) return receiver;
 
         String lastSeg = receiver;
@@ -221,27 +217,37 @@ public class ProjectIndexer {
         if (table.containsKey(lastSeg)) return lastSeg;
 
         if (content != null && !content.isEmpty()) {
-            String[] lines = content.split("\n");
-            int limit = Math.min(cursorLine <= 0 ? lines.length : cursorLine, lines.length);
-            for (int i = limit - 1; i >= 0; i--) {
-                String line = lines[i];
-                Matcher m = LOCAL_DECL_PATTERN.matcher(line);
-                if (m.find()) {
-                    if (stripType(m.group(1)).equalsIgnoreCase(stripType(lastSeg))
-                        || m.group(2).equals(lastSeg)) {
+            // Walk lines backwards WITHOUT content.split("\n"): a completion
+            // request must not allocate one String per line in the file.
+            int lineStart = lineStartOffset(content, cursorLine);
+            int lineEnd = content.indexOf('\n', lineStart);
+            if (lineEnd < 0) lineEnd = content.length();
+            while (true) {
+                int hit = content.indexOf(lastSeg, lineStart);
+                if (hit >= 0 && hit < lineEnd) {
+                    String line = content.substring(lineStart, lineEnd);
+                    Matcher m = LOCAL_DECL_PATTERN.matcher(line);
+                    if (m.find()) {
+                        String declared = stripType(m.group(1));
+                        if (declared.equalsIgnoreCase(stripType(lastSeg))
+                            || m.group(2).equals(lastSeg)) {
+                            return declared;
+                        }
+                    }
+                    m = FOR_EACH_PATTERN.matcher(line);
+                    if (m.find() && m.group(2).equals(lastSeg)) {
                         return stripType(m.group(1));
                     }
-                }
-                m = FOR_EACH_PATTERN.matcher(line);
-                if (m.find() && m.group(2).equals(lastSeg)) {
-                    return stripType(m.group(1));
-                }
-                m = PARAM_PATTERN.matcher(line);
-                while (m.find()) {
-                    if (m.group(2).equals(lastSeg)) {
-                        return stripType(m.group(1));
+                    m = PARAM_PATTERN.matcher(line);
+                    while (m.find()) {
+                        if (m.group(2).equals(lastSeg)) {
+                            return stripType(m.group(1));
+                        }
                     }
                 }
+                if (lineStart == 0) break;
+                lineEnd = lineStart - 1;
+                lineStart = content.lastIndexOf('\n', lineEnd - 1) + 1;
             }
         }
 
@@ -256,17 +262,52 @@ public class ProjectIndexer {
     }
 
     private static final Pattern LOCAL_DECL_PATTERN = Pattern.compile(
-        "^\\s*(?:final\\s+)?([A-Za-z_$][\\w$]*(?:\\s*<[^=;]*>)?(?:\\s*\\[\\s*\\])?)\\s+([A-Za-z_$][\\w$]*)\\s*(?:=[^=].*)?[;,]?");
+        "^\\s*(?:final\\s+)?([A-Za-z_$][\\w$.]*(?:\\s*<[^=;]*>)?(?:\\s*\\[\\s*\\])?)\\s+([A-Za-z_$][\\w$]*)\\s*(?:=[^=].*)?[;,]?");
     private static final Pattern FOR_EACH_PATTERN = Pattern.compile(
         "\\bfor\\s*\\(\\s*([A-Za-z_$][\\w$.]*(?:\\s*<[^>]*>)?(?:\\s*\\[\\s*\\])?)\\s+([A-Za-z_$][\\w$]*)\\s*:");
     private static final Pattern PARAM_PATTERN = Pattern.compile(
         "[({]\\s*([A-Za-z_$][\\w$]*(?:\\s*<[^>]*>)?(?:\\s*\\[\\s*\\])?)\\s+([A-Za-z_$][\\w$]*)\\s*(?=[,)])");
 
-    private String stripType(String raw) {
+    /**
+     * Normalises a declared type to a receiver type without per-call regex:
+     * strips whitespace, array brackets and generics, then takes the simple name.
+     * Allocates only when the input actually needs cleaning.
+     */
+    private static String stripType(String raw) {
         if (raw == null) return "";
-        String t = raw.trim();
-        t = t.replaceAll("<[^<>]*>", "");
-        t = t.replace("[", "").replace("]", "").replace(" ", "");
+        int start = 0;
+        int end = raw.length();
+        while (start < end && raw.charAt(start) <= ' ') start++;
+        while (end > start && raw.charAt(end - 1) <= ' ') end--;
+        if (start >= end) return "";
+
+        StringBuilder sb = null;
+        int depth = 0;
+        int last = start;
+        for (int i = start; i < end; i++) {
+            char c = raw.charAt(i);
+            if (c == '<') {
+                if (depth++ == 0) {
+                    if (sb == null) sb = new StringBuilder(end - start);
+                    sb.append(raw, last, i);
+                }
+            } else if (c == '>') {
+                if (depth > 0) depth--;
+                if (depth == 0) last = i + 1;
+            } else if (depth == 0 && (c == '[' || c == ']' || c == ' ')) {
+                if (sb == null) sb = new StringBuilder(end - start);
+                sb.append(raw, last, i);
+                last = i + 1;
+            }
+        }
+        String t;
+        if (sb != null) {
+            t = sb.append(raw, last, end).toString();
+        } else if (start == 0 && end == raw.length()) {
+            t = raw;
+        } else {
+            t = raw.substring(start, end);
+        }
         int dot = t.lastIndexOf('.');
         if (dot >= 0) t = t.substring(dot + 1);
         switch (t) {
@@ -280,12 +321,31 @@ public class ProjectIndexer {
         }
     }
 
+    /** True when the string is empty or whitespace-only, without allocating a trimmed copy. */
+    private static boolean isBlank(String s) {
+        if (s == null) return true;
+        for (int i = 0, n = s.length(); i < n; i++) {
+            if (s.charAt(i) > ' ') return false;
+        }
+        return true;
+    }
+
+    /** Returns the same instance when no trim is needed; allocates only when it is. */
+    private static String trimToSize(String s) {
+        int start = 0;
+        int end = s.length();
+        while (start < end && s.charAt(start) <= ' ') start++;
+        while (end > start && s.charAt(end - 1) <= ' ') end--;
+        if (start == 0 && end == s.length()) return s;
+        return s.substring(start, end);
+    }
+
     private void addCompletionsFromSymbols(List<CompletionItem> completions, Set<String> seen,
-            FileSymbols symbols, String prefixLower, boolean accessible) {
+            FileSymbols symbols, String prefix, boolean accessible) {
         if (!accessible) return;
 
         for (ClassSymbol cls : symbols.classes) {
-            if (cls.name.toLowerCase().startsWith(prefixLower) && seen.add(cls.name)) {
+            if (startsWithIgnoreCase(cls.name, prefix) && seen.add(cls.name)) {
                 CompletionItem item = new CompletionItem(cls.name, CompletionItem.Kind.CLASS);
                 item.setDetail(cls.type + " in " + symbols.fileName);
                 item.setSortPriority(10);
@@ -294,7 +354,7 @@ public class ProjectIndexer {
         }
 
         for (MethodSymbol method : symbols.methods) {
-            if (method.name.toLowerCase().startsWith(prefixLower) && seen.add(method.name)) {
+            if (startsWithIgnoreCase(method.name, prefix) && seen.add(method.name)) {
                 CompletionItem item = new CompletionItem(method.name, CompletionItem.Kind.METHOD);
                 item.setDetail(method.signature);
                 item.setInsertText(method.name + "()");
@@ -304,7 +364,7 @@ public class ProjectIndexer {
         }
 
         for (FieldSymbol field : symbols.fields) {
-            if (field.name.toLowerCase().startsWith(prefixLower) && seen.add(field.name)) {
+            if (startsWithIgnoreCase(field.name, prefix) && seen.add(field.name)) {
                 CompletionItem item = new CompletionItem(field.name, CompletionItem.Kind.FIELD);
                 item.setDetail(field.type + " in " + symbols.fileName);
                 item.setSortPriority(30);
@@ -315,20 +375,17 @@ public class ProjectIndexer {
 
     @RequiresApi(api = Build.VERSION_CODES.N)
     private void addStdlibCompletions(List<CompletionItem> completions, Set<String> seen,
-                                      Set<String> imports, String prefixLower) {
+                                      Set<String> imports, String prefix) {
         for (Map.Entry<String, List<CompletionItem>> entry : stdlibIndex.entrySet()) {
             String packageName = entry.getKey();
 
-            boolean importMatches = imports.stream().anyMatch(imp ->
-                imp.equals(packageName) || imp.equals(packageName + ".*") || imp.startsWith(packageName + ".")
-            );
-
-            if (!importMatches && !packageName.startsWith("java.lang")) {
+            if (!matchesImport(imports, packageName)
+                && !packageName.startsWith("java.lang")) {
                 continue;
             }
 
             for (CompletionItem item : entry.getValue()) {
-                if (item.getLabel().toLowerCase().startsWith(prefixLower) && seen.add(item.getLabel())) {
+                if (startsWithIgnoreCase(item.getLabel(), prefix) && seen.add(item.getLabel())) {
                     CompletionItem copy = new CompletionItem(item.getLabel(), item.getKind());
                     copy.setDetail(item.getDetail());
                     copy.setDocumentation(item.getDocumentation());
@@ -341,10 +398,8 @@ public class ProjectIndexer {
     }
 
     private void addKeywordsAndSnippets(List<CompletionItem> completions, String prefix) {
-        String prefixLower = prefix.toLowerCase();
-
         for (String[] kw : KEYWORDS) {
-            if (kw[0].toLowerCase().startsWith(prefixLower)) {
+            if (startsWithIgnoreCase(kw[0], prefix)) {
                 CompletionItem item = new CompletionItem(kw[0], CompletionItem.Kind.SNIPPET);
                 item.setDetail(kw[1]);
                 item.setInsertText(kw[2]);
@@ -358,16 +413,39 @@ public class ProjectIndexer {
         if (symbols.packageName == null || symbols.packageName.isEmpty()) {
             return true;
         }
+        return matchesImport(imports, symbols.packageName);
+    }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            return imports.stream().anyMatch(imp ->
-                imp.equals(symbols.packageName) ||
-                imp.equals(symbols.packageName + ".*") ||
-                imp.startsWith(symbols.packageName + ".")
-            );
-        } else {
-            return false;
+    /** Allocation-free prefix test (no per-call toLowerCase()). */
+    private static boolean startsWithIgnoreCase(String value, String prefix) {
+        return prefix == null || prefix.isEmpty()
+            || (value != null && value.regionMatches(true, 0, prefix, 0, prefix.length()));
+    }
+
+    /** {@code pkg}, {@code pkg.*}, and {@code pkg.Class} all match. */
+    private static boolean matchesImport(Set<String> imports, String packageName) {
+        for (String imp : imports) {
+            if (imp.equals(packageName)) return true;
+            if (imp.length() > packageName.length() && imp.startsWith(packageName)
+                && imp.charAt(packageName.length()) == '.') {
+                return true;
+            }
         }
+        return false;
+    }
+
+    /** Offset of the first character of a 1-based line, no splitting. */
+    private static int lineStartOffset(String content, int line) {
+        if (line <= 1) return 0;
+        int current = 1;
+        int offset = 0;
+        while (current < line) {
+            int nl = content.indexOf('\n', offset);
+            if (nl < 0) return content.length();
+            offset = nl + 1;
+            current++;
+        }
+        return offset;
     }
 
     private String extractPackage(String content) {

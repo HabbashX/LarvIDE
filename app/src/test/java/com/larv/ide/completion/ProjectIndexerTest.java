@@ -100,6 +100,21 @@ public class ProjectIndexerTest {
     }
 
     @Test
+    public void memberCompletionStripsGenericsAndWhitespace() {
+        ProjectIndexer indexer = new ProjectIndexer();
+        List<CompletionItem> members = indexer.getCompletions("", "/t/T.java", 3, 20,
+            "  names  ",
+            "class T {\n"
+                + "    void m() {\n"
+                + "        java.util.List<String> names = null;\n"
+                + "        names.\n"
+                + "    }\n"
+                + "}\n");
+        assertTrue(has(members, "add"));
+        assertTrue(has(members, "size"));
+    }
+
+    @Test
     public void unknownReceiverYieldsNoMembers() {
         ProjectIndexer indexer = new ProjectIndexer();
         List<CompletionItem> none = indexer.getCompletions("", "/t/T.java", 1, 5,

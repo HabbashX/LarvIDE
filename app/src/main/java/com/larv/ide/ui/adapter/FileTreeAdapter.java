@@ -9,6 +9,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -139,23 +140,25 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
         FileNode node = visibleNodes.get(position);
         holder.bind(node);
         holder.itemView.setSelected(node.getPath().equals(selectedPath));
+    }
 
-        holder.itemView.setOnClickListener(v -> {
-            String prevSelected = selectedPath;
-            selectedPath = node.getPath();
-            if (node.getType() != FileNode.Type.DIRECTORY) {
-                int prevPos = indexOfPath(prevSelected);
-                int curPos = indexOfPath(selectedPath);
-                if (prevPos >= 0) notifyItemChanged(prevPos);
-                if (curPos >= 0) notifyItemChanged(curPos);
-            }
-            listener.onFileClick(node);
-        });
-        holder.itemView.setOnLongClickListener(v -> {
-            startDrag(holder.itemView, visibleNodes.get(position));
-            return true;
-        });
-        holder.more.setOnClickListener(v -> listener.onFileMoreClick(node, holder.itemView));
+    /** Selection + open, shared by the one-shot click listener in the holder. */
+    private void handleClick(FileNode node) {
+        String prevSelected = selectedPath;
+        selectedPath = node.getPath();
+        if (node.getType() != FileNode.Type.DIRECTORY) {
+            int prevPos = indexOfPath(prevSelected);
+            int curPos = indexOfPath(selectedPath);
+            if (prevPos >= 0) notifyItemChanged(prevPos);
+            if (curPos >= 0) notifyItemChanged(curPos);
+        }
+        listener.onFileClick(node);
+    }
+
+    @Nullable
+    private FileNode nodeAt(int position) {
+        return position >= 0 && position < visibleNodes.size()
+            ? visibleNodes.get(position) : null;
     }
 
     private void startDrag(View view, FileNode node) {
@@ -195,7 +198,7 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
         return -1;
     }
 
-    public static class FileViewHolder extends RecyclerView.ViewHolder {
+    public class FileViewHolder extends RecyclerView.ViewHolder {
         private final ImageView icon;
         private final TextView name;
         private final ImageView more;
@@ -206,6 +209,21 @@ public class FileTreeAdapter extends RecyclerView.Adapter<FileTreeAdapter.FileVi
             icon = itemView.findViewById(R.id.fileIcon);
             name = itemView.findViewById(R.id.fileName);
             more = itemView.findViewById(R.id.fileMore);
+            // Listeners are installed once per view, not on every rebind.
+            itemView.setOnClickListener(v -> {
+                FileNode n = nodeAt(getBindingAdapterPosition());
+                if (n != null) handleClick(n);
+            });
+            itemView.setOnLongClickListener(v -> {
+                FileNode n = nodeAt(getBindingAdapterPosition());
+                if (n == null) return false;
+                startDrag(itemView, n);
+                return true;
+            });
+            more.setOnClickListener(v -> {
+                FileNode n = nodeAt(getBindingAdapterPosition());
+                if (n != null) listener.onFileMoreClick(n, itemView);
+            });
         }
 
         public FileNode getNode() {

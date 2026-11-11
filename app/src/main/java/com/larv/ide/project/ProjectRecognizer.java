@@ -22,16 +22,22 @@ public class ProjectRecognizer {
     }
 
     public static String languageForExtension(String name) {
-        String lower = name.toLowerCase();
-        if (lower.endsWith(".java")) return JAVA;
-        if (lower.endsWith(".py")) return PYTHON;
-        if (lower.endsWith(".js")) return JAVASCRIPT;
-        if (lower.endsWith(".html") || lower.endsWith(".htm")) return HTML;
-        if (lower.endsWith(".css")) return CSS;
-        if (lower.endsWith(".c")) return CPP;
-        if (lower.endsWith(".cpp") || lower.endsWith(".cc")
-            || lower.endsWith(".h") || lower.endsWith(".hpp")) return CPP;
+        if (name == null) return null;
+        if (endsWithIgnoreCase(name, ".java")) return JAVA;
+        if (endsWithIgnoreCase(name, ".py")) return PYTHON;
+        if (endsWithIgnoreCase(name, ".js")) return JAVASCRIPT;
+        if (endsWithIgnoreCase(name, ".html") || endsWithIgnoreCase(name, ".htm")) return HTML;
+        if (endsWithIgnoreCase(name, ".css")) return CSS;
+        if (endsWithIgnoreCase(name, ".c")) return CPP;
+        if (endsWithIgnoreCase(name, ".cpp") || endsWithIgnoreCase(name, ".cc")
+            || endsWithIgnoreCase(name, ".h") || endsWithIgnoreCase(name, ".hpp")) return CPP;
         return null;
+    }
+
+    /** Case-insensitive suffix test without allocating a lowercased copy. */
+    private static boolean endsWithIgnoreCase(String value, String suffix) {
+        int offset = value.length() - suffix.length();
+        return offset >= 0 && value.regionMatches(true, offset, suffix, 0, suffix.length());
     }
 
     public static boolean isRunnable(String name) {

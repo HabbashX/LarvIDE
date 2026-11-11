@@ -1,13 +1,22 @@
 package com.larv.ide.completion;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class MemberCatalog {
 
     static final Map<String, String[][]> ALL = build();
+
+    /** Built once per type instead of allocating items on every completion. */
+    private static final Map<String, List<CompletionItem>> ITEM_CACHE =
+        new ConcurrentHashMap<>();
+    /** Type members plus Object methods, also built once. */
+    private static final Map<String, List<CompletionItem>> MEMBER_CACHE =
+        new ConcurrentHashMap<>();
 
     public static final String[][] OBJECT_MEMBERS = {
         {"equals", "boolean equals(Object obj)"},
@@ -20,21 +29,44 @@ public final class MemberCatalog {
     }
 
     static List<CompletionItem> itemsFor(String type) {
+        List<CompletionItem> cached = ITEM_CACHE.get(type);
+        if (cached != null) return cached;
         List<CompletionItem> items = new ArrayList<>();
         String[][] rows = ALL.get(type);
-        if (rows == null) return items;
+        if (rows == null) return Collections.emptyList();
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (String[] row : rows) {
+            if (!seen.add(row[0])) continue;
             CompletionItem item = new CompletionItem(row[0],
                 row[2].equals("f") ? CompletionItem.Kind.FIELD : CompletionItem.Kind.METHOD);
             item.setDetail(row[1]);
             item.setInsertText(row[0].endsWith("(") ? row[0] : row[0] + "()");
             item.setSortPriority(row[2].equals("f") ? 30 : 20);
-            if (seen.add(row[0])) {
-                items.add(item);
-            }
+            items.add(item);
         }
-        return items;
+        List<CompletionItem> result = Collections.unmodifiableList(items);
+        List<CompletionItem> raced = ITEM_CACHE.putIfAbsent(type, result);
+        return raced != null ? raced : result;
+    }
+
+    /** Cached type members + Object methods (never mutated by callers). */
+    static List<CompletionItem> membersFor(String type) {
+        List<CompletionItem> cached = MEMBER_CACHE.get(type);
+        if (cached != null) return cached;
+        List<CompletionItem> items = new ArrayList<>(itemsFor(type));
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (CompletionItem item : items) seen.add(item.getLabel());
+        for (String[] row : OBJECT_MEMBERS) {
+            if (!seen.add(row[0])) continue;
+            CompletionItem item = new CompletionItem(row[0], CompletionItem.Kind.METHOD);
+            item.setDetail(row[1]);
+            item.setInsertText(row[0] + "()");
+            item.setSortPriority(60);
+            items.add(item);
+        }
+        List<CompletionItem> result = Collections.unmodifiableList(items);
+        List<CompletionItem> raced = MEMBER_CACHE.putIfAbsent(type, result);
+        return raced != null ? raced : result;
     }
 
     static boolean knows(String type) {
