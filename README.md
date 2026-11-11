@@ -123,6 +123,8 @@ javac → java   |   python3   |   node   |   clang++
 - **HTML/CSS preview** in an in-app WebView, with the stylesheet applied live.
 
 ### Project System
+- **Project home screen** — list, open or create projects from one place.
+- **Project-wide search** — find text across every file in the workspace.
 - **Full-page project creator** — name, language scaffold (a working `Main.java`, `main.py`,
   `index.js`, `index.html` or `main.cpp`), and a one-tap toolchain install in the same screen.
 - **Auto-detected project languages** (`ProjectRecognizer`, bounded scan) for Java, Python,
@@ -139,14 +141,21 @@ javac → java   |   python3   |   node   |   clang++
 
 ### UI / Design
 - Dark IntelliJ-style shell (`Theme.LarvIDE`, NoActionBar) with **6 accent overlays**
-  (Blue / Purple / Green / Orange / Pink / Cyan) applied before `setContentView`.
+  (Blue / Purple / Green / Orange / Pink / Cyan) plus a **custom accent color**, applied before
+  `setContentView`.
 - Resizable bottom tool window: **Output / Problems / Preview / Terminal** in a ViewPager2.
+- **Offline help** dialog with quick-start guidance.
+- **Accessibility** labels on toolbars and tree icons.
 - A slim status bar showing file, language and run eligibility.
 
 ### Quality
 - **45 JVM unit tests** (`testDebugUnitTest`) covering run eligibility, command building,
   recognizer, indexer/completion, templates, session and setup config.
 - **Lint clean** — 0 errors.
+- **Encoding-aware files** — UTF-8/UTF-16 BOM detection with a lossless fallback, and CRLF
+  preservation.
+- **Crash recovery** — sessions are written atomically so a killed process cannot corrupt them.
+- **Large-file guard** — files over 2 MB are refused instead of freezing the editor.
 - **No native language packs** — no `.so` engines, no bundled Python, no bundled JDK.
 
 ---
