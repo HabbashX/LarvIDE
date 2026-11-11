@@ -10,6 +10,7 @@ import com.larv.ide.model.Project;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -407,10 +408,16 @@ public class ProjectManager {
         });
     }
 
+    private static final int MAX_EDITOR_FILE_BYTES = 2 * 1024 * 1024;
+
     public void readFile(File file, OnFileReadCallback callback) {
         executor.execute(() -> {
             try {
                 long length = file.length();
+                if (length > MAX_EDITOR_FILE_BYTES) {
+                    throw new IOException("File too large to open in the editor ("
+                        + (length / (1024 * 1024)) + " MB). Limit is 2 MB.");
+                }
                 if (length > Integer.MAX_VALUE) {
                     throw new IOException("File too large to read");
                 }
@@ -423,13 +430,36 @@ public class ProjectManager {
                         total += read;
                     }
                 }
-                String content = new String(bytes, 0, bytes.length, "UTF-8");
+                String content = decodeFileBytes(bytes);
                 if (callback != null) callback.onContent(content);
             } catch (IOException e) {
                 Log.e(TAG, "Failed to read file", e);
                 if (callback != null) callback.onError("Failed to read: " + e.getMessage());
             }
         });
+    }
+
+    /** Detect UTF-8/UTF-16 BOMs and fall back to a lossless single-byte decoding. */
+    private static String decodeFileBytes(byte[] bytes) {
+        if (bytes.length >= 3 && bytes[0] == (byte) 0xEF
+            && bytes[1] == (byte) 0xBB && bytes[2] == (byte) 0xBF) {
+            return new String(bytes, 3, bytes.length - 3, StandardCharsets.UTF_8);
+        }
+        if (bytes.length >= 2 && bytes[0] == (byte) 0xFF && bytes[1] == (byte) 0xFE) {
+            return new String(bytes, 2, bytes.length - 2, StandardCharsets.UTF_16LE);
+        }
+        if (bytes.length >= 2 && bytes[0] == (byte) 0xFE && bytes[1] == (byte) 0xFF) {
+            return new String(bytes, 2, bytes.length - 2, StandardCharsets.UTF_16BE);
+        }
+        try {
+            java.nio.charset.CharsetDecoder dec = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+            return dec.decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            // Not valid UTF-8: keep every byte representable instead of corrupting.
+            return new String(bytes, 0, bytes.length, java.nio.charset.StandardCharsets.ISO_8859_1);
+        }
     }
 
     public void writeFile(File file, String content, OnFileOperationCallback callback) {

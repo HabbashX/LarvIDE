@@ -15,7 +15,7 @@
         android:layout_width="14dp"
         android:layout_height="14dp"
         android:layout_gravity="center_vertical"
-        android:src="@drawable/ic_file" />
+        android:src="@drawable/ic_file"  android:contentDescription="Icon" />
 
     <TextView
         android:id="@+id/fileName"
@@ -35,5 +35,5 @@
         android:layout_height="16dp"
         android:layout_gravity="center_vertical"
         android:src="@android:drawable/ic_menu_more"
-        app:tint="@color/text_disabled" />
+        app:tint="@color/text_disabled"  android:contentDescription="Icon" />
 </LinearLayout>
