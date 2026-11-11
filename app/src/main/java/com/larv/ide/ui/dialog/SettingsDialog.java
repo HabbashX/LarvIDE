@@ -121,9 +121,6 @@ public class SettingsDialog {
         root.addView(toggle(activity, accent, "Auto save",
                 prefs.getBoolean("autosaveEnabled", true),
                 (b, checked) -> prefs.edit().putBoolean("autosaveEnabled", checked).apply()));
-        root.addView(toggle(activity, accent, "Run Java/C++ via embedded Linux",
-                prefs.getBoolean("runViaEmbedded", true),
-                (b, checked) -> prefs.edit().putBoolean("runViaEmbedded", checked).apply()));
 
         root.addView(linuxEnvironmentSection(activity, prefs));
 

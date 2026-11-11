@@ -25,7 +25,7 @@ android {
 
     defaultConfig {
         applicationId "com.larv.ide"
-        minSdk 21
+        minSdk 24
         targetSdk 34
         versionCode 2
         versionName "1.1"
@@ -92,12 +92,9 @@ dependencies {
     
     // JSON parsing
     implementation 'com.google.code.gson:gson:2.10.1'
-    
-    // R8 kept STRICTLY as the on-device dexer (D8): prefix javac outputs
-    // .class files and ART only runs .dex — nothing in any Termux package
-    // replaces this. All compiler frontends (ECJ/Rhino) were removed; Java
-    // compiles via prefix OpenJDK, JS/Python/Clang run 100% in-prefix.
-    implementation 'com.android.tools:r8:8.6.27'
+
+    // No on-device dexer: Java compiles and runs inside the Linux prefix
+    // (javac + JRE), exactly like Python, Node and Clang. R8/D8 removed.
 
     // Real terminal emulator (jackpal emulatorview).
     // Pure-Java VT100 emulator: TermSession accepts custom in/out streams,

@@ -4,7 +4,7 @@ public interface ExecutionBackend {
 
     enum SetupState {
         READY,
-        // Legacy external-Termux states (kept dead — see TermuxCommandBackend).
+        // Legacy external-Termux states — no longer produced.
         TERMUX_MISSING,
         TERMUX_PLAY_BUILD,
         PERMISSION_NOT_GRANTED,

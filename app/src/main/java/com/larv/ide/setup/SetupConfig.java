@@ -17,7 +17,7 @@ public final class SetupConfig {
 
     public enum Language {
         JAVA("Java", "openjdk-17",
-            "Java coursework — compiles with javac, runs on ART"),
+            "Java coursework — compiled and run by the Linux JRE (javac + java)"),
         CPP("C / C++", "clang",
             "Native code — compiles with clang++"),
         PYTHON("Python", "python",

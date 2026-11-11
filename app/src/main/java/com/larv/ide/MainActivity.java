@@ -38,8 +38,6 @@ import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 
 import com.larv.ide.build.LarvBuildParser;
-import com.larv.ide.compiler.Dexer;
-import com.larv.ide.compiler.JavaRunner;
 import com.larv.ide.completion.CompletionItem;
 import com.larv.ide.completion.ProjectIndexer;
 import com.larv.ide.model.FileNode;
@@ -49,7 +47,7 @@ import com.larv.ide.model.Project;
 import com.larv.ide.project.ProjectManager;
 import com.larv.ide.project.ProjectRecognizer;
 import com.larv.ide.run.RunDispatcher;
-import com.larv.ide.run.backend.termux.TermuxCommandBackend;
+import com.larv.ide.run.RunEligibility;
 import com.larv.ide.session.SessionManager;
 import com.larv.ide.ui.dialog.SettingsDialog;
 import com.larv.ide.ui.adapter.BottomPanelAdapter;
@@ -130,10 +128,6 @@ public class MainActivity extends AppCompatActivity
 
     private final Handler typeCheckHandler = new Handler(Looper.getMainLooper());
     private ProjectManager projectManager;
-    // NOTE: R8/D8 (Dexer) is the only retained built-in: ART runs .dex and no
-    // Termux package provides a dexer. All language frontends run in-prefix.
-    private Dexer dexer;
-    private JavaRunner javaRunner;
     private ProjectIndexer projectIndexer;
     private final ExecutorService compilerExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService indexerExecutor = Executors.newSingleThreadExecutor();
@@ -149,12 +143,8 @@ public class MainActivity extends AppCompatActivity
     private android.graphics.drawable.Drawable highlightedOriginalBackground = null;
     private boolean dropHandled = false;
     private RunDispatcher runDispatcher;
-    /** @deprecated Kept dead — embedded runtime is the path. Removal later. */
-    @Deprecated
-    private TermuxCommandBackend termuxBackend;
     private com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend embeddedBackend;
     private SessionManager sessionManager;
-    private com.larv.ide.run.backend.termux.TermuxSetupWizard termuxWizard;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -408,11 +398,9 @@ public class MainActivity extends AppCompatActivity
         projectManager = new ProjectManager(getApplicationContext());
         projectManager.setListener(this);
 
-        dexer = new Dexer(getApplicationContext());
-        termuxBackend = new TermuxCommandBackend(getApplicationContext());
         embeddedBackend = new com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend(
             getApplicationContext());
-        runDispatcher = new RunDispatcher(new RunHost(), termuxBackend);
+        runDispatcher = new RunDispatcher(new RunHost());
         runDispatcher.setEmbeddedBackend(embeddedBackend);
         ProjectManager.setCppEnabled(
             com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this));
@@ -434,7 +422,6 @@ public class MainActivity extends AppCompatActivity
             @Override public java.util.concurrent.ExecutorService executor() { return indexerExecutor; }
             @Override public void runOnUiThread(Runnable action) { MainActivity.this.runOnUiThread(action); }
         });
-        javaRunner = new JavaRunner(getApplicationContext());
         projectIndexer = new ProjectIndexer();
     }
 
@@ -550,12 +537,6 @@ public class MainActivity extends AppCompatActivity
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == com.larv.ide.run.backend.termux.TermuxSetupWizard.PERMISSION_REQUEST_CODE) {
-            if (termuxWizard != null) {
-                termuxWizard.onPermissionResult();
-            }
-            return;
-        }
         if (requestCode == REQUEST_STORAGE_PERMISSION && grantResults.length > 0
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "Storage permission granted", Toast.LENGTH_SHORT).show();
@@ -801,13 +782,18 @@ public class MainActivity extends AppCompatActivity
         OpenFile openFile = findOpenFile(file);
         if (openFile != null) {
             boolean changed = !openFile.getContent().equals(content);
+            boolean newlyModified = changed && !openFile.isModified();
             openFile.setContent(content);
             if (changed) {
                 openFile.setModified(true);
-                String fileName = new File(file).getName();
+                String fileName = fileNameOf(file);
                 runOnUiThread(() -> {
-                    updateTabModified(file, true);
+                    if (newlyModified) {
+                        // The tab already reads "* name" after the first edit.
+                        updateTabModified(file, true);
+                    }
                     statusText.setText("Updated: " + fileName);
+                    scheduleRunActionState(file, content);
                     if (prefs.getBoolean("autosaveEnabled", true)) {
                         autosaveHandler.removeCallbacks(autosaveRunnable);
                         autosaveHandler.postDelayed(autosaveRunnable, 1000);
@@ -816,6 +802,11 @@ public class MainActivity extends AppCompatActivity
             }
         }
         sessionManager.scheduleSave();
+    }
+
+    private static String fileNameOf(String path) {
+        int cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return cut >= 0 ? path.substring(cut + 1) : path;
     }
 
     @Override
@@ -935,6 +926,7 @@ public class MainActivity extends AppCompatActivity
                     welcomeView.setVisibility(View.GONE);
                     indexerExecutor.execute(() -> projectIndexer.indexFile(openFile));
                     statusText.setText(file.getName() + " - Loading");
+                    updateRunActionState(filePath, content);
                 });
             }
 
@@ -966,6 +958,7 @@ public class MainActivity extends AppCompatActivity
         OpenFile openFile = findOpenFile(filePath);
         if (openFile != null) {
             editorFragment.setContent(filePath, openFile.getContent());
+            updateRunActionState(filePath, openFile.getContent());
         }
         // Re-assert prefs on every switch: guarantees font/theme survive
         // fragment recreation, project switches, and restores.
@@ -997,6 +990,8 @@ public class MainActivity extends AppCompatActivity
                 editorFragment.setContent("", "");
             }
             noEditorPlaceholder.setVisibility(View.VISIBLE);
+            setRunEnabled(false);
+            statusText.setText("No runnable file");
         }
         sessionManager.saveNow();
     }
@@ -1024,6 +1019,68 @@ public class MainActivity extends AppCompatActivity
 
     private boolean runQueued = false;
 
+    /** Run eligibility is recomputed off the UI thread after typing pauses. */
+    private final Handler runStateHandler = new Handler(Looper.getMainLooper());
+    private volatile int runStateToken = 0;
+    private static final long RUN_STATE_DEBOUNCE_MS = 250;
+
+    /**
+     * File-format awareness in the UI: Run is only offered for a file that is
+     * a runnable type AND contains a real entry point (main for Java/C++).
+     * Immediate variant, used on open/tab switch.
+     */
+    private void updateRunActionState(String filePath, String content) {
+        // An immediate check supersedes any pending typing check.
+        runStateToken++;
+        runStateHandler.removeCallbacksAndMessages(null);
+        if (filePath == null || filePath.isEmpty()) {
+            setRunEnabled(false);
+            return;
+        }
+        String name = new File(filePath).getName();
+        RunEligibility.Verdict verdict = RunEligibility.check(name, content);
+        setRunEnabled(verdict.runnable);
+        if (filePath.equals(currentEditorFile)) {
+            statusText.setText(verdict.statusLabel(name));
+        }
+    }
+
+    /**
+     * Typing variant: coalesces keystrokes (one check per pause) and parses
+     * the file off the main thread. A stale result never wins — the token is
+     * bumped on every edit and on destroy.
+     */
+    private void scheduleRunActionState(String filePath, String content) {
+        if (filePath == null || filePath.isEmpty()) {
+            runStateToken++;
+            runStateHandler.removeCallbacksAndMessages(null);
+            setRunEnabled(false);
+            return;
+        }
+        final int token = ++runStateToken;
+        runStateHandler.removeCallbacksAndMessages(null);
+        runStateHandler.postDelayed(() -> {
+            if (token != runStateToken) return;
+            compilerExecutor.execute(() -> {
+                String name = new File(filePath).getName();
+                RunEligibility.Verdict verdict = RunEligibility.check(name, content);
+                runOnUiThread(() -> {
+                    if (token != runStateToken) return;
+                    setRunEnabled(verdict.runnable);
+                    if (filePath.equals(currentEditorFile)) {
+                        statusText.setText(verdict.statusLabel(name));
+                    }
+                });
+            });
+        }, RUN_STATE_DEBOUNCE_MS);
+    }
+
+    private void setRunEnabled(boolean enabled) {
+        if (btnRun == null) return;
+        btnRun.setEnabled(enabled);
+        btnRun.setAlpha(enabled ? 1f : 0.35f);
+    }
+
     private void compileAndRun() {
         if (isCompiling || runQueued) return;
         runQueued = true;
@@ -1049,8 +1106,6 @@ public class MainActivity extends AppCompatActivity
         @Override public void setBusy(boolean busy) { isCompiling = busy; }
         @Override public Project currentProject() { return currentProject; }
         @Override public String activeFilePath() { return currentEditorFile; }
-        @Override public List<OpenFile> openFiles() { return openFiles; }
-        @Override public Dexer dexer() { return dexer; }
         @Override public LarvBuildParser.BuildSpec loadBuildSpec() {
             if (currentProject == null) return null;
             for (String name : new String[]{"larvbuild.json", "larv.json"}) {
@@ -1063,38 +1118,9 @@ public class MainActivity extends AppCompatActivity
             }
             return null;
         }
-        @Override public JavaRunner javaRunner() { return javaRunner; }
-        @Override public int captureEmbedded(
-                com.larv.ide.run.backend.ExecRequest request,
-                com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.OutputSink sink)
-                throws Exception {
-            if (embeddedBackend == null || !embeddedBackend.isAvailable()) {
-                throw new com.larv.ide.run.backend.BackendUnavailableException(
-                    embeddedBackend != null ? embeddedBackend.setupState()
-                        : com.larv.ide.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
-            }
-            return embeddedBackend.executeCapture(request, sink);
-        }
-        @Override public java.util.concurrent.ExecutorService executor() { return compilerExecutor; }
         @Override public android.os.Handler typeCheckHandler() { return typeCheckHandler; }
-        @Override public RunDispatcher.RunStreams openRunTerminal(String statusLine) {
-            return MainActivity.this.openRunTerminal(statusLine);
-        }
-        @Override public void writeTerm(OutputStream out, String text) {
-            MainActivity.this.writeTerm(out, text);
-        }
-        @Override public void closeTermStreams(OutputStream programOut, OutputStream stdinOut) {
-            MainActivity.this.closeTermStreams(programOut, stdinOut);
-        }
         @Override public void setStatus(String text) {
             runOnUiThread(() -> statusText.setText(text));
-        }
-        @Override public void showErrors(java.util.List<Diagnostic> diagnostics) {
-            runOnUiThread(() ->
-                bottomPanelAdapter.getErrorsFragment().setErrors(new ArrayList<>(diagnostics)));
-        }
-        @Override public void showErrorTab() {
-            runOnUiThread(() -> bottomViewPager.setCurrentItem(1));
         }
         @Override public void showPreview(String html, String baseUrl) {
             runOnUiThread(() -> {
@@ -1107,16 +1133,6 @@ public class MainActivity extends AppCompatActivity
             });
         }
         @Override public android.content.SharedPreferences prefs() { return prefs; }
-        @Override public String findMainClass(List<OpenFile> files) {
-            return MainActivity.this.findMainClass(files);
-        }
-        @Override public void executeTermux(com.larv.ide.run.backend.ExecRequest request) throws com.larv.ide.run.backend.BackendUnavailableException {
-            termuxBackend.execute(request);
-        }
-        @Override public void openTermuxWizard() {
-            // Legacy dead path — redirect to embedded setup.
-            openEmbeddedSetup();
-        }
         @Override public void runEmbeddedInteractive(com.larv.ide.run.backend.ExecRequest request,
                 byte[] stdinPrefeed)
                 throws com.larv.ide.run.backend.BackendUnavailableException {
@@ -1268,21 +1284,6 @@ public class MainActivity extends AppCompatActivity
         } catch (IOException ignored) {
         }
     }
-
-    private String findMainClass(List<OpenFile> files) {
-        for (OpenFile f : files) {
-            String content = f.getContent();
-            if (content.contains("public static void main(String[] args)") ||
-                content.contains("public static void main(String args[])")) {
-                return f.getFileName().replace(".java", "");
-            }
-        }
-        return null;
-    }
-
-    // NOTE: live ECJ diagnostics were removed with the built-in compilers.
-    // The Problems tab is now fed by parsed prefix-compiler output (P3).
-    // Kept: typeCheckHandler (run coordination) + editor squiggle APIs.
 
     private String resolveTargetDirectory() {
         if (selectedDirectory != null && !selectedDirectory.isEmpty()) {
@@ -1668,24 +1669,6 @@ public class MainActivity extends AppCompatActivity
         sessionManager.saveNowSync();
     }
 
-    private void openTermuxShell() {
-        File workdir = currentProject != null ? currentProject.getRootDir() : getFilesDir();
-        try {
-            termuxBackend.execute(new com.larv.ide.run.backend.ExecRequest(
-                java.util.Arrays.asList("bash"), workdir.getAbsolutePath(), true));
-            Toast.makeText(this, "Opened a shell in Termux at: " + workdir.getName(),
-                Toast.LENGTH_SHORT).show();
-        } catch (Exception ex) {
-            Toast.makeText(this, "Termux not ready — opening setup wizard", Toast.LENGTH_SHORT).show();
-            showTermuxWizard();
-        }
-    }
-
-    private void showTermuxWizard() {
-        // Legacy dead path — redirect to embedded setup.
-        showEmbeddedSetupDialog();
-    }
-
     /** In-app Linux runtime setup: download Termux bootstrap (arm64, WiFi) — no external app. */
     private void showEmbeddedSetupDialog() {
         com.larv.ide.run.backend.ExecutionBackend.SetupState state =
@@ -1849,11 +1832,8 @@ public class MainActivity extends AppCompatActivity
         } else if (itemId == R.id.menu_open_terminal) {
             openEmbeddedTerminal();
             return true;
-        } else if (itemId == R.id.menu_open_termux_shell) {
-            openTermuxShell();
-            return true;
         } else if (itemId == R.id.menu_languages) {
-            com.larv.ide.ui.dialog.LanguagesDialog.show(this, termuxBackend,
+            com.larv.ide.ui.dialog.LanguagesDialog.show(this,
                 currentProject != null ? currentProject.getRootDir() : getFilesDir(),
                 (pkg) -> {
                     if (embeddedBackend == null || !embeddedBackend.isAvailable()) {
@@ -1903,9 +1883,6 @@ public class MainActivity extends AppCompatActivity
                             Toast.LENGTH_LONG).show();
                     }
                 });
-            return true;
-        } else if (itemId == R.id.menu_run_termux) {
-            compileAndRun();
             return true;
         } else if (itemId == R.id.menu_clean) {
             clearBuildOutput();
@@ -2213,6 +2190,8 @@ public class MainActivity extends AppCompatActivity
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        runStateToken++;
+        runStateHandler.removeCallbacksAndMessages(null);
         compilerExecutor.shutdown();
         indexerExecutor.shutdown();
         typeCheckHandler.removeCallbacksAndMessages(null);

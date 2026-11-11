@@ -41,14 +41,4 @@ public class EmbeddedRoutingTest {
         assertEquals(ProjectRecognizer.CPP,
             ProjectRecognizer.languageForExtension("solver.cpp"));
     }
-
-    @Test
-    public void embeddedToolchainCoversCppAndJava() throws Exception {
-        java.lang.reflect.Method m = RunDispatcher.class
-            .getDeclaredMethod("usesEmbeddedToolchain", String.class);
-        m.setAccessible(true);
-        assertTrue((boolean) m.invoke(null, ProjectRecognizer.CPP));
-        assertTrue((boolean) m.invoke(null, ProjectRecognizer.JAVA));
-        assertFalse((boolean) m.invoke(null, ProjectRecognizer.PYTHON));
-    }
 }
