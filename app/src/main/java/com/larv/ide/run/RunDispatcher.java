@@ -480,7 +480,7 @@ public class RunDispatcher {
             // per read and could split a multi-byte character in half.
             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(
                 (int) Math.min(Math.max(file.length(), 64), 64 * 1024));
-            byte[] buf = new byte[8192];
+            byte[] buf = com.larv.ide.performance.BufferPool.acquire(8192);
             int n;
             while ((n = fis.read(buf)) > 0) {
                 out.write(buf, 0, n);

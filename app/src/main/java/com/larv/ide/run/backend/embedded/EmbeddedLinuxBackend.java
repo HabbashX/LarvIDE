@@ -37,7 +37,10 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
 
     private final Context appContext;
     private final PrefixInstaller installer;
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final ExecutorService executor = new java.util.concurrent.ThreadPoolExecutor(
+        1, 3, 60L, java.util.concurrent.TimeUnit.SECONDS,
+        new java.util.concurrent.LinkedBlockingQueue<>(8),
+        new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
 
     public EmbeddedLinuxBackend(@NonNull Context context) {
         this.appContext = context.getApplicationContext();
@@ -70,13 +73,17 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         }
         // Fire-and-forget variant used by legacy callers: run in background,
         // output goes nowhere (callers wanting output use executeCapture()).
-        executor.execute(() -> {
-            try {
-                executeCapture(request, null);
-            } catch (Exception e) {
-                Log.e(TAG, "execute failed", e);
-            }
-        });
+        try {
+            executor.execute(() -> {
+                try {
+                    executeCapture(request, null);
+                } catch (Exception e) {
+                    Log.e(TAG, "execute failed", e);
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            throw new BackendUnavailableException(SetupState.EMBEDDED_ERROR);
+        }
     }
 
     /** Run command inside the prefix, streaming output to sink. Returns exit code. */
@@ -95,7 +102,6 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         env.put("PATH", prefix.getAbsolutePath() + "/bin:" + prefix.getAbsolutePath() + "/bin/applets");
 
         Process proc = pb.start();
-        // Feed /dev/null stdin for non-interactive; interactive callers drive stdin themselves.
         try {
             proc.getOutputStream().close();
         } catch (Exception ignored) {
