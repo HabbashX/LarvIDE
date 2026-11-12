@@ -125,11 +125,13 @@ final class RunController {
         // The compiler never sees the "old Main" again.
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             runQueued = false;
-            activity.saveAllModifiedFilesSync();
-            // Buffers just hit disk with modified=false - refresh the session
-            // now so a reopen reads these fresh files, not stale buffers.
-            activity.sessionManager.saveNow();
-            dispatcher.dispatch();
+            // Flush on the compilation pool so StrictMode (debug builds) does not
+            // flag disk I/O on the main thread.
+            activity.compilerExecutor.execute(() -> {
+                activity.saveAllModifiedFilesSyncQuiet();
+                activity.sessionManager.saveNowSync();
+                dispatcher.dispatch();
+            });
         }, RUN_FLUSH_DELAY_MS);
     }
 

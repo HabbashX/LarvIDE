@@ -925,6 +925,10 @@ public class MainActivity extends AppCompatActivity
         editorTabs.saveAllModifiedFilesSync();
     }
 
+    void saveAllModifiedFilesSyncQuiet() {
+        editorTabs.saveAllModifiedFilesSyncQuiet();
+    }
+
     protected void onStop() {
         super.onStop();
         autosaveHandler.removeCallbacks(autosaveRunnable);
