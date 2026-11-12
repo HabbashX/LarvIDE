@@ -29,7 +29,7 @@ public class PrefixInstaller {
 
     private static final String TAG = "PrefixInstaller";
     private static final String DEFAULT_BOOTSTRAP_URL =
-        "https://github.com/termux/termux-app/releases/download/v0.118.0/bootstrap-aarch64.zip";
+        "https://github.com/termux/termux-packages/releases/latest/download/bootstrap-aarch64.zip";
 
     public interface Listener {
         void onProgress(String stage, int percent);
