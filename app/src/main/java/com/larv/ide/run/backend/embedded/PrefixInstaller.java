@@ -75,10 +75,14 @@ public class PrefixInstaller {
                 File cacheZip = new File(appContext.getCacheDir(), "bootstrap-aarch64.zip");
                 download(url, cacheZip);
                 post(listener, () -> listener.onProgress("Extracting…", 70));
-                extract(cacheZip, appContext.getFilesDir());
+                File prefixDir = new File(appContext.getFilesDir(), "usr");
+                //noinspection ResultOfMethodCallIgnored
+                prefixDir.mkdirs();
+                extract(cacheZip, prefixDir);
+                processSymlinks(prefixDir);
                 //noinspection ResultOfMethodCallIgnored
                 cacheZip.delete();
-                makeExecutable(new File(appContext.getFilesDir(), "usr/bin/bash"));
+                makeExecutable(new File(prefixDir, "bin/bash"));
                 installing = false;
                 post(listener, () -> listener.onComplete());
             } catch (Exception e) {
@@ -139,6 +143,45 @@ public class PrefixInstaller {
         }
     }
 
+    private static void processSymlinks(File destDir) {
+        File symlinks = new File(destDir, "SYMLINKS.txt");
+        if (!symlinks.exists()) return;
+        java.util.List<String> lines;
+        try {
+            lines = java.nio.file.Files.readAllLines(symlinks.toPath(),
+                java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            symlinks.delete();
+            return;
+        }
+        String filesRoot = destDir.getParentFile().getAbsolutePath(); // .../files
+        for (String raw : lines) {
+            if (raw == null || raw.trim().isEmpty()) continue;
+            String[] parts = raw.split("\u2190", 2);
+            if (parts.length != 2) continue;
+            String target = parts[0].trim();
+            String link = parts[1].trim();
+            if (target.isEmpty() || link.isEmpty()) continue;
+            if (link.startsWith("./")) link = link.substring(2);
+            File linkFile = new File(destDir, link);
+            if (linkFile.exists()) continue;
+            File parent = linkFile.getParentFile();
+            if (parent != null) parent.mkdirs();
+            String resolvedTarget = target;
+            if (target.startsWith("/data/data/com.termux/files")) {
+                resolvedTarget = filesRoot + target.substring("/data/data/com.termux/files".length());
+            }
+            java.nio.file.Path targetPath = java.nio.file.Paths.get(resolvedTarget);
+            if (!targetPath.isAbsolute()) {
+                targetPath = linkFile.getParentFile().toPath().resolve(resolvedTarget).normalize();
+            }
+            try {
+                java.nio.file.Files.createSymbolicLink(linkFile.toPath(), targetPath);
+            } catch (Exception ignored) {
+            }
+        }
+        symlinks.delete();
+    }
     private static void makeExecutable(File bash) {
         try {
             if (bash.exists()) {
