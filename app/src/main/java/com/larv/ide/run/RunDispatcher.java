@@ -326,25 +326,44 @@ public class RunDispatcher {
     }
 
     /**
-     * javac compiles every .java under the source root (packages included) into
-     * {@code .larv-classes}; the prefix JRE then executes the fully-qualified
-     * main class. No dexing, no ART.
+     * javac compiles the project into {@code .larv-classes}; the prefix JRE
+     * then executes the fully-qualified main class. No dexing, no ART.
+     *
+     * <p>Compilation is incremental: a stamp file records the last successful
+     * build, and only sources newer than the stamp are recompiled (with
+     * {@code -sourcepath} resolving the rest). A project with no changes goes
+     * straight to {@code java}.
      */
     static List<String> buildJavaCommand(String sourceDir, String classesDir,
                                          String mainClass, @Nullable String release) {
         if (mainClass == null) {
             throw new IllegalArgumentException("No main class found");
         }
-        StringBuilder shell = new StringBuilder();
-        shell.append("javac -encoding UTF-8");
+        String src = q(sourceDir);
+        String cls = q(classesDir);
+        String stamp = q(classesDir + "/.larv-stamp");
+        StringBuilder javac = new StringBuilder("javac -encoding UTF-8");
         if (release != null && !release.trim().isEmpty()) {
-            shell.append(" --release ").append(q(release.trim()));
+            javac.append(" --release ").append(q(release.trim()));
         }
-        shell.append(" -d ").append(q(classesDir));
-        shell.append(" $(find ").append(q(sourceDir))
-            .append(" -path '*/.*' -prune -o -name '*.java' -print)");
-        shell.append(" && java -cp ").append(q(classesDir))
-            .append(' ').append(q(mainClass));
+        String findSources = "$(find " + src
+            + " -path '*/.*' -prune -o -name '*.java' -print)";
+
+        StringBuilder shell = new StringBuilder(512);
+        shell.append("mkdir -p ").append(cls).append(" && ");
+        shell.append("if [ ! -f ").append(stamp).append(" ]; then ");
+        shell.append(javac).append(" -d ").append(cls).append(' ')
+            .append(findSources);
+        shell.append(" && touch ").append(stamp).append("; else ");
+        shell.append("files=$(find ").append(src)
+            .append(" -path '*/.*' -prune -o -name '*.java' -newer ")
+            .append(stamp).append(" -print); ");
+        shell.append("if [ -n \"$files\" ]; then ");
+        shell.append(javac).append(" -sourcepath ").append(src)
+            .append(" -cp ").append(cls).append(" -d ").append(cls)
+            .append(" $files");
+        shell.append(" && touch ").append(stamp).append("; fi; fi && ");
+        shell.append("java -cp ").append(cls).append(' ').append(q(mainClass));
         return Arrays.asList("bash", "-c", shell.toString());
     }
 

@@ -11,13 +11,19 @@ import java.util.List;
 public class RunDispatcherRoutingTest {
 
     @Test
-    public void javaCompilesWithJavacAndRunsOnJre() {
+    public void javaCompilesIncrementallyAndRunsOnJre() {
         List<String> cmd = RunDispatcher.buildJavaCommand(
             "/p", "/p/.larv-classes", "com.foo.Main", null);
-        assertEquals(Arrays.asList("bash", "-c",
-            "javac -encoding UTF-8 -d '/p/.larv-classes' "
-                + "$(find '/p' -path '*/.*' -prune -o -name '*.java' -print) "
-                + "&& java -cp '/p/.larv-classes' 'com.foo.Main'"), cmd);
+        assertEquals(3, cmd.size());
+        assertEquals("bash", cmd.get(0));
+        String script = cmd.get(2);
+        // First build compiles every source.
+        assertTrue(script.contains("javac -encoding UTF-8 -d '/p/.larv-classes' "
+            + "$(find '/p' -path '*/.*' -prune -o -name '*.java' -print)"));
+        // Later builds only recompile sources newer than the stamp.
+        assertTrue(script.contains("-name '*.java' -newer '/p/.larv-classes/.larv-stamp'"));
+        assertTrue(script.contains("-sourcepath '/p' -cp '/p/.larv-classes'"));
+        assertTrue(script.endsWith("java -cp '/p/.larv-classes' 'com.foo.Main'"));
     }
 
     @Test
