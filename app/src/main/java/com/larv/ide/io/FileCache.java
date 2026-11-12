@@ -1,45 +1,45 @@
 package com.larv.ide.io;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import com.larv.ide.performance.MemoryAwareCache;
 
 /**
- * Bounded in-memory cache of file contents. LRU eviction by access order.
- * Stores at most {@code maxEntries} documents.
+ * Bounded in-memory cache of file contents. Backed by {@link MemoryAwareCache},
+ * so the cache is limited by both entry count and total characters instead of
+ * an unbounded map.
  */
 public final class FileCache {
 
-    private final int maxEntries;
-    private final LinkedHashMap<String, String> cache;
+    private final MemoryAwareCache<String, String> cache;
 
     public FileCache(int maxEntries) {
-        this.maxEntries = Math.max(1, maxEntries);
-        this.cache = new LinkedHashMap<String, String>(16, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
-                return size() > FileCache.this.maxEntries;
-            }
-        };
+        this(maxEntries, 2L * 1024 * 1024);
     }
 
-    public synchronized String get(String key) {
+    public FileCache(int maxEntries, long maxChars) {
+        this.cache = MemoryAwareCache.forText(maxEntries, maxChars);
+    }
+
+    public String get(String key) {
         return cache.get(key);
     }
 
-    public synchronized void put(String key, String value) {
-        if (key == null || value == null) return;
+    public void put(String key, String value) {
         cache.put(key, value);
     }
 
-    public synchronized void remove(String key) {
+    public void remove(String key) {
         cache.remove(key);
     }
 
-    public synchronized void clear() {
+    public void clear() {
         cache.clear();
     }
 
-    public synchronized int size() {
+    public int size() {
         return cache.size();
+    }
+
+    public long weight() {
+        return cache.weight();
     }
 }
