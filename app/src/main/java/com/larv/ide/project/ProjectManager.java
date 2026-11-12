@@ -24,8 +24,7 @@ public class ProjectManager {
     private static final String PROJECTS_DIR_NAME = "JavaProjects";
 
     private final Context context;
-    private final com.larv.ide.concurrent.IOExecutor executor =
-        new com.larv.ide.concurrent.IOExecutor(1);
+    private final com.larv.ide.concurrent.IOExecutor executor;
     private final com.larv.ide.io.FileIOManager fileIO;
     /** When false, C/C++ file creation is hidden (needs embedded Linux runtime). */
     private static volatile boolean cppEnabled = false;
@@ -51,7 +50,16 @@ public class ProjectManager {
     }
 
     public ProjectManager(Context context) {
+        this(context, new com.larv.ide.concurrent.IOExecutor(1));
+    }
+
+    /**
+     * @param executor I/O executor owned by the caller (e.g. TaskScheduler);
+     *                 the caller is responsible for shutting it down.
+     */
+    public ProjectManager(Context context, com.larv.ide.concurrent.IOExecutor executor) {
         this.context = context;
+        this.executor = executor;
         com.larv.ide.performance.MemoryConfig memoryConfig =
             com.larv.ide.performance.MemoryConfig.forContext(context);
         this.fileIO = new com.larv.ide.io.FileIOManager(

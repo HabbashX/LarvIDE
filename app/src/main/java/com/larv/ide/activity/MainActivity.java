@@ -133,10 +133,15 @@ public class MainActivity extends AppCompatActivity
     ProjectIndexer projectIndexer;
     private com.larv.ide.performance.CacheManager cacheManager;
     private com.larv.ide.analysis.CompletionManager completionManager;
+    final com.larv.ide.concurrent.TaskScheduler taskScheduler =
+        new com.larv.ide.concurrent.TaskScheduler(
+            new com.larv.ide.concurrent.IOExecutor(1),
+            new com.larv.ide.concurrent.CPUExecutor(1),
+            new com.larv.ide.concurrent.CompilationExecutor());
     final com.larv.ide.concurrent.CompilationExecutor compilerExecutor =
-        new com.larv.ide.concurrent.CompilationExecutor();
+        taskScheduler.compilation();
     final com.larv.ide.concurrent.CPUExecutor indexerExecutor =
-        new com.larv.ide.concurrent.CPUExecutor(1);
+        taskScheduler.cpu();
     Project currentProject;
     final List<OpenFile> openFiles = new ArrayList<>();
     final Map<String, OpenFile> openFilesByPath = new HashMap<>();
@@ -197,6 +202,7 @@ public class MainActivity extends AppCompatActivity
      * blocks on this gate - Download, or Exit. The only exception is non-arm64
      * devices, where the runtime can never install (limited mode instead).
      */
+    @SuppressLint("SetTextI18n")
     private void enforceRuntimeGate() {
         if (runtimeGateShowing) return;
         if (com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this)) {
@@ -417,7 +423,7 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void initServices() {
-        projectManager = new ProjectManager(getApplicationContext());
+        projectManager = new ProjectManager(getApplicationContext(), taskScheduler.io());
         projectManager.setListener(this);
 
         embeddedBackend = new com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend(
@@ -1033,8 +1039,7 @@ public class MainActivity extends AppCompatActivity
     protected void onDestroy() {
         super.onDestroy();
         runController.cancelPendingChecks();
-        compilerExecutor.shutdown();
-        indexerExecutor.shutdown();
+        taskScheduler.shutdown();
         if (completionManager != null) completionManager.cancelPending();
         if (projectIndexer != null) {
             projectIndexer.clear();
