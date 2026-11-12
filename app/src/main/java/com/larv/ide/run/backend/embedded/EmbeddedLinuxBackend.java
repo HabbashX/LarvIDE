@@ -136,9 +136,16 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
             cmd.add("-c");
             cmd.add(shellCmd);
         } else {
-            // Spike fallback: direct bash exec (works on rooted/older devices,
-            // fails with EACCES under W^X on targetSdk 34 — signals proot is required).
-            cmd.add(bashPath);
+            // Spike fallback: try the Android dynamic linker first, which can
+            // load an ELF from app data even when direct exec is blocked
+            // (Android 14 W^X / SELinux). Falls back to direct exec otherwise.
+            File linker = new File("/system/bin/linker64");
+            if (linker.exists()) {
+                cmd.add(linker.getAbsolutePath());
+                cmd.add(bashPath);
+            } else {
+                cmd.add(bashPath);
+            }
             cmd.add("-c");
             cmd.add(shellCmd);
         }
@@ -255,7 +262,11 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
             cmd.add(bashPath);
             cmd.add("-l");
         } else {
-            // Spike fallback for devices without proot.
+            // Spike fallback for devices without proot: try the dynamic linker.
+            File linker = new File("/system/bin/linker64");
+            if (linker.exists()) {
+                cmd.add(linker.getAbsolutePath());
+            }
             cmd.add(bashPath);
             cmd.add("-l");
         }
