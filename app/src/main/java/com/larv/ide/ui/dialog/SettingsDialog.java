@@ -24,6 +24,21 @@ import com.larv.ide.R;
 
 public class SettingsDialog {
 
+    /**
+     * Small shared pool for the dialog's occasional background work (prefix
+     * size scan, removal). Avoids spawning a raw platform thread per tap.
+     */
+    private static final com.larv.ide.concurrent.IOExecutor BACKGROUND =
+        new com.larv.ide.concurrent.IOExecutor(1);
+
+    private static void runBackground(Runnable task) {
+        try {
+            BACKGROUND.execute(task);
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // Dialog is closing / work already queued: nothing to do.
+        }
+    }
+
     public interface Callbacks {
         SharedPreferences prefs();
         int accentColor();
@@ -309,7 +324,7 @@ public class SettingsDialog {
         refreshInfo.run();
 
         // Prefix size is computed off the UI thread (can be many files).
-        new Thread(() -> {
+        runBackground(() -> {
             String info;
             if (com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity)) {
                 long bytes = dirSize(new java.io.File(activity.getFilesDir(), "usr"));
@@ -325,7 +340,7 @@ public class SettingsDialog {
             }
             final String text = info;
             activity.runOnUiThread(() -> detail.setText(text));
-        }).start();
+        });
 
         android.widget.ProgressBar progress = new android.widget.ProgressBar(activity, null,
             android.R.attr.progressBarStyleHorizontal);
@@ -395,7 +410,7 @@ public class SettingsDialog {
         removeBtn.setOnClickListener(v -> {
             removeBtn.setEnabled(false);
             status.setText("Removing…");
-            new Thread(() -> {
+            runBackground(() -> {
                 deleteRecursive(new java.io.File(activity.getFilesDir(), "usr"));
                 activity.runOnUiThread(() -> {
                     com.larv.ide.project.ProjectManager.setCppEnabled(false);
@@ -405,7 +420,7 @@ public class SettingsDialog {
                     refreshInfo.run();
                     detail.setText("Removed. Re-download anytime to restore C/C++.");
                 });
-            }).start();
+            });
         });
 
         android.widget.Button wizardBtn = new android.widget.Button(activity, null, 0);

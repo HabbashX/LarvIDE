@@ -10,9 +10,10 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Efficient file reader. Reads the whole file (up to a size cap) using a pooled
- * buffer, detects BOMs and UTF-8/UTF-16, and falls back to ISO-8859-1 when the
- * bytes are not valid UTF-8 so no data is lost.
+ * Efficient file reader. Reads the whole file (up to a size cap) with a single
+ * exact-size destination array — no intermediate chunk buffers and no copy —
+ * detects BOMs and UTF-8/UTF-16, and falls back to ISO-8859-1 when the bytes
+ * are not valid UTF-8 so no data is lost.
  */
 public final class FileReader {
 
@@ -22,27 +23,36 @@ public final class FileReader {
     }
 
     public static String read(File file) throws IOException {
+        return decode(readBytes(file));
+    }
+
+    public static byte[] readBytes(File file) throws IOException {
         if (file == null) throw new IOException("null file");
         long length = file.length();
         if (length > MAX_BYTES) {
-            throw new IOException("File too large to open (" + (length / (1024 * 1024)) + " MB)");
+            throw new IOException("File too large to open (" + (length / (1024 * 1024))
+                + " MB). Limit is 2 MB.");
         }
-        if (length == 0) return "";
+        if (length == 0) return new byte[0];
         if (length > Integer.MAX_VALUE) throw new IOException("File too large to read");
 
         byte[] bytes = new byte[(int) length];
         try (FileInputStream fis = new FileInputStream(file)) {
             int total = 0;
-            byte[] buf = BufferPool.acquire(8192);
             while (total < bytes.length) {
-                int toRead = Math.min(buf.length, bytes.length - total);
-                int read = fis.read(buf, 0, toRead);
+                int read = fis.read(bytes, total, bytes.length - total);
                 if (read == -1) break;
-                System.arraycopy(buf, 0, bytes, total, read);
                 total += read;
             }
+            if (total < bytes.length) {
+                // File shrank between length() and read(): trim instead of
+                // returning trailing zero bytes.
+                byte[] trimmed = new byte[total];
+                System.arraycopy(bytes, 0, trimmed, 0, total);
+                return trimmed;
+            }
         }
-        return decode(bytes);
+        return bytes;
     }
 
     public static String decode(byte[] bytes) {
@@ -58,13 +68,14 @@ public final class FileReader {
         if (bytes.length >= 2 && bytes[0] == (byte) 0xFE && bytes[1] == (byte) 0xFF) {
             return new String(bytes, 2, bytes.length - 2, StandardCharsets.UTF_16BE);
         }
-        CharsetDecoder dec = StandardCharsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT);
         try {
+            CharsetDecoder dec = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT);
             CharBuffer cb = dec.decode(ByteBuffer.wrap(bytes));
             return cb.toString();
         } catch (java.nio.charset.CharacterCodingException e) {
+            // Not valid UTF-8: keep every byte representable instead of corrupting.
             return new String(bytes, 0, bytes.length, StandardCharsets.ISO_8859_1);
         }
     }

@@ -26,8 +26,7 @@ public class ProjectManager {
     private final Context context;
     private final com.larv.ide.concurrent.IOExecutor executor =
         new com.larv.ide.concurrent.IOExecutor(1);
-    private final com.larv.ide.io.FileIOManager fileIO =
-        new com.larv.ide.io.FileIOManager(executor, 64, 800);
+    private final com.larv.ide.io.FileIOManager fileIO;
     /** When false, C/C++ file creation is hidden (needs embedded Linux runtime). */
     private static volatile boolean cppEnabled = false;
 
@@ -53,6 +52,13 @@ public class ProjectManager {
 
     public ProjectManager(Context context) {
         this.context = context;
+        com.larv.ide.performance.MemoryConfig memoryConfig =
+            com.larv.ide.performance.MemoryConfig.forContext(context);
+        this.fileIO = new com.larv.ide.io.FileIOManager(
+            executor,
+            new com.larv.ide.io.FileCache(32, memoryConfig.textCacheChars()),
+            800,
+            new com.larv.ide.performance.PerformanceMonitor());
         File sharedRoot = new File(android.os.Environment.getExternalStorageDirectory(), "LarvIDE/projects");
         boolean sharedOk = (sharedRoot.mkdirs() || sharedRoot.isDirectory());
         if (!sharedOk) {
@@ -72,6 +78,11 @@ public class ProjectManager {
 
     public File getProjectsRootDir() {
         return projectsRootDir;
+    }
+
+    /** Debug-only I/O metrics for the last session. */
+    public String performanceSnapshot() {
+        return fileIO.performanceSnapshot();
     }
 
     public List<Project> getProjects() {

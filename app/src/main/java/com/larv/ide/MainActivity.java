@@ -130,6 +130,8 @@ public class MainActivity extends AppCompatActivity
     private final Handler typeCheckHandler = new Handler(Looper.getMainLooper());
     private ProjectManager projectManager;
     private ProjectIndexer projectIndexer;
+    private com.larv.ide.performance.CacheManager cacheManager;
+    private com.larv.ide.analysis.CompletionManager completionManager;
     private final com.larv.ide.concurrent.CompilationExecutor compilerExecutor =
         new com.larv.ide.concurrent.CompilationExecutor();
     private final com.larv.ide.concurrent.CPUExecutor indexerExecutor =
@@ -436,6 +438,9 @@ public class MainActivity extends AppCompatActivity
             @Override public void runOnUiThread(Runnable action) { MainActivity.this.runOnUiThread(action); }
         });
         projectIndexer = new ProjectIndexer();
+        cacheManager = com.larv.ide.performance.CacheManager.create(getApplicationContext());
+        completionManager = new com.larv.ide.analysis.CompletionManager(
+            projectIndexer, indexerExecutor);
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -606,6 +611,12 @@ public class MainActivity extends AppCompatActivity
                 String joined = String.join(", ", detection.languages);
                 runOnUiThread(() -> statusText.setText("Project: " + joined));
             }
+            // Warm the symbol index in the background so the first completion
+            // request in a freshly opened project does not scan every file.
+            projectIndexer.indexProject(project.getRootDir());
+            if (com.larv.ide.BuildConfig.DEBUG) {
+                Log.d("LarvPerf", projectIndexer.performanceSnapshot());
+            }
         });
     }
 
@@ -617,6 +628,7 @@ public class MainActivity extends AppCompatActivity
         }
         currentProject = null;
         sessionManager.reset();
+        if (projectIndexer != null) projectIndexer.cancelIndexing();
         openFiles.clear();
         openFilesByPath.clear();
         typeCheckHandler.removeCallbacksAndMessages(null);
@@ -842,11 +854,8 @@ public class MainActivity extends AppCompatActivity
                                        @NonNull EditorFragment.CompletionCallback callback) {
         OpenFile openFile = findOpenFile(file);
         String content = openFile != null ? openFile.getContent() : null;
-        indexerExecutor.execute(() -> {
-            List<CompletionItem> completions = projectIndexer.getCompletions(
-                prefix == null ? "" : prefix, file, line, column, memberOf, content);
-            callback.onCompletions(completions);
-        });
+        completionManager.request(file, line, column, prefix, memberOf, content,
+            callback::onCompletions);
     }
 
     @Override
@@ -1702,6 +1711,8 @@ public class MainActivity extends AppCompatActivity
                             openFile.setModified(false);
                             updateTabModified(currentEditorFile, false);
                             statusText.setText("Saved: " + file.getName());
+                            // Keep symbols in sync without a re-scan.
+                            projectIndexer.indexFile(openFile);
                         }
                         @Override
                         public void onError(String error) {
@@ -1778,6 +1789,9 @@ public class MainActivity extends AppCompatActivity
         // Blocking: the process may die before an async save runs, which used
         // to leave stale buffers overriding fresh files on next open.
         sessionManager.saveNowSync();
+        if (com.larv.ide.BuildConfig.DEBUG && projectManager != null) {
+            Log.d("LarvPerf", projectManager.performanceSnapshot());
+        }
     }
 
     /** In-app Linux runtime setup: download Termux bootstrap (arm64, WiFi) — no external app. */
@@ -2399,8 +2413,20 @@ public class MainActivity extends AppCompatActivity
         compilerExecutor.shutdown();
         indexerExecutor.shutdown();
         typeCheckHandler.removeCallbacksAndMessages(null);
+        if (completionManager != null) completionManager.cancelPending();
         if (projectIndexer != null) {
             projectIndexer.clear();
         }
+        if (cacheManager != null) cacheManager.clearAll();
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (cacheManager == null) return;
+        cacheManager.onTrimMemory(level);
+        // Parse caches are the biggest disposable allocation on this screen;
+        // symbol tables stay so completion never needs a cold scan.
+        if (projectIndexer != null) projectIndexer.trimCaches();
     }
 }

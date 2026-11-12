@@ -223,7 +223,12 @@ LarvIDE (Android App, minSdk 24 / target 34)
 │  ├─ 5 themes + font stacks + applyEditorSettings
 │  ├─ Completion provider (dot-context → memberOf) + CodeAction import
 │  └─ Diagnostic markers + positions{}
-└─ Tests (app/src/test/java, 45)
+├─ Infrastructure
+│  ├─ concurrent: TaskScheduler / IOExecutor / CPUExecutor / CompilationExecutor
+│  ├─ io: FileIOManager / FileReader / FileWriter / AtomicFileWriter / SaveScheduler
+│  ├─ performance: MemoryConfig / CacheManager / MemoryAwareCache / PerformanceMonitor
+│  └─ analysis: CompletionManager (generation-based cancellation)
+└─ Tests (app/src/test/java, 65)
 ```
 
 ### Key modules
@@ -237,6 +242,9 @@ LarvIDE (Android App, minSdk 24 / target 34)
 | `completion/MemberCatalog` | Cached stdlib member tables |
 | `session/SessionManager` | Persists and restores the editor session |
 | `project/ProjectManager` | Workspace, file operations, templates |
+| `io/FileIOManager` | Single entry point for reads, writes, caching and debounced saves |
+| `performance/CacheManager` | Memory-pressure aware caches sized from the device heap class |
+| `concurrent/TaskScheduler` | Bounded executors for I/O, CPU and compilation |
 
 ---
 
@@ -244,8 +252,21 @@ LarvIDE (Android App, minSdk 24 / target 34)
 
 The IDE is tuned for low-end hardware. Allocation in hot paths is treated as a bug:
 
+- **Bounded concurrency** — one compilation thread, two I/O threads and at most two CPU
+  threads. No `newCachedThreadPool`, no unbounded queues, no `CallerRunsPolicy`, so
+  rejected work can never block the UI thread. Virtual threads are intentionally not used:
+  Android ART does not ship the Java 21 implementation.
 - **Cached completion data** — member and type item lists are built once per type instead of
   on every keystroke.
+- **Stale autocomplete is dropped** — `analysis/CompletionManager` stamps every request with a
+  generation and discards results that lost the race against a newer keystroke.
+- **Incremental project indexing** — a project scan tracks each file's mtime/size
+  (`FileChangeTracker`) and every parse is content-hash checked (`ProjectIndexCache`), so
+  unchanged files are never re-read or re-parsed. Build output, `.git`, `node_modules` and
+  `build` are skipped.
+- **Incremental Java compilation** — `.larv-classes/.larv-stamp` records the last successful
+  `javac`; only sources newer than the stamp are recompiled (with `-sourcepath`). No changes
+  means the run goes straight to `java`.
 - **Allocation-free string checks** — prefix/suffix matching uses `regionMatches` instead of
   allocating a lowercased copy on every call.
 - **No `content.split("\n")`** — receiver-type resolution walks line offsets in place
@@ -254,14 +275,38 @@ The IDE is tuned for low-end hardware. Allocation in hot paths is treated as a b
   typing pauses, on a background executor, with stale results discarded by a token.
 - **Stable list listeners** — file-tree click handlers are installed once per view instead of
   being rebuilt on every rebind.
-- **Single-pass file reads** — sources are decoded once, which also fixes multi-byte UTF-8
-  characters being split at chunk boundaries.
+- **Single-pass file reads** — sources are decoded once into an exact-size array (no chunk
+  copies), which also fixes multi-byte UTF-8 characters being split at boundaries.
+- **Atomic, fsynced saves** — every write goes to a temp file, is synced, then renamed; a
+  crash can never leave a truncated source file.
+- **Memory-pressure handling** — caches are bounded by characters, not entries, sized from
+  `ActivityManager.getMemoryClass()`, and trimmed from `onTrimMemory`.
+
+### Measured on the test JVM
+
+`IOBenchmarkTest` runs with every build (`./gradlew :app:testDebugUnitTest`), so these numbers
+are a regression signal, not a phone benchmark:
+
+| Measurement | Result |
+|---|---|
+| 1 MB buffered read, 8 KB buffer | 0.73 ms (~1366 MB/s) |
+| 1 MB buffered read, 32 KB buffer | 0.49 ms (~2036 MB/s, 67% of the 8 KB time) |
+| 1 MB buffered read, 64 KB buffer | 0.45 ms (~2241 MB/s, 60%) |
+| `FileReader` end-to-end, 1 KB / 100 KB / 1 MB | 0.34 ms / 0.88 ms / 3.07 ms |
+| `FileWriter` (fsync included), 1 KB / 100 KB / 1 MB | 2.96 ms / 2.85 ms / 5.37 ms |
+| Index a 603-line Java file | 10.7 ms |
+| Re-index identical content (cache hit) | 0.003 ms |
+
+Production uses **32 KB** buffers: within a few percent of the best result while keeping the
+two I/O threads at ~64 KB of buffers total.
 
 ---
 
 ## Dependencies
 
 - `jackpal/Android-Terminal-Emulator:emulatorview:v1.0.70` — VT100 emulation
+- `androidx.profileinstaller:profileinstaller:1.4.0` — installs `baseline-prof.txt` so ART
+  AOT-compiles startup and editor paths on first run
 - `gson 2.10.1`, `kxml2 2.3.0` (POM parsing in tests), `androidx.webkit`, `material 1.11.0`
 - Test: `junit 4.13.2`, `org.json:json`, `net.sf.kxml:kxml2`
 - **Nothing else**: no ECJ, no R8/D8, no Rhino, no Python runtime, no bundled JDK

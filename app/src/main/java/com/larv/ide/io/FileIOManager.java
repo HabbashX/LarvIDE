@@ -1,33 +1,51 @@
 package com.larv.ide.io;
 
+import com.larv.ide.performance.PerformanceMonitor;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.Executor;
 
 /**
  * Central entry point for file I/O. Combines reading, writing, caching and
- * debounced saving behind one facade.
+ * debounced saving behind one facade, and reports timings to the performance
+ * monitor so regressions are visible in debug logs.
  */
 public final class FileIOManager {
 
     private final FileCache cache;
     private final SaveScheduler saveScheduler;
+    private final PerformanceMonitor monitor;
 
     public FileIOManager(Executor executor, int cacheEntries, long debounceMs) {
-        this.cache = new FileCache(cacheEntries);
+        this(executor, new FileCache(cacheEntries), debounceMs, new PerformanceMonitor());
+    }
+
+    public FileIOManager(Executor executor, FileCache cache, long debounceMs,
+                         PerformanceMonitor monitor) {
+        this.cache = cache != null ? cache : new FileCache(32);
         this.saveScheduler = new SaveScheduler(executor, debounceMs);
+        this.monitor = monitor != null ? monitor : new PerformanceMonitor();
     }
 
     public String read(File file) throws IOException {
-        String cached = cache.get(pathKey(file));
-        if (cached != null) return cached;
+        String key = pathKey(file);
+        String cached = cache.get(key);
+        if (cached != null) {
+            monitor.count("file.read.cacheHit");
+            return cached;
+        }
+        long start = PerformanceMonitor.now();
         String content = FileReader.read(file);
-        cache.put(pathKey(file), content);
+        monitor.record("file.read", PerformanceMonitor.now() - start);
+        cache.put(key, content);
         return content;
     }
 
     public void write(File file, String content) throws IOException {
+        long start = PerformanceMonitor.now();
         AtomicFileWriter.write(file, content);
+        monitor.record("file.write", PerformanceMonitor.now() - start);
         if (file != null) cache.put(pathKey(file), content);
     }
 
@@ -47,8 +65,16 @@ public final class FileIOManager {
         cache.clear();
     }
 
-    public FileCache cache() {
+    public com.larv.ide.io.FileCache cache() {
         return cache;
+    }
+
+    public PerformanceMonitor monitor() {
+        return monitor;
+    }
+
+    public String performanceSnapshot() {
+        return monitor.snapshot();
     }
 
     private static String pathKey(File file) {

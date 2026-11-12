@@ -36,7 +36,8 @@ public interface DocumentProvider {
             // content URI: stream through ContentResolver
             try (InputStream in = context.getContentResolver().openInputStream(uri)) {
                 if (in == null) throw new IOException("cannot open " + uri);
-                byte[] buf = BufferPool.acquire(8192);
+                byte[] buf = BufferPool.acquire(
+                    com.larv.ide.performance.PerformanceConfig.IO_BUFFER_BYTES);
                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
                 int n;
                 while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
