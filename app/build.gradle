@@ -26,7 +26,10 @@ android {
     defaultConfig {
         applicationId "com.larv.ide"
         minSdk 24
-        targetSdk 34
+        // WORKAROUND: targetSdk 33 keeps Android 14 from blocking execution of
+        // the downloaded prefix binaries (W^X). Revert to 34 once libproot.so
+        // and libproot-loader.so are vendored in jniLibs/arm64-v8a.
+        targetSdk 33
         versionCode 2
         versionName "1.1"
         multiDexEnabled true
