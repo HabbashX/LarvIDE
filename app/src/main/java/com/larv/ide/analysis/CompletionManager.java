@@ -1,5 +1,7 @@
 package com.larv.ide.analysis;
 
+import android.util.Log;
+
 import androidx.annotation.NonNull;
 
 import com.larv.ide.completion.CompletionItem;
@@ -32,12 +34,19 @@ public final class CompletionManager {
         final int generation = cancellation.nextGeneration();
         try {
             executor.execute(() -> {
-                if (cancellation.isStale(generation)) return;
-                List<CompletionItem> completions = indexer.getCompletions(
-                    prefix == null ? "" : prefix, file, line, column, memberOf, content);
-                // Results that arrived after a newer request are dropped.
-                if (cancellation.isStale(generation)) return;
-                callback.onCompletions(completions);
+                try {
+                    if (cancellation.isStale(generation)) return;
+                    List<CompletionItem> completions = indexer.getCompletions(
+                        prefix == null ? "" : prefix, file, line, column, memberOf, content);
+                    // Results that arrived after a newer request are dropped.
+                    if (cancellation.isStale(generation)) return;
+                    callback.onCompletions(completions);
+                } catch (Exception e) {
+                    Log.w("CompletionManager", "completion failed", e);
+                    if (!cancellation.isStale(generation)) {
+                        callback.onCompletions(Collections.emptyList());
+                    }
+                }
             });
         } catch (RejectedExecutionException e) {
             // Queue full: answer with an empty list so the editor never hangs.

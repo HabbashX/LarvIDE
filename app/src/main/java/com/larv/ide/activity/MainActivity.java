@@ -194,6 +194,7 @@ public class MainActivity extends AppCompatActivity
     @SuppressLint("SetTextI18n")
     private void enforceRuntimeGate() {
         if (runtimeGateShowing) return;
+        if (prefs != null && prefs.getBoolean("runtimeGateDismissed", false)) return;
         if (com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this)) {
             maybeShowSetupWizard();
             return;
@@ -251,6 +252,12 @@ public class MainActivity extends AppCompatActivity
             0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         buttons.addView(downloadBtn);
 
+        android.widget.Button laterBtn = new android.widget.Button(this, null, 0);
+        laterBtn.setText("Later");
+        laterBtn.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        buttons.addView(laterBtn);
+
         android.widget.Button exitBtn = new android.widget.Button(this, null, 0);
         exitBtn.setText("Exit app");
         exitBtn.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
@@ -301,6 +308,17 @@ public class MainActivity extends AppCompatActivity
                 });
         });
         exitBtn.setOnClickListener(v -> finish());
+
+        laterBtn.setOnClickListener(v -> {
+            if (prefs != null) {
+                prefs.edit().putBoolean("runtimeGateDismissed", true).apply();
+            }
+            runtimeGateShowing = false;
+            Toast.makeText(MainActivity.this,
+                "Limited mode: Run is disabled until the Linux runtime is installed.",
+                Toast.LENGTH_LONG).show();
+            dialog.dismiss();
+        });
 
         dialog.show();
     }
