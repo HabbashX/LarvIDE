@@ -141,12 +141,12 @@ final class MainMenuController {
                         RunDispatcher.RunStreams rs = activity.runController.openRunTerminal(
                             "Installing " + pkg + " - watch the Run tab");
                         activity.runController.writeTerm(rs.programOut(),
-                            "$ pkg install -y " + pkg + "\n");
+                            "$ pkg update -y && pkg install -y " + pkg + "\n");
                         activity.compilerExecutor.execute(() -> {
                             try {
                                 activity.embeddedBackend.executeCapture(
                                     new com.larv.ide.run.backend.ExecRequest(
-                                        java.util.Arrays.asList("pkg", "install", "-y", pkg),
+                                        java.util.Arrays.asList("pkg", "update", "-y", "&&", "pkg", "install", "-y", pkg),
                                         null, false),
                                     new com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend.OutputSink() {
                                         @Override public void onStdout(byte[] data, int len) {
