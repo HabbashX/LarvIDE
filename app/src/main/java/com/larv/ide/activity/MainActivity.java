@@ -157,12 +157,12 @@ public class MainActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        fileTreeDrag = new FileTreeDragController(this);
         initViews();
         initServices();
         projectActions = new ProjectActions(this);
         editorTabs = new EditorTabsController(this);
         menuController = new MainMenuController(this);
-        fileTreeDrag = new FileTreeDragController(this);
         projectActions.registerProjectCreator();
         setupListeners();
         checkPermissions();
