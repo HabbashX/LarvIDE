@@ -71,9 +71,9 @@ public class PrefixInstaller {
             try {
                 String url = overrideUrl != null && !overrideUrl.isEmpty()
                     ? overrideUrl : DEFAULT_BOOTSTRAP_URL;
-                post(listener, () -> listener.onProgress("Downloading bootstrap…", 5));
+                post(listener, () -> listener.onProgress("Downloading bootstrap...", 5));
                 File cacheZip = new File(appContext.getCacheDir(), "bootstrap-aarch64.zip");
-                download(url, cacheZip);
+                download(url, cacheZip, listener);
                 post(listener, () -> listener.onProgress("Extracting…", 70));
                 File prefixDir = new File(appContext.getFilesDir(), "usr");
                 //noinspection ResultOfMethodCallIgnored
@@ -98,7 +98,7 @@ public class PrefixInstaller {
         new Handler(Looper.getMainLooper()).post(r);
     }
 
-    private static void download(String urlStr, File out) throws Exception {
+    private static void download(String urlStr, File out, Listener listener) throws Exception {
         HttpURLConnection conn =
             (HttpURLConnection) new URL(urlStr).openConnection();
         conn.setConnectTimeout(30_000);
@@ -107,11 +107,26 @@ public class PrefixInstaller {
         if (conn.getResponseCode() / 100 != 2) {
             throw new IllegalStateException("HTTP " + conn.getResponseCode());
         }
+        long total = conn.getContentLengthLong();
+        long downloaded = 0;
+        int lastPercent = 5;
         try (InputStream in = new BufferedInputStream(conn.getInputStream());
              OutputStream fos = new FileOutputStream(out)) {
             byte[] buf = new byte[64 * 1024];
             int n;
-            while ((n = in.read(buf)) > 0) fos.write(buf, 0, n);
+            while ((n = in.read(buf)) > 0) {
+                fos.write(buf, 0, n);
+                downloaded += n;
+                if (total > 0) {
+                    int percent = 5 + (int) (downloaded * 65.0 / total);
+                    if (percent > 70) percent = 70;
+                    if (percent != lastPercent) {
+                        lastPercent = percent;
+                        final int p = percent;
+                        post(listener, () -> listener.onProgress("Downloading bootstrap...", p));
+                    }
+                }
+            }
         } finally {
             conn.disconnect();
         }
