@@ -910,10 +910,18 @@ public class MainActivity extends AppCompatActivity
     protected void onStop() {
         super.onStop();
         autosaveHandler.removeCallbacks(autosaveRunnable);
-        saveAllModifiedFilesSync();
-        // Blocking: the process may die before an async save runs, which used
-        // to leave stale buffers overriding fresh files on next open.
-        sessionManager.saveNowSync();
+        // Flush synchronously, but off the main thread so StrictMode (debug builds)
+        // does not flag disk I/O and the UI thread is not the one touching disk.
+        Thread flushThread = new Thread(() -> {
+            editorTabs.saveAllModifiedFilesSyncQuiet();
+            sessionManager.saveNowSync();
+        }, "onstop-flush");
+        flushThread.start();
+        try {
+            flushThread.join(5000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         if (com.larv.ide.BuildConfig.DEBUG && projectManager != null) {
             Log.d("LarvPerf", projectManager.performanceSnapshot());
         }

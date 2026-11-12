@@ -268,6 +268,24 @@ final class EditorTabsController {
         }
     }
 
+    /** Same as {@link #saveAllModifiedFilesSync()} but performs no View updates,
+     *  so it can safely run on a worker thread (e.g. during onStop). */
+    void saveAllModifiedFilesSyncQuiet() {
+        for (OpenFile openFile : activity.openFiles) {
+            if (openFile.isModified()) {
+                File file = new File(openFile.getFilePath());
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+                    fos.write(openFile.getContent().getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8));
+                    openFile.setModified(false);
+                } catch (IOException e) {
+                    android.util.Log.w(MainActivity.TAG,
+                        "Auto-save failed for " + file.getAbsolutePath(), e);
+                }
+            }
+        }
+    }
+
     void closeAllOpenTabs() {
         activity.runOnUiThread(() -> {
             activity.openFiles.clear();
