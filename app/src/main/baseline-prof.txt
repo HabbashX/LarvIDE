@@ -1,5 +1,5 @@
 HSPLcom/larv/ide/LarvApplication;
-HSPLcom/larv/ide/MainActivity;
+HSPLcom/larv/ide/activity/MainActivity;
 HSPLcom/larv/ide/ui/fragment/EditorFragment;
 HSPLcom/larv/ide/project/ProjectManager;
 HSPLcom/larv/ide/session/SessionManager;

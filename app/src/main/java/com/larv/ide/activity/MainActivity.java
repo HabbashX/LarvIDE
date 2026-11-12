@@ -14,16 +14,14 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.content.SharedPreferences;
-import android.text.InputType;
 import android.util.Log;
-import android.view.DragEvent;
+
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
-import android.widget.PopupMenu;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -33,42 +31,33 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 
-import com.larv.ide.build.LarvBuildParser;
-import com.larv.ide.completion.CompletionItem;
 import com.larv.ide.completion.ProjectIndexer;
 import com.larv.ide.model.FileNode;
-import com.larv.ide.model.Diagnostic;
+
 import com.larv.ide.model.OpenFile;
 import com.larv.ide.model.Project;
 import com.larv.ide.project.ProjectManager;
 import com.larv.ide.project.ProjectRecognizer;
 import com.larv.ide.run.RunDispatcher;
-import com.larv.ide.run.RunEligibility;
 import com.larv.ide.session.SessionManager;
-import com.larv.ide.ui.dialog.SettingsDialog;
-import com.larv.ide.ui.TerminalActivity;
+
 import com.larv.ide.ui.adapter.BottomPanelAdapter;
 import com.larv.ide.ui.adapter.FileTreeAdapter;
 import com.larv.ide.ui.fragment.EditorFragment;
-import com.larv.ide.ui.fragment.OutputFragment;
 
 
 import java.io.File;
-import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+
 
 public class MainActivity extends AppCompatActivity
         implements ProjectManager.OnProjectChangeListener,
