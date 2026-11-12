@@ -4,16 +4,20 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
+    android:layout_marginStart="4dp"
+    android:layout_marginEnd="4dp"
+    android:layout_marginTop="1dp"
+    android:layout_marginBottom="1dp"
     android:background="@drawable/bg_file_tree_item"
-    android:paddingStart="10dp"
-    android:paddingEnd="10dp"
-    android:paddingTop="6dp"
-    android:paddingBottom="6dp">
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
 
     <ImageView
         android:id="@+id/fileIcon"
-        android:layout_width="14dp"
-        android:layout_height="14dp"
+        android:layout_width="12dp"
+        android:layout_height="12dp"
         android:layout_gravity="center_vertical"
         android:src="@drawable/ic_file"  android:contentDescription="Icon" />
 
@@ -22,17 +26,17 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="10dp"
+        android:layout_marginStart="6dp"
         android:layout_gravity="center_vertical"
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/text_primary"
-        android:textSize="12sp" />
+        android:textSize="11sp" />
 
     <ImageView
         android:id="@+id/fileMore"
-        android:layout_width="16dp"
-        android:layout_height="16dp"
+        android:layout_width="14dp"
+        android:layout_height="14dp"
         android:layout_gravity="center_vertical"
         android:src="@android:drawable/ic_menu_more"
         app:tint="@color/text_disabled"  android:contentDescription="Icon" />

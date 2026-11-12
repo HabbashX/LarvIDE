@@ -3,13 +3,13 @@
     <item android:state_selected="true">
         <shape android:shape="rectangle">
             <solid android:color="@color/selection" />
-            <corners android:radius="6dp" />
+            <corners android:radius="8dp" />
         </shape>
     </item>
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
             <solid android:color="@color/hover" />
-            <corners android:radius="6dp" />
+            <corners android:radius="8dp" />
         </shape>
     </item>
     <item>

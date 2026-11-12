@@ -64,7 +64,7 @@
         <!-- Left Tool Window Content (Project, Structure, etc.) -->
         <FrameLayout
             android:id="@+id/leftToolWindowContent"
-            android:layout_width="200dp"
+            android:layout_width="170dp"
             android:layout_height="0dp"
             android:background="@color/surface"
             android:visibility="visible"
@@ -87,10 +87,10 @@
                     <LinearLayout
                         android:id="@+id/projectToolbar"
                         android:layout_width="0dp"
-                        android:layout_height="36dp"
+                        android:layout_height="32dp"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
-                        android:paddingHorizontal="8dp"
+                        android:paddingHorizontal="6dp"
                         android:background="@color/surface"
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
