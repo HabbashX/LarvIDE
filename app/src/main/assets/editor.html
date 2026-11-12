@@ -520,8 +520,6 @@
             if (window.LarvIDE) {
                 window.LarvIDE.onEditorReady();
             }
-        });
-
         // JavaScript interface functions
         function languageForFile(file) {
             const ext = (file || '').split('.').pop().toLowerCase();
@@ -670,6 +668,8 @@
                 // ignore
             }
         };
+
+        });
     </script>
 </body>
 </html>
