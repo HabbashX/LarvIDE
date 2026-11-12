@@ -62,7 +62,7 @@ public class ProjectHomeActivity extends AppCompatActivity {
 
         list.setOnItemClickListener((parent, view, position, id) -> {
             Project p = projects.get(position);
-            Intent i = new Intent(this, com.larv.ide.MainActivity.class);
+            Intent i = new Intent(this, com.larv.ide.activity.MainActivity.class);
             i.putExtra(EXTRA_PROJECT_PATH, p.getRootDir().getAbsolutePath());
             i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(i);
