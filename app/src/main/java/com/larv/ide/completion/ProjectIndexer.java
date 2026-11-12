@@ -6,6 +6,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
 import com.larv.ide.model.OpenFile;
+import com.larv.ide.performance.PerformanceConfig;
+import com.larv.ide.performance.PerformanceMonitor;
+import com.larv.ide.project.FileChangeTracker;
+import com.larv.ide.project.ProjectIndexCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -67,6 +71,14 @@ public class ProjectIndexer {
     private final Map<String, List<CompletionItem>> stdlibIndex = new ConcurrentHashMap<>();
     private final Map<String, String> classToPackage = new ConcurrentHashMap<>();
 
+    /** Skips re-parsing text whose content hash is unchanged. */
+    private final ProjectIndexCache parseCache = new ProjectIndexCache();
+    /** Skips unchanged files during a project scan. */
+    private final FileChangeTracker changeTracker = new FileChangeTracker();
+    private final PerformanceMonitor perf = new PerformanceMonitor();
+    /** Bumped by {@link #cancelIndexing()} so a stale scan stops early. */
+    private volatile int indexGeneration;
+
     /** Built once — sorting used to rebuild this comparator on every keystroke. */
     private static final Comparator<CompletionItem> COMPLETION_ORDER =
         Comparator.comparingInt(CompletionItem::getSortPriority)
@@ -110,9 +122,83 @@ public class ProjectIndexer {
     }
 
     public void indexFile(OpenFile openFile) {
+        if (openFile == null) return;
         String content = openFile.getContent();
+        if (content == null) content = "";
         String fileName = openFile.getFileName();
+        if (fileName == null) return;
+        // Repeated completion requests and tab switches used to re-run every
+        // symbol regex even when the text was identical.
+        if (parseCache.isFresh(fileName, content)) {
+            perf.count("index.skip");
+            return;
+        }
+        long start = PerformanceMonitor.now();
+        fileIndex.put(fileName, parse(content, fileName));
+        parseCache.put(fileName, content);
+        perf.record("index.parse", PerformanceMonitor.now() - start);
+    }
 
+    /**
+     * Indexes every Java source in a project on a background thread. Files are
+     * skipped when their mtime/size has not changed since the previous scan,
+     * and the scan aborts if {@link #cancelIndexing()} is called (project
+     * closed or switched).
+     */
+    public void indexProject(java.io.File root) {
+        if (root == null || !root.isDirectory()) return;
+        final int generation = indexGeneration;
+        long start = PerformanceMonitor.now();
+        java.util.ArrayDeque<java.io.File> stack = new java.util.ArrayDeque<>();
+        stack.push(root);
+        int scanned = 0;
+        int parsed = 0;
+        while (!stack.isEmpty() && scanned < PerformanceConfig.MAX_INDEXED_FILES) {
+            if (generation != indexGeneration) {
+                perf.count("index.project.cancelled");
+                return;
+            }
+            java.io.File dir = stack.pop();
+            java.io.File[] children = dir.listFiles();
+            if (children == null) continue;
+            for (java.io.File child : children) {
+                if (child.isDirectory()) {
+                    if (!isIgnoredDirectory(child.getName())) stack.push(child);
+                } else if (child.getName().endsWith(".java")) {
+                    scanned++;
+                    if (!changeTracker.hasChanged(child)) {
+                        perf.count("index.project.skip");
+                        continue;
+                    }
+                    long length = child.length();
+                    if (length > PerformanceConfig.MAX_INDEXED_FILE_BYTES) {
+                        changeTracker.markIndexed(child);
+                        continue;
+                    }
+                    try {
+                        String content = com.larv.ide.io.FileReader.read(child);
+                        fileIndex.put(child.getName(), parse(content, child.getName()));
+                        parseCache.put(child.getName(), content);
+                        changeTracker.markIndexed(child);
+                        parsed++;
+                    } catch (java.io.IOException e) {
+                        // Unreadable file: do not mark indexed, retry next scan.
+                    }
+                }
+            }
+        }
+        perf.record("index.project", PerformanceMonitor.now() - start);
+        perf.count("index.project.files." + parsed);
+    }
+
+    private static boolean isIgnoredDirectory(String name) {
+        if (name == null || name.isEmpty()) return true;
+        if (name.charAt(0) == '.') return true;
+        return "build".equals(name) || "node_modules".equals(name)
+            || "out".equals(name) || "target".equals(name);
+    }
+
+    private FileSymbols parse(String content, String fileName) {
         FileSymbols symbols = new FileSymbols();
         symbols.fileName = fileName;
         symbols.packageName = extractPackage(content);
@@ -120,16 +206,33 @@ public class ProjectIndexer {
         symbols.classes = extractClasses(content);
         symbols.methods = extractMethods(content);
         symbols.fields = extractFields(content);
+        return symbols;
+    }
 
-        fileIndex.put(fileName, symbols);
+    /** Abort an in-flight {@link #indexProject(java.io.File)} scan. */
+    public void cancelIndexing() {
+        indexGeneration++;
     }
 
     public void removeFile(String fileName) {
         fileIndex.remove(fileName);
+        parseCache.remove(fileName);
     }
 
     public void clear() {
+        cancelIndexing();
         fileIndex.clear();
+        parseCache.clear();
+        changeTracker.clear();
+    }
+
+    /** Drop parse caches under memory pressure; symbols stay usable. */
+    public void trimCaches() {
+        parseCache.clear();
+    }
+
+    public String performanceSnapshot() {
+        return perf.snapshot();
     }
 
     private FileSymbols resolveCurrentSymbols(String currentFile) {
