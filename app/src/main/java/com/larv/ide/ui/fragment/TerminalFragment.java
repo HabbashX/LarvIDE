@@ -100,7 +100,7 @@ public class TerminalFragment extends Fragment {
         SafeEmulatorView view = new SafeEmulatorView(requireContext(), session,
             getResources().getDisplayMetrics());
         view.setTextSize(13);
-        view.setUseCookedIME(true);
+        view.setUseCookedIME(false);
         view.setColorScheme(DARK_SCHEME);
 
         terminalContainer.addView(view, new FrameLayout.LayoutParams(
