@@ -6,6 +6,7 @@ import android.os.Looper;
 import android.util.Log;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -79,11 +80,9 @@ public class PrefixInstaller {
                 download(url, cacheZip, listener);
                 post(listener, () -> listener.onProgress("Extracting…", 70));
                 File prefixDir = new File(appContext.getFilesDir(), "usr");
-                //noinspection ResultOfMethodCallIgnored
                 prefixDir.mkdirs();
                 extract(cacheZip, prefixDir);
                 processSymlinks(prefixDir);
-                //noinspection ResultOfMethodCallIgnored
                 cacheZip.delete();
                 makeExecutable(new File(prefixDir, "bin/bash"));
 
@@ -168,10 +167,8 @@ public class PrefixInstaller {
                     throw new IllegalStateException("Zip slip: " + entry.getName());
                 }
                 if (entry.isDirectory()) {
-                    //noinspection ResultOfMethodCallIgnored
                     f.mkdirs();
                 } else {
-                    //noinspection ResultOfMethodCallIgnored
                     f.getParentFile().mkdirs();
                     try (OutputStream o = new FileOutputStream(f)) {
                         int n;
@@ -194,7 +191,7 @@ public class PrefixInstaller {
             symlinks.delete();
             return;
         }
-        String filesRoot = destDir.getParentFile().getAbsolutePath(); // .../files
+        String filesRoot = destDir.getParentFile().getAbsolutePath();
         for (String raw : lines) {
             if (raw == null || raw.trim().isEmpty()) continue;
             String[] parts = raw.split("\u2190", 2);
@@ -252,22 +249,17 @@ public class PrefixInstaller {
             throw new Exception("libandroid-support not found in Termux package index");
         }
 
-        // Step 2: Download the .deb
+        // Step 2: Download the .deb into memory
         post(listener, () -> listener.onProgress("Downloading libandroid-support…", 88));
-        File debFile = new File(appContext.getCacheDir(), "libandroid-support.deb");
-        download("https://packages.termux.org" + debFilename, debFile, listener);
+        byte[] debBytes = downloadBytes("https://packages.termux.org" + debFilename, listener);
 
-        // Step 3: Extract data.tar.gz from ar archive, then extract libandroid-support.so
+        // Step 3: Parse ar archive, find data.tar.gz, decompress, extract libandroid-support.so
+        byte[] dataTarGz = extractDataTarGzFromDeb(debBytes);
+
+        // Step 4: Extract libandroid-support.so from tar
         File libDir = new File(prefixDir, "lib");
-        //noinspection ResultOfMethodCallIgnored
         libDir.mkdirs();
-
-        try (InputStream debIn = new BufferedInputStream(new java.io.FileInputStream(debFile))) {
-            extractDebDataTarGz(debIn, libDir, listener);
-        } finally {
-            //noinspection ResultOfMethodCallIgnored
-            debFile.delete();
-        }
+        extractLibAndroidSupportFromTar(dataTarGz, libDir);
 
         File libSo = new File(libDir, "libandroid-support.so");
         if (!libSo.exists()) {
@@ -277,27 +269,40 @@ public class PrefixInstaller {
     }
 
     /**
-     * Parse a .deb ar archive, find data.tar.gz, decompress it, and extract
-     * libandroid-support.so into destDir.
+     * Download bytes into memory.
      */
-    private static void extractDebDataTarGz(InputStream debIn, File destDir, Listener listener)
-        throws Exception {
-        // ar archive magic: "!<arch>\n"
-        byte[] magic = new byte[8];
-        int read = debIn.read(magic);
-        if (read != 8 || !new String(magic, StandardCharsets.US_ASCII).equals("!<arch>\n")) {
+    private static byte[] downloadBytes(String urlStr, Listener listener) throws Exception {
+        HttpURLConnection conn =
+            (HttpURLConnection) new URL(urlStr).openConnection();
+        conn.setConnectTimeout(30_000);
+        conn.setReadTimeout(120_000);
+        conn.connect();
+        if (conn.getResponseCode() / 100 != 2) {
+            throw new IllegalStateException("HTTP " + conn.getResponseCode());
+        }
+        try (InputStream in = new BufferedInputStream(conn.getInputStream())) {
+            return in.readAllBytes();
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    /**
+     * Parse ar archive, extract data.tar.gz member into a byte array.
+     * ar format: "!<arch>\n" magic, then 60-byte headers followed by file data.
+     */
+    private static byte[] extractDataTarGzFromDeb(byte[] debBytes) throws Exception {
+        // Verify magic
+        if (debBytes.length < 8) throw new Exception("Deb too small");
+        if (!new String(debBytes, 0, 8, StandardCharsets.US_ASCII).equals("!<arch>\n")) {
             throw new Exception("Not a valid ar archive (.deb)");
         }
 
-        byte[] dataTarGz = null;
-        byte[] header = new byte[60];
-
-        while (true) {
-            int hRead = readFully(debIn, header);
-            if (hRead < 60) break; // end of archive
-
-            String name = new String(header, 0, 16, StandardCharsets.US_ASCII).trim();
-            String sizeStr = new String(header, 48, 12, StandardCharsets.US_ASCII).trim();
+        int offset = 8;
+        while (offset + 60 <= debBytes.length) {
+            // Parse header
+            String name = new String(debBytes, offset, 16, StandardCharsets.US_ASCII).trim();
+            String sizeStr = new String(debBytes, offset + 48, 12, StandardCharsets.US_ASCII).trim();
             long fileSize;
             try {
                 fileSize = Long.parseLong(sizeStr);
@@ -305,38 +310,93 @@ public class PrefixInstaller {
                 throw new Exception("Invalid ar header size: " + sizeStr);
             }
 
-            // Check magic bytes at offset 48-59: "\n"
-            // Skip to file data
-            byte[] fileData = new byte[(int) fileSize];
-            int totalRead = 0;
-            while (totalRead < fileData.length) {
-                int r = debIn.read(fileData, totalRead, fileData.length - totalRead);
-                if (r < 0) break;
-                totalRead += r;
-            }
-
-            // Padding to even boundary
-            if (fileSize % 2 != 0) {
-                debIn.read(); // skip 1 padding byte
-            }
-
             if (name.startsWith("data.tar")) {
-                dataTarGz = fileData;
-                break;
+                if (offset + 60 + fileSize > debBytes.length) {
+                    throw new Exception("data.tar.gz extends beyond deb");
+                }
+                byte[] dataTarGz = new byte[(int) fileSize];
+                System.arraycopy(debBytes, offset + 60, dataTarGz, 0, (int) fileSize);
+                return dataTarGz;
             }
+
+            // Skip header + file data (padded to even boundary)
+            offset += 60 + fileSize;
+            if (fileSize % 2 != 0) offset += 1;
         }
 
-        if (dataTarGz == null) {
-            throw new Exception("data.tar.gz not found in .deb");
-        }
+        throw new Exception("data.tar.gz not found in .deb");
+    }
 
-        // Decompress gzip and extract libandroid-support.so from tar
-        try (GZIPInputStream gzIn = new GZIPInputStream(new BufferedInputStream(
-            new java.io.ByteArrayInputStream(dataTarGz)))) {
+    /**
+     * Decompress gzip and extract libandroid-support.so from tar into destDir.
+     */
+    private static void extractLibAndroidSupportFromTar(byte[] dataTarGz, File destDir)
+        throws Exception {
+        try (GZIPInputStream gzIn = new GZIPInputStream(
+                new BufferedInputStream(new ByteArrayInputStream(dataTarGz)))) {
             extractTarEntry(gzIn, "./usr/lib/aarch64-linux-gnu/libandroid-support.so", destDir);
             extractTarEntry(gzIn, "./lib/aarch64-linux-gnu/libandroid-support.so", destDir);
             extractTarEntry(gzIn, "usr/lib/aarch64-linux-gnu/libandroid-support.so", destDir);
             extractTarEntry(gzIn, "lib/aarch64-linux-gnu/libandroid-support.so", destDir);
+        }
+    }
+
+    /**
+     * Scan tar entries looking for a specific filename and extract it to destDir.
+     * Tar format: 512-byte header, file data padded to 512-byte boundary.
+     */
+    private static void extractTarEntry(InputStream tarIn, String targetName, File destDir)
+        throws Exception {
+        byte[] header = new byte[512];
+        while (true) {
+            int hRead = readFully(tarIn, header);
+            if (hRead < 512) break;
+
+            String name = new String(header, 0, 100, StandardCharsets.US_ASCII).trim();
+            if (name.isEmpty()) continue;
+
+            String sizeStr = new String(header, 124, 12, StandardCharsets.US_ASCII).trim();
+            long fileSize;
+            try {
+                fileSize = Long.parseLong(sizeStr, 8);
+            } catch (NumberFormatException e) {
+                continue;
+            }
+
+            boolean isDir = (header[156] == '5') || name.endsWith("/");
+
+            if (name.equals(targetName) && !isDir) {
+                // Extract file data
+                byte[] fileData = new byte[(int) fileSize];
+                int totalRead = 0;
+                while (totalRead < fileData.length) {
+                    int r = tarIn.read(fileData, totalRead, fileData.length - totalRead);
+                    if (r < 0) break;
+                    totalRead += r;
+                }
+
+                File outFile = new File(destDir, new File(name).getName());
+                try (OutputStream out = new FileOutputStream(outFile)) {
+                    out.write(fileData);
+                }
+                outFile.setExecutable(true, false);
+                return;
+            }
+
+            // Skip file data (padded to 512-byte boundary)
+            long remaining = fileSize;
+            byte[] skipBuf = new byte[8192];
+            while (remaining > 0) {
+                int r = tarIn.read(skipBuf, 0, (int) Math.min(skipBuf.length, remaining));
+                if (r < 0) break;
+                remaining -= r;
+            }
+            long pad = (512 - (fileSize % 512)) % 512;
+            while (pad > 0) {
+                int r = tarIn.read(skipBuf, 0, (int) Math.min(skipBuf.length, pad));
+                if (r < 0) break;
+                pad -= r;
+            }
         }
     }
 
@@ -353,81 +413,15 @@ public class PrefixInstaller {
         return total;
     }
 
-    /**
-     * Scan tar entries looking for a specific filename and extract it to destDir.
-     */
-    private static void extractTarEntry(InputStream tarIn, String targetName, File destDir)
-        throws Exception {
-        byte[] header = new byte[512];
-        while (true) {
-            int hRead = readFully(tarIn, header);
-            if (hRead < 512) break; // end of archive
-
-            String name = new String(header, 0, 100, StandardCharsets.US_ASCII).trim();
-            if (name.isEmpty()) continue;
-
-            String sizeStr = new String(header, 124, 12, StandardCharsets.US_ASCII).trim();
-            long fileSize;
-            try {
-                fileSize = Long.parseLong(sizeStr, 8);
-            } catch (NumberFormatException e) {
-                continue;
-            }
-
-            boolean isDir = (header[156] == '5') || name.endsWith("/");
-
-            // Skip file data
-            byte[] skipBuf = new byte[8192];
-            long remaining = fileSize;
-            while (remaining > 0) {
-                int r = tarIn.read(skipBuf, 0, (int) Math.min(skipBuf.length, remaining));
-                if (r < 0) break;
-                remaining -= r;
-            }
-            // Pad to 512-byte boundary
-            long pad = (512 - (fileSize % 512)) % 512;
-            while (pad > 0) {
-                int r = tarIn.read(skipBuf, 0, (int) Math.min(skipBuf.length, pad));
-                if (r < 0) break;
-                pad -= r;
-            }
-
-            if (!name.equals(targetName)) continue;
-
-            if (isDir) continue;
-
-            // Extract file
-            byte[] fileData = new byte[(int) fileSize];
-            int totalRead = 0;
-            try (InputStream entryIn = tarIn) {
-                while (totalRead < fileData.length) {
-                    int r = entryIn.read(fileData, totalRead, fileData.length - totalRead);
-                    if (r < 0) break;
-                    totalRead += r;
-                }
-            }
-
-            File outFile = new File(destDir, new File(name).getName());
-            try (OutputStream out = new FileOutputStream(outFile)) {
-                out.write(fileData);
-            }
-            outFile.setExecutable(true, false);
-            return;
-        }
-    }
-
     private static void makeExecutable(File bash) {
         try {
             if (bash.exists()) {
-                //noinspection ResultOfMethodCallIgnored
                 bash.setExecutable(true, false);
-                // Best-effort: mark common bins executable too.
                 File bin = bash.getParentFile();
                 File[] files = bin != null ? bin.listFiles() : null;
                 if (files != null) {
                     for (File f : files) {
                         if (f.isFile() && !f.canExecute()) {
-                            //noinspection ResultOfMethodCallIgnored
                             f.setExecutable(true, false);
                         }
                     }
