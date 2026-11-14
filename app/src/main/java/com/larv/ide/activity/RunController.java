@@ -290,6 +290,10 @@ final class RunController {
                 } catch (InterruptedException ignored) {
                 }
                 try {
+                    procIn.close();
+                } catch (IOException ignored) {
+                }
+                try {
                     String msg = "\r\nProcess finished with exit code " + exit + "\r\n";
                     bridge.write(msg.getBytes(StandardCharsets.UTF_8));
                     bridge.flush();

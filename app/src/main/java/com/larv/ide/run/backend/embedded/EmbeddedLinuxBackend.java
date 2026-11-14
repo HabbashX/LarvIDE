@@ -100,10 +100,6 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         env.put("PATH", prefix.getAbsolutePath() + "/bin:" + prefix.getAbsolutePath() + "/bin/applets");
 
         Process proc = pb.start();
-        try {
-            proc.getOutputStream().close();
-        } catch (Exception ignored) {
-        }
 
         Thread outPump = pump(proc.getInputStream(), true, sink);
         Thread errPump = pump(proc.getErrorStream(), false, sink);
