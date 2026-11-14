@@ -237,40 +237,117 @@ public class MainActivity extends AppCompatActivity
         root.addView(status);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("Linux Environment required")
+            .setTitle("Downloading Linux Environment…")
             .setView(wrapDialogView(root))
             .setCancelable(false)
             .create();
 
+        // Button bar (shown only on error — download starts automatically).
         android.widget.LinearLayout buttons = new android.widget.LinearLayout(this);
         buttons.setOrientation(android.widget.LinearLayout.HORIZONTAL);
         buttons.setPadding(0, dp(12), 0, 0);
 
         android.widget.Button downloadBtn = new android.widget.Button(this, null, 0);
-        downloadBtn.setText("Download");
+        downloadBtn.setText("Retry");
+        downloadBtn.setVisibility(View.GONE);
         downloadBtn.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
             0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         buttons.addView(downloadBtn);
 
         android.widget.Button laterBtn = new android.widget.Button(this, null, 0);
-        laterBtn.setText("Later");
+        laterBtn.setText("Later (limited mode)");
+        laterBtn.setVisibility(View.GONE);
         laterBtn.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
             0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         buttons.addView(laterBtn);
 
         android.widget.Button exitBtn = new android.widget.Button(this, null, 0);
         exitBtn.setText("Exit app");
+        exitBtn.setVisibility(View.GONE);
         exitBtn.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
             0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         buttons.addView(exitBtn);
         root.addView(buttons);
 
+        // Auto-start download on first launch — no tap required.
+        postDownload(progress, status, downloadBtn, laterBtn, exitBtn, dialog);
+
+        dialog.show();
+    }
+
+    /** Auto-start prefix download so the user never has to tap a button. */
+    private void postDownload(android.widget.ProgressBar progress,
+                              android.widget.TextView status,
+                              android.widget.Button downloadBtn,
+                              android.widget.Button laterBtn,
+                              android.widget.Button exitBtn,
+                              AlertDialog dialog) {
+        downloadBtn.setEnabled(false);
+        laterBtn.setEnabled(false);
+        exitBtn.setEnabled(false);
+        progress.setVisibility(View.VISIBLE);
+        progress.setIndeterminate(true);
+        status.setText("Downloading Linux Environment…");
+        embeddedBackend.installer().installAsync(
+            prefs.getString("embeddedBootstrapUrl", null),
+            new com.larv.ide.run.backend.embedded.PrefixInstaller.Listener() {
+                @Override public void onProgress(String stage, int percent) {
+                    runOnUiThread(() -> {
+                        status.setText(stage);
+                        if (percent > 0) {
+                            progress.setIndeterminate(false);
+                            progress.setProgress(Math.min(100, percent));
+                        }
+                    });
+                }
+                @Override public void onComplete() {
+                    runOnUiThread(() -> {
+                        runtimeGateShowing = false;
+                        ProjectManager.setCppEnabled(true);
+                        statusText.setText("Linux runtime ready");
+                        Toast.makeText(MainActivity.this,
+                            "Linux runtime ready", Toast.LENGTH_LONG).show();
+                        dialog.dismiss();
+                        maybeShowSetupWizard();
+                    });
+                }
+                @Override public void onError(String message) {
+                    runOnUiThread(() -> {
+                        progress.setVisibility(View.GONE);
+                        status.setText("Download failed: " + message);
+                        status.setTextColor(
+                            ContextCompat.getColor(MainActivity.this, R.color.error));
+                        downloadBtn.setVisibility(View.VISIBLE);
+                        laterBtn.setVisibility(View.VISIBLE);
+                        exitBtn.setVisibility(View.VISIBLE);
+                        downloadBtn.setEnabled(true);
+                        laterBtn.setEnabled(true);
+                        exitBtn.setEnabled(true);
+                        downloadBtn.setText("Retry");
+                    });
+                }
+            });
+
+        laterBtn.setOnClickListener(v -> {
+            if (prefs != null) {
+                prefs.edit().putBoolean("runtimeGateDismissed", true).apply();
+            }
+            runtimeGateShowing = false;
+            Toast.makeText(MainActivity.this,
+                "Limited mode: Run is disabled until the Linux runtime is installed.",
+                Toast.LENGTH_LONG).show();
+            dialog.dismiss();
+        });
+
+        exitBtn.setOnClickListener(v -> finish());
+
         downloadBtn.setOnClickListener(v -> {
             downloadBtn.setEnabled(false);
+            laterBtn.setEnabled(false);
             exitBtn.setEnabled(false);
             progress.setVisibility(View.VISIBLE);
             progress.setIndeterminate(true);
-            status.setText("Downloading...");
+            status.setText("Downloading Linux Environment…");
             embeddedBackend.installer().installAsync(
                 prefs.getString("embeddedBootstrapUrl", null),
                 new com.larv.ide.run.backend.embedded.PrefixInstaller.Listener() {
@@ -297,30 +374,17 @@ public class MainActivity extends AppCompatActivity
                     @Override public void onError(String message) {
                         runOnUiThread(() -> {
                             progress.setVisibility(View.GONE);
-                            status.setText("Failed: " + message
-                                + "\nCheck your connection and tap Download to retry.");
+                            status.setText("Download failed: " + message);
                             status.setTextColor(
                                 ContextCompat.getColor(MainActivity.this, R.color.error));
                             downloadBtn.setEnabled(true);
+                            laterBtn.setEnabled(true);
                             exitBtn.setEnabled(true);
+                            downloadBtn.setText("Retry");
                         });
                     }
                 });
         });
-        exitBtn.setOnClickListener(v -> finish());
-
-        laterBtn.setOnClickListener(v -> {
-            if (prefs != null) {
-                prefs.edit().putBoolean("runtimeGateDismissed", true).apply();
-            }
-            runtimeGateShowing = false;
-            Toast.makeText(MainActivity.this,
-                "Limited mode: Run is disabled until the Linux runtime is installed.",
-                Toast.LENGTH_LONG).show();
-            dialog.dismiss();
-        });
-
-        dialog.show();
     }
 
     @Override
