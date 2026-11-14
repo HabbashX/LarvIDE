@@ -1,7 +1,11 @@
 package com.larv.ide.terminal;
 
+import static com.larv.ide.run.backend.embedded.EmbeddedRuntime.*;
+
 import android.content.Context;
 import android.util.Log;
+
+import com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend;
 
 import java.io.File;
 import java.io.IOException;
@@ -18,9 +22,7 @@ public class EmbeddedLinuxSession {
 
     private static final String TAG = "EmbeddedLinuxSession";
 
-    public interface OutputListener {
-        void onOutput(byte[] data, int len);
-    }
+    public interface OutputListener { void onOutput(byte[] data, int len); }
 
     private final TermSession session;
     private Process process;
@@ -33,9 +35,8 @@ public class EmbeddedLinuxSession {
         boolean emb = false;
         Process proc = null;
         try {
-            if (com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(app)) {
-                com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend backend =
-                    new com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend(app);
+            if (isEmbeddedReady(app)) {
+                var backend = new EmbeddedLinuxBackend(app);
                 proc = backend.openShell(workingDirectory != null
                     ? workingDirectory.getAbsolutePath() : null);
                 emb = true;
