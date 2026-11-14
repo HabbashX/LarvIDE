@@ -7,6 +7,7 @@ import android.util.Log;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -92,6 +93,7 @@ public class PrefixInstaller {
                 installLibAndroidSupport(prefixDir, listener);
 
                 installing = false;
+                EmbeddedRuntime.invalidateReadyCache();
                 post(listener, () -> listener.onComplete());
             } catch (Exception e) {
                 Log.e(TAG, "Prefix install failed", e);
@@ -149,11 +151,17 @@ public class PrefixInstaller {
         if (conn.getResponseCode() / 100 != 2) {
             throw new IllegalStateException("HTTP " + conn.getResponseCode());
         }
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (InputStream in = new BufferedInputStream(conn.getInputStream())) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                baos.write(buf, 0, n);
+            }
         } finally {
             conn.disconnect();
         }
+        return baos.toString(StandardCharsets.UTF_8);
     }
 
     private static void extract(File zip, File destDir) throws Exception {
@@ -280,11 +288,17 @@ public class PrefixInstaller {
         if (conn.getResponseCode() / 100 != 2) {
             throw new IllegalStateException("HTTP " + conn.getResponseCode());
         }
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (InputStream in = new BufferedInputStream(conn.getInputStream())) {
-            return in.readAllBytes();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                baos.write(buf, 0, n);
+            }
         } finally {
             conn.disconnect();
         }
+        return baos.toByteArray();
     }
 
     /**

@@ -13,6 +13,8 @@ public final class EmbeddedRuntime {
 
     private EmbeddedRuntime() {}
 
+    private static volatile Boolean readyCache = null;
+
     public static File prefixDir(Context context) {
         return new File(context.getFilesDir(), "usr");
     }
@@ -23,8 +25,15 @@ public final class EmbeddedRuntime {
 
     public static boolean isEmbeddedReady(Context context) {
         if (context == null) return false;
+        if (readyCache != null) return readyCache;
         File bash = bashFile(context);
-        return bash.exists() && bash.canExecute();
+        boolean ready = bash.exists() && bash.canExecute();
+        readyCache = ready;
+        return ready;
+    }
+
+    public static void invalidateReadyCache() {
+        readyCache = null;
     }
 
     /** C/C++ creation + Run is hidden until the embedded runtime is READY. */
