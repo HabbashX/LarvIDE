@@ -99,6 +99,13 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         env.put("TERM", "xterm-256color");
         env.put("PATH", prefix.getAbsolutePath() + "/bin:" + prefix.getAbsolutePath() + "/bin/applets");
 
+        // PROOT_LOADER tells proot to use the W^X-safe loader on Android 14+.
+        File nativeDir = new File(appContext.getApplicationInfo().nativeLibraryDir);
+        File prootLoader = new File(nativeDir, "libproot-loader.so");
+        if (prootLoader.exists()) {
+            env.put("PROOT_LOADER", prootLoader.getAbsolutePath());
+        }
+
         Process proc = pb.start();
 
         Thread outPump = pump(proc.getInputStream(), true, sink);
@@ -119,6 +126,8 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
 
         List<String> cmd = new ArrayList<>();
         if (proot.exists()) {
+            // Make proot executable (packaged from jniLibs may lose exec bit).
+            proot.setExecutable(true, false);
             cmd.add(proot.getAbsolutePath());
             // Bind shared workspace so Monaco + compiler see the same files.
             File sdcard = android.os.Environment.getExternalStorageDirectory();
@@ -203,6 +212,14 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         env.put("HOME", new File(appContext.getFilesDir(), "home").getAbsolutePath());
         env.put("TERM", "xterm-256color");
         env.put("PATH", prefix.getAbsolutePath() + "/bin:" + prefix.getAbsolutePath() + "/bin/applets");
+
+        // PROOT_LOADER tells proot to use the W^X-safe loader on Android 14+.
+        File nativeDir = new File(appContext.getApplicationInfo().nativeLibraryDir);
+        File prootLoader = new File(nativeDir, "libproot-loader.so");
+        if (prootLoader.exists()) {
+            env.put("PROOT_LOADER", prootLoader.getAbsolutePath());
+        }
+
         pb.redirectErrorStream(true);
         // NOTE: stdin intentionally left open — the terminal view drives it.
         return pb.start();
@@ -275,6 +292,14 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         env.put("HOME", "/home");
         env.put("TERM", "xterm-256color");
         env.put("PATH", "/bin:/usr/bin:/usr/local/bin:/system/bin:/system/xbin");
+
+        // PROOT_LOADER tells proot to use the W^X-safe loader on Android 14+.
+        File nativeDir2 = new File(appContext.getApplicationInfo().nativeLibraryDir);
+        File prootLoader = new File(nativeDir2, "libproot-loader.so");
+        if (prootLoader.exists()) {
+            env.put("PROOT_LOADER", prootLoader.getAbsolutePath());
+        }
+
         pb.redirectErrorStream(true);
         return pb.start();
     }
