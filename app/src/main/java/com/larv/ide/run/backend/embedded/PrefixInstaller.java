@@ -348,6 +348,21 @@ public class PrefixInstaller {
             throw new Exception("libandroid-support.so not found in package");
         }
         libSo.setExecutable(true, false);
+
+        // Also copy to $PREFIX/bin/ so the dynamic linker finds it next to bash
+        // inside proot's chroot (where /bin = $PREFIX/bin on host).
+        File binDir = new File(prefixDir, "bin");
+        binDir.mkdirs();
+        File binLibSo = new File(binDir, "libandroid-support.so");
+        try (java.io.InputStream in = new java.io.FileInputStream(libSo);
+             java.io.OutputStream out = new java.io.FileOutputStream(binLibSo)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+        }
+        binLibSo.setExecutable(true, false);
     }
 
     /**
