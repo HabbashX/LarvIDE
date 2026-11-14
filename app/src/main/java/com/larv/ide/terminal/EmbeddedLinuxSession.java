@@ -18,11 +18,16 @@ public class EmbeddedLinuxSession {
 
     private static final String TAG = "EmbeddedLinuxSession";
 
+    public interface OutputListener {
+        void onOutput(byte[] data, int len);
+    }
+
     private final TermSession session;
     private Process process;
     private final boolean embedded;
 
-    public EmbeddedLinuxSession(Context context, File workingDirectory) {
+    public EmbeddedLinuxSession(Context context, File workingDirectory,
+                                OutputListener outputListener) {
         Context app = context.getApplicationContext();
         TermSession s;
         boolean emb = false;
@@ -64,10 +69,30 @@ public class EmbeddedLinuxSession {
         final Process p = process;
         s.setTermIn(new InputStream() {
             private final InputStream src = p.getInputStream();
-            @Override public int read() throws IOException { return src.read(); }
-            @Override public int read(byte[] b) throws IOException { return src.read(b); }
+            @Override public int read() throws IOException {
+                int b = src.read();
+                if (outputListener != null && b >= 0) {
+                    outputListener.onOutput(new byte[]{(byte) b}, 1);
+                }
+                return b;
+            }
+            @Override public int read(byte[] b) throws IOException {
+                int n = src.read(b);
+                if (outputListener != null && n > 0) {
+                    byte[] copy = new byte[n];
+                    System.arraycopy(b, 0, copy, 0, n);
+                    outputListener.onOutput(copy, n);
+                }
+                return n;
+            }
             @Override public int read(byte[] b, int off, int len) throws IOException {
-                return src.read(b, off, len);
+                int n = src.read(b, off, len);
+                if (outputListener != null && n > 0) {
+                    byte[] copy = new byte[n];
+                    System.arraycopy(b, off, copy, 0, n);
+                    outputListener.onOutput(copy, n);
+                }
+                return n;
             }
             @Override public int available() throws IOException { return src.available(); }
         });

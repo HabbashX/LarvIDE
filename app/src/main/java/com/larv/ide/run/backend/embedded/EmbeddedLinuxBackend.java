@@ -29,11 +29,7 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
 
     private static final String TAG = "EmbeddedLinux";
 
-    public interface OutputSink {
-        void onStdout(byte[] data, int len);
-        void onStderr(byte[] data, int len);
-        void onExit(int exitCode);
-    }
+    public interface OutputSink { void onStdout(byte[] data, int len); void onStderr(byte[] data, int len); void onExit(int exitCode); }
 
     private final Context appContext;
     private final PrefixInstaller installer;
@@ -45,14 +41,10 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         this.installer = new PrefixInstaller(appContext);
     }
 
-    public PrefixInstaller installer() {
-        return installer;
-    }
+    public PrefixInstaller installer() { return installer; }
 
     @Override
-    public boolean isAvailable() {
-        return setupState() == SetupState.READY;
-    }
+    public boolean isAvailable() { return setupState() == SetupState.READY; }
 
     @Override
     public SetupState setupState() {
