@@ -284,6 +284,7 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         env.put("HOME", "/home");
         env.put("TERM", "xterm-256color");
         env.put("PATH", "/bin:/usr/bin:/usr/local/bin:/system/bin:/system/xbin");
+        env.put("LD_LIBRARY_PATH", prefix.getAbsolutePath() + "/lib");
 
         // PROOT_LOADER tells proot to use the W^X-safe loader on Android 14+.
         File nativeDir2 = new File(appContext.getApplicationInfo().nativeLibraryDir);
