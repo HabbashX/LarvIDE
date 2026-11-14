@@ -16,11 +16,17 @@ public class SetupConfigTest {
     public void eachLanguageMapsToOnePackage() {
         Map<SetupConfig.Language, String> map = SetupConfig.packagesFor(
             Arrays.asList(SetupConfig.Language.values()));
-        assertEquals(4, map.size());
+        assertEquals(10, map.size());
         assertEquals("openjdk-17", map.get(SetupConfig.Language.JAVA));
         assertEquals("clang", map.get(SetupConfig.Language.CPP));
         assertEquals("python", map.get(SetupConfig.Language.PYTHON));
         assertEquals("nodejs", map.get(SetupConfig.Language.NODE));
+        assertEquals("golang", map.get(SetupConfig.Language.GO));
+        assertEquals("php", map.get(SetupConfig.Language.PHP));
+        assertEquals("ruby", map.get(SetupConfig.Language.RUBY));
+        assertEquals("rust", map.get(SetupConfig.Language.RUST));
+        assertEquals("perl", map.get(SetupConfig.Language.PERL));
+        assertEquals("lua", map.get(SetupConfig.Language.LUA));
     }
 
     @Test
@@ -55,6 +61,18 @@ public class SetupConfigTest {
             SetupConfig.entryFileName(SetupConfig.Language.PYTHON));
         assertEquals("index.js",
             SetupConfig.entryFileName(SetupConfig.Language.NODE));
+        assertEquals("main.go",
+            SetupConfig.entryFileName(SetupConfig.Language.GO));
+        assertEquals("index.php",
+            SetupConfig.entryFileName(SetupConfig.Language.PHP));
+        assertEquals("main.rb",
+            SetupConfig.entryFileName(SetupConfig.Language.RUBY));
+        assertEquals("main.rs",
+            SetupConfig.entryFileName(SetupConfig.Language.RUST));
+        assertEquals("main.pl",
+            SetupConfig.entryFileName(SetupConfig.Language.PERL));
+        assertEquals("main.lua",
+            SetupConfig.entryFileName(SetupConfig.Language.LUA));
         assertEquals(null, SetupConfig.entryFileName(null));
     }
 
