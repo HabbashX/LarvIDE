@@ -327,12 +327,12 @@ public class PrefixInstaller {
             if (lowerName.contains(".xz")) {
                 org.tukaani.xz.XZInputStream xzIn =
                     new org.tukaani.xz.XZInputStream(new java.io.ByteArrayInputStream(dataTar));
-                tarData = xzIn.readAllBytes();
+                tarData = readAll(xzIn);
                 xzIn.close();
             } else {
                 java.util.zip.GZIPInputStream gzIn =
                     new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(dataTar));
-                tarData = gzIn.readAllBytes();
+                tarData = readAll(gzIn);
                 gzIn.close();
             }
         } catch (java.util.zip.ZipException e) {
@@ -412,6 +412,19 @@ public class PrefixInstaller {
             }
         } finally {
             conn.disconnect();
+        }
+        return baos.toByteArray();
+    }
+
+    /**
+     * Read all bytes from an InputStream manually (works on API 24+).
+     */
+    private static byte[] readAll(InputStream in) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) > 0) {
+            baos.write(buf, 0, n);
         }
         return baos.toByteArray();
     }
