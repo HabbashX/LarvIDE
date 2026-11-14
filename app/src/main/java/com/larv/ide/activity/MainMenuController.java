@@ -81,17 +81,8 @@ final class MainMenuController {
         } else if (itemId == R.id.menu_redo) {
             runOnCurrentEditor(f -> f.execAction("redo"));
             return true;
-        } else if (itemId == R.id.menu_select_all) {
-            runOnCurrentEditor(f -> f.execAction("selectAll"));
-            return true;
         } else if (itemId == R.id.menu_find) {
             runOnCurrentEditor(f -> f.execAction("find"));
-            return true;
-        } else if (itemId == R.id.menu_find_next) {
-            runOnCurrentEditor(f -> f.execAction("findNext"));
-            return true;
-        } else if (itemId == R.id.menu_find_previous) {
-            runOnCurrentEditor(f -> f.execAction("findPrevious"));
             return true;
         } else if (itemId == R.id.menu_search_project) {
             activity.projectActions.showProjectSearchDialog();
@@ -108,21 +99,14 @@ final class MainMenuController {
         } else if (itemId == R.id.menu_run) {
             activity.runController.compileAndRun();
             return true;
-        } else if (itemId == R.id.menu_stop) {
-            activity.runController.stopRunningProcess();
-            return true;
         } else if (itemId == R.id.menu_compile) {
             activity.runController.compileAndRun();
             return true;
+        } else if (itemId == R.id.menu_stop) {
+            activity.runController.stopRunningProcess();
+            return true;
         } else if (itemId == R.id.menu_open_terminal) {
             activity.runController.openEmbeddedTerminal();
-            return true;
-        } else if (itemId == R.id.menu_fullscreen_terminal) {
-            activity.runController.openFullscreenTerminal();
-            return true;
-        } else if (itemId == R.id.menu_project_home) {
-            activity.startActivity(new Intent(activity,
-                com.larv.ide.ui.ProjectHomeActivity.class));
             return true;
         } else if (itemId == R.id.menu_languages) {
             com.larv.ide.ui.dialog.LanguagesDialog.show(activity,
@@ -183,9 +167,6 @@ final class MainMenuController {
                             Toast.LENGTH_LONG).show();
                     }
                 });
-            return true;
-        } else if (itemId == R.id.menu_clean) {
-            clearBuildOutput();
             return true;
         } else if (itemId == R.id.menu_settings) {
             activity.showSettingsDialog();

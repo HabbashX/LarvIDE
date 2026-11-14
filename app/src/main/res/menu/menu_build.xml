@@ -3,25 +3,14 @@
 
     <item
         android:id="@+id/menu_run"
-        android:title="Run (Compile and Run)" />
+        android:title="Run" />
 
     <item
         android:id="@+id/menu_compile"
-        android:title="Compile Only" />
+        android:title="Compile" />
 
     <item
         android:id="@+id/menu_open_terminal"
-        android:title="Open Terminal" />
+        android:title="Terminal" />
 
-    <item
-        android:id="@+id/menu_project_home"
-        android:title="Project Home" />
-
-    <item
-        android:id="@+id/menu_fullscreen_terminal"
-        android:title="Full-Screen Terminal" />
-
-    <item
-        android:id="@+id/menu_clean"
-        android:title="Clean Project" />
 </menu>

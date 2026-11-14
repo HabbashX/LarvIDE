@@ -9,6 +9,7 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.CompoundButton;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -22,22 +23,12 @@ import androidx.core.content.ContextCompat;
 
 import com.larv.ide.R;
 
+/**
+ * IntelliJ-style settings dialog: search bar at the top, a category tree on
+ * the left and the settings panel for the selected category on the right.
+ * Tapping a category on the left swaps the right panel instantly.
+ */
 public class SettingsDialog {
-
-    /**
-     * Small shared pool for the dialog's occasional background work (prefix
-     * size scan, removal). Avoids spawning a raw platform thread per tap.
-     */
-    private static final com.larv.ide.concurrent.IOExecutor BACKGROUND =
-        new com.larv.ide.concurrent.IOExecutor(1);
-
-    private static void runBackground(Runnable task) {
-        try {
-            BACKGROUND.execute(task);
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
-            // Dialog is closing / work already queued: nothing to do.
-        }
-    }
 
     public interface Callbacks {
         SharedPreferences prefs();
@@ -51,37 +42,293 @@ public class SettingsDialog {
         SharedPreferences prefs = callbacks.prefs();
         final int accent = callbacks.accentColor();
 
-        ScrollView scroller = new ScrollView(activity);
+        // ------------------------------------------------------------------ root
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(activity, 24);
-        root.setPadding(pad, dp(activity, 8), pad, dp(activity, 8));
-        scroller.addView(root);
+        int pad = dp(activity, 16);
+        root.setPadding(pad, pad, pad, pad);
+        root.setBackgroundColor(ContextCompat.getColor(activity, R.color.background));
+
+        // ---------------------------------------------------------------- search
+        TextView searchLabel = new TextView(activity);
+        searchLabel.setText("Search settings");
+        searchLabel.setTextSize(12);
+        searchLabel.setTextColor(ContextCompat.getColor(activity, R.color.text_secondary));
+        searchLabel.setPadding(0, 0, 0, dp(activity, 4));
+        root.addView(searchLabel);
+
+        EditText searchField = new EditText(activity);
+        searchField.setHint("Search...");
+        searchField.setTextSize(14);
+        searchField.setBackground(ContextCompat.getDrawable(activity, R.drawable.edittext_ide));
+        searchField.setPadding(dp(activity, 12), dp(activity, 10), dp(activity, 12), dp(activity, 10));
+        searchField.setTextColor(ContextCompat.getColor(activity, R.color.text_primary));
+        root.addView(searchField);
+
+        // ---------------------------------------------------------- split pane
+        LinearLayout split = new LinearLayout(activity);
+        split.setOrientation(LinearLayout.HORIZONTAL);
+        split.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        split.setPadding(0, dp(activity, 8), 0, 0);
+        root.addView(split);
+
+        // left category pane
+        LinearLayout categories = new LinearLayout(activity);
+        categories.setOrientation(LinearLayout.VERTICAL);
+        categories.setLayoutParams(new LinearLayout.LayoutParams(
+                dp(activity, 200), ViewGroup.LayoutParams.MATCH_PARENT));
+        categories.setBackgroundColor(ContextCompat.getColor(activity, R.color.surface_variant));
+        split.addView(categories);
+
+        // right settings pane (scrollable)
+        ScrollView settingsScroller = new ScrollView(activity);
+        settingsScroller.setFillViewport(true);
+        LinearLayout.LayoutParams rightLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+        rightLp.leftMargin = dp(activity, 8);
+        settingsScroller.setLayoutParams(rightLp);
+        split.addView(settingsScroller);
+
+        LinearLayout settingsPane = new LinearLayout(activity);
+        settingsPane.setOrientation(LinearLayout.VERTICAL);
+        settingsPane.setPadding(dp(activity, 16), dp(activity, 8), dp(activity, 16), dp(activity, 16));
+        settingsScroller.addView(settingsPane);
+
+        // state
+        final String[] currentCat = {"appearance"};
+
+        // ------------------------------------------------------------ categories
+        String[][] catGroups = {
+                {"appearance", "Appearance & Behavior"},
+                {"editor", "Editor"},
+                {"build", "Build, Execution, Deployment"},
+                {"project", "Project"},
+        };
+
+        for (String[] group : catGroups) {
+            TextView cat = categoryItem(activity, group[1], group[0].equals(currentCat[0]));
+            cat.setTag(group[0]);
+            cat.setOnClickListener(v -> {
+                currentCat[0] = (String) v.getTag();
+                refreshCategories(activity, categories, catGroups, currentCat[0]);
+                buildSettingsPane(settingsPane, activity, prefs, callbacks,
+                        currentCat[0], accent);
+            });
+            categories.addView(cat);
+        }
+
+        // ---------------------------------------------------------- build panes
+        buildSettingsPane(settingsPane, activity, prefs, callbacks,
+                currentCat[0], accent);
+
+        // -------------------------------------------------------------- buttons
+        LinearLayout buttons = new LinearLayout(activity);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(Gravity.END);
+        buttons.setPadding(0, dp(activity, 12), 0, 0);
+        root.addView(buttons);
+
+        android.widget.Button cancelBtn = new android.widget.Button(activity, null, 0);
+        cancelBtn.setText("Cancel");
+        cancelBtn.setTextSize(13);
+        cancelBtn.setPadding(dp(activity, 16), dp(activity, 8), dp(activity, 16), dp(activity, 8));
+        buttons.addView(cancelBtn);
+
+        android.widget.Button applyBtn = new android.widget.Button(activity, null, 0);
+        applyBtn.setText("Apply");
+        applyBtn.setTextSize(13);
+        applyBtn.setTextColor(ContextCompat.getColor(activity, R.color.text_on_primary));
+        applyBtn.setBackgroundColor(ContextCompat.getColor(activity, R.color.ide_accent));
+        applyBtn.setPadding(dp(activity, 16), dp(activity, 8), dp(activity, 16), dp(activity, 8));
+        buttons.addView(applyBtn);
+
+        final AlertDialog dialog = new AlertDialog.Builder(activity)
+                .setView(root)
+                .setCancelable(true)
+                .create();
+
+        cancelBtn.setOnClickListener(v -> dialog.dismiss());
+        applyBtn.setOnClickListener(v -> {
+            applySettings(activity, prefs, callbacks, settingsPane, currentCat[0], accent);
+            dialog.dismiss();
+        });
+
+        dialog.show();
+    }
+
+    /* =========================================================================
+     * Apply: read UI controls back into prefs, then fire the right callback
+     * ========================================================================= */
+
+    private static void applySettings(Activity activity,
+                                      SharedPreferences prefs,
+                                      Callbacks callbacks,
+                                      LinearLayout pane,
+                                      String category,
+                                      int accent) {
+        SharedPreferences.Editor ed = prefs.edit();
+
+        Object tag = pane.getTag();
+        boolean accentChanged = false;
+        String newAccent = prefs.getString("appAccent", "blue");
+
+        if (tag instanceof Object[] && category.equals("appearance")) {
+            Object[] state = (Object[]) tag;
+            Spinner accentSpinner = (Spinner) state[0];
+            EditText customAccent = (EditText) state[1];
+            Spinner themeSpinner = (Spinner) state[2];
+            Spinner familySpinner = (Spinner) state[3];
+
+            String[] accentKeys = {"blue", "purple", "green", "orange", "pink", "cyan", "custom"};
+            newAccent = accentKeys[accentSpinner.getSelectedItemPosition()];
+            String[] themeIds = (state.length > 4) ? (String[]) state[4]
+                : new String[]{"islands-dark", "vscode-dark-plus", "monokai", "larv-light", "solarized-light"};
+            String newTheme = themeIds[themeSpinner.getSelectedItemPosition()];
+            String[] familyKeys = (state.length > 5) ? (String[]) state[5]
+                : new String[]{"jetbrains", "fira", "roboto", "mono", "system"};
+            String newFamily = familyKeys[familySpinner.getSelectedItemPosition()];
+
+            ed.putString("appAccent", newAccent)
+                .putString("editorTheme", newTheme)
+                .putString("editorFontFamily", newFamily);
+
+            if ("custom".equals(newAccent)) {
+                String hex = customAccent.getText().toString().trim();
+                try {
+                    int color = android.graphics.Color.parseColor(hex);
+                    ed.putInt("customAccentColor", color);
+                } catch (IllegalArgumentException e) {
+                    ed.remove("customAccentColor");
+                }
+            } else {
+                ed.remove("customAccentColor");
+            }
+
+            accentChanged = !newAccent.equals(prefs.getString("appAccent", "blue"));
+        } else if (tag instanceof Object[] && category.equals("editor")) {
+            Object[] state = (Object[]) tag;
+            SeekBar fontSeek = (SeekBar) state[0];
+            Spinner tabSpinner = (Spinner) state[1];
+
+            boolean hasNativeMin =
+                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O;
+            int fontMin = 10;
+            int newSize = hasNativeMin ? fontSeek.getProgress()
+                : fontSeek.getProgress() + fontMin;
+            int newTabSize = Integer.parseInt((String) tabSpinner.getSelectedItem());
+
+            ed.putInt("editorFontSize", newSize)
+                .putInt("editorTabSize", newTabSize);
+
+            // re-apply editor live
+            callbacks.onEditorSettingsApplied(
+                prefs.getString("editorTheme", "islands-dark"),
+                prefs.getString("editorFontFamily", "jetbrains"),
+                newSize, newTabSize);
+        } else if (tag instanceof Object[] && category.equals("build")) {
+            Object[] state = (Object[]) tag;
+            Spinner levelSpinner = (Spinner) state[0];
+            ed.putString("javaLevel", (String) levelSpinner.getSelectedItem());
+        }
+
+        ed.apply();
+
+        if (accentChanged) {
+            callbacks.onAccentChanged(newAccent);
+        }
+    }
+
+    /* =========================================================================
+     * Category tree
+     * ========================================================================= */
+
+    private static TextView categoryItem(Activity activity, String text, boolean selected) {
+        TextView item = new TextView(activity);
+        item.setText(text);
+        item.setTextSize(13);
+        item.setPadding(dp(activity, 14), dp(activity, 10), dp(activity, 10), dp(activity, 10));
+        item.setTextColor(selected
+                ? ContextCompat.getColor(activity, R.color.ide_accent)
+                : ContextCompat.getColor(activity, R.color.text_primary));
+        item.setBackgroundColor(selected
+                ? ContextCompat.getColor(activity, R.color.primary_light)
+                : android.graphics.Color.TRANSPARENT);
+        return item;
+    }
+
+    private static void refreshCategories(Activity activity,
+                                          LinearLayout categories,
+                                          String[][] catGroups,
+                                          String selected) {
+        categories.removeAllViews();
+        for (String[] group : catGroups) {
+            TextView cat = categoryItem(activity, group[1], group[0].equals(selected));
+            cat.setTag(group[0]);
+            categories.addView(cat);
+        }
+    }
+
+    /* =========================================================================
+     * Settings panes
+     * ========================================================================= */
+
+    private static void buildSettingsPane(LinearLayout pane,
+                                          Activity activity,
+                                          SharedPreferences prefs,
+                                          Callbacks callbacks,
+                                          String category,
+                                          int accent) {
+        pane.removeAllViews();
+
+        if ("appearance".equals(category)) {
+            buildAppearancePane(pane, activity, prefs, callbacks, accent);
+        } else if ("editor".equals(category)) {
+            buildEditorPane(pane, activity, prefs, callbacks, accent);
+        } else if ("build".equals(category)) {
+            buildBuildPane(pane, activity, prefs, callbacks, accent);
+        } else if ("project".equals(category)) {
+            buildProjectPane(pane, activity, prefs, callbacks);
+        }
+    }
+
+    // ---- Appearance & Behavior ----------------------------------------------
+
+    private static void buildAppearancePane(LinearLayout pane,
+                                            Activity activity,
+                                            SharedPreferences prefs,
+                                            Callbacks callbacks,
+                                            int accent) {
+        pane.addView(sectionTitle(activity, "Appearance"));
 
         final String savedAccent = prefs.getString("appAccent", "blue");
         final String[] accentKeys = {"blue", "purple", "green", "orange", "pink", "cyan", "custom"};
         final String[] accentNames = {"Blue", "Purple", "Green", "Orange", "Pink", "Cyan", "Custom"};
-        root.addView(label(activity, "Accent color"));
+        pane.addView(label(activity, "Accent color"));
         final Spinner accentSpinner = spinner(activity, accentNames,
                 Math.max(0, java.util.Arrays.asList(accentKeys).indexOf(savedAccent)));
-        root.addView(accentSpinner);
+        pane.addView(accentSpinner);
 
         final EditText customAccent = new EditText(activity);
         customAccent.setHint("#RRGGBB");
         customAccent.setText(prefs.getString("customAccentColor", ""));
+        customAccent.setTextSize(13);
+        customAccent.setBackground(ContextCompat.getDrawable(activity, R.drawable.edittext_ide));
+        customAccent.setPadding(dp(activity, 8), dp(activity, 8), dp(activity, 8), dp(activity, 8));
         customAccent.setVisibility("custom".equals(savedAccent)
-            ? View.VISIBLE : View.GONE);
-        root.addView(customAccent);
+                ? View.VISIBLE : View.GONE);
+        pane.addView(customAccent);
         accentSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> parent, View v,
-                                                int position, long id) {
+                                                 int position, long id) {
                 customAccent.setVisibility("custom".equals(accentKeys[position])
-                    ? View.VISIBLE : View.GONE);
+                        ? View.VISIBLE : View.GONE);
             }
             @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
         });
 
-        root.addView(label(activity, "Editor theme", true));
+        pane.addView(divider(activity));
+        pane.addView(sectionTitle(activity, "Theme"));
         final String savedTheme = prefs.getString("editorTheme", "islands-dark");
         final String[] themeIds = {"islands-dark", "vscode-dark-plus", "monokai",
                 "larv-light", "solarized-light"};
@@ -89,25 +336,57 @@ public class SettingsDialog {
                 "Light", "Solarized Light"};
         final Spinner themeSpinner = spinner(activity, themeNames,
                 java.util.Arrays.asList(themeIds).indexOf(savedTheme));
-        root.addView(themeSpinner);
+        pane.addView(themeSpinner);
 
-        root.addView(label(activity, "Font family", true));
+        pane.addView(divider(activity));
+        pane.addView(sectionTitle(activity, "Font"));
         final String savedFamily = prefs.getString("editorFontFamily", "jetbrains");
         final String[] familyKeys = {"jetbrains", "fira", "roboto", "mono", "system"};
         final String[] familyNames = {"JetBrains Mono", "Fira Code", "Roboto Mono",
                 "Monospace", "System sans-serif"};
         final Spinner familySpinner = spinner(activity, familyNames,
                 java.util.Arrays.asList(familyKeys).indexOf(savedFamily));
-        root.addView(familySpinner);
+        pane.addView(familySpinner);
 
-        root.addView(label(activity, "Editor font size", true));
-        final SeekBar fontSeek = new SeekBar(activity);
+        pane.setTag(new Object[]{accentSpinner, customAccent, themeSpinner, familySpinner,
+                themeIds, familyKeys});
+    }
+
+    // ---- Editor -------------------------------------------------------------
+
+    private static void buildEditorPane(LinearLayout pane,
+                                        Activity activity,
+                                        SharedPreferences prefs,
+                                        Callbacks callbacks,
+                                        int accent) {
+        pane.addView(sectionTitle(activity, "General"));
+        pane.addView(toggle(activity, accent, "Word wrap",
+                prefs.getBoolean("editorWordWrap", false),
+                (b, checked) -> prefs.edit().putBoolean("editorWordWrap", checked).apply()));
+        pane.addView(toggle(activity, accent, "Show line numbers",
+                prefs.getBoolean("editorLineNumbers", true),
+                (b, checked) -> prefs.edit().putBoolean("editorLineNumbers", checked).apply()));
+        pane.addView(toggle(activity, accent, "Minimap",
+                prefs.getBoolean("editorMinimap", false),
+                (b, checked) -> prefs.edit().putBoolean("editorMinimap", checked).apply()));
+        pane.addView(toggle(activity, accent, "Indent guides",
+                prefs.getBoolean("editorIndentGuides", true),
+                (b, checked) -> prefs.edit().putBoolean("editorIndentGuides", checked).apply()));
+        pane.addView(toggle(activity, accent, "Highlight current line",
+                prefs.getBoolean("editorHighlightLine", true),
+                (b, checked) -> prefs.edit().putBoolean("editorHighlightLine", checked).apply()));
+        pane.addView(toggle(activity, accent, "Auto save",
+                prefs.getBoolean("autosaveEnabled", true),
+                (b, checked) -> prefs.edit().putBoolean("autosaveEnabled", checked).apply()));
+
+        pane.addView(divider(activity));
+        pane.addView(sectionTitle(activity, "Font Size"));
         final int savedFont = prefs.getInt("editorFontSize", 14);
-        // SeekBar.setMin exists only on API 26+ (minSdk is 21): emulate with offset below.
         final boolean hasNativeMin =
             android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O;
         final int fontMin = 10;
         final int fontMax = 24;
+        final SeekBar fontSeek = new SeekBar(activity);
         if (hasNativeMin) {
             fontSeek.setMin(fontMin);
             fontSeek.setMax(fontMax);
@@ -117,10 +396,10 @@ public class SettingsDialog {
             fontSeek.setProgress(Math.min(fontMax - fontMin, Math.max(0, savedFont - fontMin)));
         }
         fontSeek.getProgressDrawable().setColorFilter(
-                callbacks.accentColor(), PorterDuff.Mode.SRC_IN);
+                accent, PorterDuff.Mode.SRC_IN);
         fontSeek.getThumb().setColorFilter(
-                callbacks.accentColor(), PorterDuff.Mode.SRC_IN);
-        root.addView(fontSeek);
+                accent, PorterDuff.Mode.SRC_IN);
+        pane.addView(fontSeek);
 
         final TextView fontValue = new TextView(activity);
         fontValue.setText(savedFont + " pt");
@@ -133,96 +412,83 @@ public class SettingsDialog {
             @Override public void onStartTrackingTouch(SeekBar sb) { }
             @Override public void onStopTrackingTouch(SeekBar sb) { }
         });
-        root.addView(fontValue);
+        pane.addView(fontValue);
 
-        root.addView(toggle(activity, accent, "Word wrap",
-                prefs.getBoolean("editorWordWrap", false),
-                (b, checked) -> prefs.edit().putBoolean("editorWordWrap", checked).apply()));
-        root.addView(toggle(activity, accent, "Show line numbers",
-                prefs.getBoolean("editorLineNumbers", true),
-                (b, checked) -> prefs.edit().putBoolean("editorLineNumbers", checked).apply()));
-        root.addView(toggle(activity, accent, "Minimap",
-                prefs.getBoolean("editorMinimap", false),
-                (b, checked) -> prefs.edit().putBoolean("editorMinimap", checked).apply()));
-        root.addView(toggle(activity, accent, "Indent guides",
-                prefs.getBoolean("editorIndentGuides", true),
-                (b, checked) -> prefs.edit().putBoolean("editorIndentGuides", checked).apply()));
-        root.addView(toggle(activity, accent, "Highlight current line",
-                prefs.getBoolean("editorHighlightLine", true),
-                (b, checked) -> prefs.edit().putBoolean("editorHighlightLine", checked).apply()));
-        root.addView(toggle(activity, accent, "Auto save",
-                prefs.getBoolean("autosaveEnabled", true),
-                (b, checked) -> prefs.edit().putBoolean("autosaveEnabled", checked).apply()));
-
-        root.addView(linuxEnvironmentSection(activity, prefs));
-
-        root.addView(label(activity, "Tab size", true));
+        pane.addView(divider(activity));
+        pane.addView(sectionTitle(activity, "Tab Size"));
         final String[] tabSizes = {"2", "4", "8"};
         final int savedTab = prefs.getInt("editorTabSize", 4);
         final Spinner tabSpinner = spinner(activity, tabSizes,
                 Math.max(0, java.util.Arrays.asList(tabSizes).indexOf(String.valueOf(savedTab))));
-        root.addView(tabSpinner);
+        pane.addView(tabSpinner);
 
-        root.addView(label(activity, "Java language level", true));
+        pane.setTag(new Object[]{fontSeek, tabSpinner, prefs});
+    }
+
+    // ---- Build, Execution, Deployment ---------------------------------------
+
+    private static void buildBuildPane(LinearLayout pane,
+                                       Activity activity,
+                                       SharedPreferences prefs,
+                                       Callbacks callbacks,
+                                       int accent) {
+        pane.addView(sectionTitle(activity, "Java"));
+        pane.addView(label(activity, "Java language level"));
         final String[] levels = {"11", "16", "17"};
         final String savedLevel = prefs.getString("javaLevel", "16");
         final Spinner levelSpinner = spinner(activity, levels,
                 Math.max(0, java.util.Arrays.asList(levels).indexOf(savedLevel)));
-        root.addView(levelSpinner);
+        pane.addView(levelSpinner);
 
-        new AlertDialog.Builder(activity)
-                .setTitle("Settings")
-                .setView(scroller)
-                .setPositiveButton("Apply", (dialog, which) -> {
-                    String newAccent = accentKeys[accentSpinner.getSelectedItemPosition()];
-                    String newTheme = themeIds[themeSpinner.getSelectedItemPosition()];
-                    String newFamily = familyKeys[familySpinner.getSelectedItemPosition()];
-                    int newSize = hasNativeMin ? fontSeek.getProgress()
-                        : fontSeek.getProgress() + fontMin;
-                    int newTabSize = Integer.parseInt(
-                            (String) tabSpinner.getSelectedItem());
-                    android.content.SharedPreferences.Editor ed = prefs.edit()
-                            .putString("appAccent", newAccent)
-                            .putString("editorTheme", newTheme)
-                            .putString("editorFontFamily", newFamily)
-                            .putInt("editorFontSize", newSize)
-                            .putInt("editorTabSize", newTabSize)
-                            .putString("javaLevel",
-                                    (String) levelSpinner.getSelectedItem());
-                    if ("custom".equals(newAccent)) {
-                        String hex = customAccent.getText().toString().trim();
-                        try {
-                            int color = android.graphics.Color.parseColor(hex);
-                            ed.putInt("customAccentColor", color);
-                        } catch (IllegalArgumentException e) {
-                            ed.remove("customAccentColor");
-                        }
-                    } else {
-                        ed.remove("customAccentColor");
-                    }
-                    ed.apply();
-                    if (!newAccent.equals(savedAccent)) {
-                        callbacks.onAccentChanged(newAccent);
-                    } else {
-                        callbacks.onEditorSettingsApplied(newTheme, newFamily,
-                                newSize, newTabSize);
-                    }
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        pane.addView(divider(activity));
+        pane.addView(sectionTitle(activity, "Linux Environment"));
+        pane.addView(linuxEnvironmentSection(activity, prefs));
+
+        pane.setTag(new Object[]{levelSpinner, prefs});
+    }
+
+    // ---- Project ------------------------------------------------------------
+
+    private static void buildProjectPane(LinearLayout pane,
+                                         Activity activity,
+                                         SharedPreferences prefs,
+                                         Callbacks callbacks) {
+        pane.addView(sectionTitle(activity, "Project"));
+        pane.addView(label(activity, "No project-specific settings available yet."));
+        pane.addView(toggle(activity, callbacks.accentColor(), "Show hidden files",
+                prefs.getBoolean("projectShowHidden", false),
+                (b, checked) -> prefs.edit().putBoolean("projectShowHidden", checked).apply()));
+    }
+
+    /* =========================================================================
+     * Shared UI helpers
+     * ========================================================================= */
+
+    private static TextView sectionTitle(Activity activity, String text) {
+        TextView label = new TextView(activity);
+        label.setText(text);
+        label.setTextSize(13);
+        label.setTypeface(null, android.graphics.Typeface.BOLD);
+        label.setTextColor(ContextCompat.getColor(activity, R.color.text_secondary));
+        label.setPadding(0, dp(activity, 14), 0, dp(activity, 6));
+        return label;
     }
 
     private static TextView label(Activity activity, String text) {
-        return label(activity, text, false);
-    }
-
-    private static TextView label(Activity activity, String text, boolean spaced) {
         TextView label = new TextView(activity);
         label.setText(text);
         label.setTextColor(ContextCompat.getColor(activity, R.color.text_secondary));
         label.setTextSize(12);
-        label.setPadding(0, dp(activity, spaced ? 14 : 6), 0, dp(activity, 4));
+        label.setPadding(0, dp(activity, 8), 0, dp(activity, 4));
         return label;
+    }
+
+    private static View divider(Activity activity) {
+        View div = new View(activity);
+        div.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        div.setBackgroundColor(ContextCompat.getColor(activity, R.color.divider));
+        return div;
     }
 
     private static Spinner spinner(Activity activity, String[] items, int selection) {
@@ -266,11 +532,7 @@ public class SettingsDialog {
         return Math.round(v * activity.getResources().getDisplayMetrics().density);
     }
 
-    /**
-     * Linux Environment section: status, one-tap download with progress,
-     * bootstrap URL override, and removal to free space. Runs entirely
-     * in-app — no external Termux app involved.
-     */
+    /* ----------------------------------------------------------------------- */
     private static LinearLayout linuxEnvironmentSection(Activity activity,
                                                         SharedPreferences prefs) {
         com.larv.ide.run.backend.embedded.PrefixInstaller installer =
@@ -323,7 +585,6 @@ public class SettingsDialog {
         };
         refreshInfo.run();
 
-        // Prefix size is computed off the UI thread (can be many files).
         runBackground(() -> {
             String info;
             if (com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity)) {
@@ -423,23 +684,14 @@ public class SettingsDialog {
             });
         });
 
-        android.widget.Button wizardBtn = new android.widget.Button(activity, null, 0);
-        wizardBtn.setText("Setup wizard");
-        wizardBtn.setTextSize(12);
-        LinearLayout.LayoutParams wizardLp = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        wizardLp.topMargin = dp(activity, 8);
-        wizardBtn.setLayoutParams(wizardLp);
-        wizardBtn.setOnClickListener(v -> {
-            try {
-                activity.startActivity(new android.content.Intent(activity,
-                    com.larv.ide.ui.setup.SetupWizardActivity.class));
-            } catch (Exception ignored) {
-            }
-        });
-        card.addView(wizardBtn);
-
         return section;
+    }
+
+    private static void runBackground(Runnable task) {
+        try {
+            new com.larv.ide.concurrent.IOExecutor(1).execute(task);
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+        }
     }
 
     private static long dirSize(java.io.File dir) {
@@ -460,7 +712,6 @@ public class SettingsDialog {
                 for (java.io.File c : children) deleteRecursive(c);
             }
         }
-        //noinspection ResultOfMethodCallIgnored
         f.delete();
     }
 
@@ -469,5 +720,4 @@ public class SettingsDialog {
         if (bytes < 1024L * 1024 * 1024) return (bytes / (1024 * 1024)) + " MB";
         return String.format(java.util.Locale.US, "%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
-
 }

@@ -10,10 +10,7 @@
         android:title="Redo" />
 
     <item
-        android:id="@+id/menu_select_all"
-        android:title="Select All" />
-
-    <item
         android:id="@+id/menu_find"
         android:title="Find..." />
+
 </menu>

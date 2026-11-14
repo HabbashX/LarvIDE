@@ -6,14 +6,7 @@
         android:title="Find in File..." />
 
     <item
-        android:id="@+id/menu_find_next"
-        android:title="Find Next" />
-
-    <item
-        android:id="@+id/menu_find_previous"
-        android:title="Find Previous" />
-
-    <item
         android:id="@+id/menu_search_project"
         android:title="Search in Project..." />
+
 </menu>
