@@ -161,7 +161,7 @@ public class PrefixInstaller {
         } finally {
             conn.disconnect();
         }
-        return baos.toString(StandardCharsets.UTF_8);
+        return new String(baos.toByteArray(), StandardCharsets.UTF_8);
     }
 
     private static void extract(File zip, File destDir) throws Exception {
