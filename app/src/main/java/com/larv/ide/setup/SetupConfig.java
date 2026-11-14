@@ -23,7 +23,19 @@ public final class SetupConfig {
         PYTHON("Python", "python",
             "Scripts and assignments — runs with python3"),
         NODE("JavaScript / Node", "nodejs",
-            "JS beyond the browser — runs with node");
+            "JS beyond the browser — runs with node"),
+        GO("Go", "golang",
+            "Compiled, statically typed — runs with go"),
+        PHP("PHP", "php",
+            "Server-side scripting — runs with php"),
+        RUBY("Ruby", "ruby",
+            "Object-oriented scripting — runs with ruby"),
+        RUST("Rust", "rust",
+            "Systems programming — compiles with rustc"),
+        PERL("Perl", "perl",
+            "Text processing — runs with perl"),
+        LUA("Lua", "lua",
+            "Lightweight scripting — runs with lua");
 
         public final String title;
         public final String pkg;
@@ -78,6 +90,12 @@ public final class SetupConfig {
             case CPP: return "main.cpp";
             case PYTHON: return "main.py";
             case NODE: return "index.js";
+            case GO: return "main.go";
+            case PHP: return "index.php";
+            case RUBY: return "main.rb";
+            case RUST: return "main.rs";
+            case PERL: return "main.pl";
+            case LUA: return "main.lua";
             default: return null;
         }
     }

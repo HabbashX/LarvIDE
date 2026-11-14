@@ -253,7 +253,7 @@ public class SessionManager {
 
     private void openRestoredTab(int gen, String path, File f, String content, boolean hasBuffer,
                                  String activePath) {
-        if (gen != restoreGen) return; // stale restore — a newer one owns the bar
+        if (gen != restoreGen) return; // stale restore a newer one owns the bar
         OpenFile existing = host.filesByPath().get(path);
         if (existing == null) {
             OpenFile created = new OpenFile(path, content);

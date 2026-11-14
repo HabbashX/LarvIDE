@@ -99,6 +99,7 @@ public class EmbeddedLinuxSession {
         });
         final OutputStream target;
         OutputStream t;
+        assert p != null;
         try {
             t = p.getOutputStream();
         } catch (Exception e) {

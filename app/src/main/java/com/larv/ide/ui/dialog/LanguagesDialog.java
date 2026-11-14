@@ -49,12 +49,16 @@ public class LanguagesDialog {
         root.addView(note);
 
         Map<String, String> packages = new LinkedHashMap<>();
-        packages.put("Java (OpenJDK 17 — javac + JRE)", "openjdk-17");
-        packages.put("Python 3", "python");
-        packages.put("JavaScript / Node.js", "nodejs");
-        packages.put("C / C++ (Clang)", "clang");
-        packages.put("Rust", "rust");
-        packages.put("Ruby", "ruby");
+        packages.put("☕ Java (OpenJDK 17 — javac + JRE)", "openjdk-17");
+        packages.put("🐍 Python 3", "python");
+        packages.put("🟢 JavaScript / Node.js", "nodejs");
+        packages.put("⚙️ C / C++ (Clang)", "clang");
+        packages.put("🐹 Go", "golang");
+        packages.put("🐘 PHP", "php");
+        packages.put("💎 Ruby", "ruby");
+        packages.put("🦀 Rust", "rust");
+        packages.put("🐪 Perl", "perl");
+        packages.put("🌙 Lua", "lua");
 
         for (Map.Entry<String, String> e : packages.entrySet()) {
             String pkg = e.getValue();
