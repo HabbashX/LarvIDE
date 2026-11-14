@@ -5,6 +5,8 @@ buildscript {
     }
     dependencies {
         classpath "com.android.tools.build:gradle:8.4.0"
+        // XZ decompression for extracting libandroid-support from .deb at install time
+        classpath "org.tukaani:xz:1.9"
     }
 }
 

@@ -98,6 +98,7 @@ dependencies {
     
     // JSON parsing
     implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'org.tukaani:xz:1.9'
 
     // No on-device dexer: Java compiles and runs inside the Linux prefix
     // (javac + JRE), exactly like Python, Node and Clang. R8/D8 removed.

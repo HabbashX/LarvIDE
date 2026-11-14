@@ -1,6 +1,8 @@
 package com.larv.ide.run.backend.embedded;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -71,6 +73,13 @@ public class PrefixInstaller {
                     ? android.os.Build.SUPPORTED_ABIS[0] : "unknown") + ")"));
             return;
         }
+        // Check network connectivity before starting download
+        ConnectivityManager cm = (ConnectivityManager) appContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo activeNetwork = cm != null ? cm.getActiveNetworkInfo() : null;
+        if (activeNetwork == null || !activeNetwork.isConnected()) {
+            post(listener, () -> listener.onError("No internet connection. Please connect to WiFi and try again."));
+            return;
+        }
         installing = true;
         executor.execute(() -> {
             try {
@@ -113,9 +122,12 @@ public class PrefixInstaller {
             (HttpURLConnection) new URL(urlStr).openConnection();
         conn.setConnectTimeout(30_000);
         conn.setReadTimeout(120_000);
+        conn.setRequestProperty("User-Agent", "LarvIDE/1.0 (Android)");
+        conn.setRequestProperty("Accept", "*/*");
         conn.connect();
-        if (conn.getResponseCode() / 100 != 2) {
-            throw new IllegalStateException("HTTP " + conn.getResponseCode());
+        int code = conn.getResponseCode();
+        if (code / 100 != 2) {
+            throw new IllegalStateException("HTTP " + code + " when connecting to " + urlStr);
         }
         long total = conn.getContentLengthLong();
         long downloaded = 0;
@@ -147,9 +159,12 @@ public class PrefixInstaller {
             (HttpURLConnection) new URL(urlStr).openConnection();
         conn.setConnectTimeout(30_000);
         conn.setReadTimeout(60_000);
+        conn.setRequestProperty("User-Agent", "LarvIDE/1.0 (Android)");
+        conn.setRequestProperty("Accept", "*/*");
         conn.connect();
-        if (conn.getResponseCode() / 100 != 2) {
-            throw new IllegalStateException("HTTP " + conn.getResponseCode());
+        int code = conn.getResponseCode();
+        if (code / 100 != 2) {
+            throw new IllegalStateException("HTTP " + code + " when connecting to " + urlStr);
         }
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (InputStream in = new BufferedInputStream(conn.getInputStream())) {
@@ -229,51 +244,148 @@ public class PrefixInstaller {
     }
 
     /**
-     * Download libandroid-support .deb from Termux repositories and extract
-     * libandroid-support.so into $PREFIX/lib/. Without this, bash cannot start.
+     * Download libandroid-support .deb from Termux repositories at install time,
+     * extract libandroid-support.so, and place it in $PREFIX/lib/. Without this,
+     * bash cannot start. No Termux app installation required — everything happens
+     * inside LarvIDE.
      */
     private void installLibAndroidSupport(File prefixDir, Listener listener) throws Exception {
-        // Step 1: Download Packages index to find libandroid-support .deb URL
-        String packages = downloadString(
+        post(listener, () -> listener.onProgress("Resolving package URL…", 86));
+
+        // Step 1: Fetch Packages index to find the correct .deb filename
+        String packagesText = downloadString(
             "https://packages.termux.org/apt/termux-main/dists/stable/main/binary-aarch64/Packages");
 
         String debFilename = null;
-        String[] blocks = packages.split("\n\n");
-        for (String block : blocks) {
-            boolean isLibAndroidSupport = false;
+        for (String block : packagesText.split("\n\n")) {
+            String pkgName = null;
+            String filename = null;
             for (String line : block.split("\n")) {
-                if (line.startsWith("Package: libandroid-support")) {
-                    isLibAndroidSupport = true;
-                }
-                if (isLibAndroidSupport && line.startsWith("Filename: ")) {
-                    debFilename = line.substring("Filename: ".length()).trim();
-                    break;
+                if (line.startsWith("Package: ")) {
+                    pkgName = line.substring("Package: ".length()).trim();
+                } else if (line.startsWith("Filename: ")) {
+                    filename = line.substring("Filename: ".length()).trim();
                 }
             }
-            if (debFilename != null) break;
+            if ("libandroid-support".equals(pkgName) && filename != null) {
+                debFilename = filename;
+                break;
+            }
         }
 
         if (debFilename == null) {
-            throw new Exception("libandroid-support not found in Termux package index");
+            throw new Exception("libandroid-support not found in Termux Packages index");
         }
 
-        // Step 2: Download the .deb into memory
+        // Step 2: Download the .deb
         post(listener, () -> listener.onProgress("Downloading libandroid-support…", 88));
-        byte[] debBytes = downloadBytes("https://packages.termux.org" + debFilename, listener);
+        // debFilename from Packages index is like "pool/main/liba/..." but full path is
+        // "apt/termux-main/pool/main/liba/..."
+        String debUrl = "https://packages.termux.org/apt/termux-main/" + debFilename.replaceFirst("^/+", "");
+        byte[] debBytes = downloadBytes(debUrl, listener);
 
-        // Step 3: Parse ar archive, find data.tar.gz, decompress, extract libandroid-support.so
-        byte[] dataTarGz = extractDataTarGzFromDeb(debBytes);
+        // Step 3: Parse ar archive to find data.tar member
+        if (debBytes.length < 8) throw new Exception("Deb too small");
+        if (!new String(debBytes, 0, 8, StandardCharsets.US_ASCII).equals("!<arch>\n")) {
+            throw new Exception("Not a valid ar archive (.deb)");
+        }
 
-        // Step 4: Extract libandroid-support.so from tar
+        byte[] dataTar = null;
+        int offset = 8;
+        while (offset + 60 <= debBytes.length) {
+            String name = new String(debBytes, offset, 16, StandardCharsets.US_ASCII).trim();
+            String sizeStr = new String(debBytes, offset + 48, 12, StandardCharsets.US_ASCII).replaceAll("[^0-9]", "");
+            long fileSize;
+            try {
+                fileSize = Long.parseLong(sizeStr);
+            } catch (NumberFormatException e) {
+                offset += 60;
+                continue;
+            }
+
+            if (name.startsWith("data.tar")) {
+                if (offset + 60 + fileSize > debBytes.length) {
+                    throw new Exception("data.tar extends beyond deb");
+                }
+                dataTar = new byte[(int) fileSize];
+                System.arraycopy(debBytes, offset + 60, dataTar, 0, (int) fileSize);
+                break;
+            }
+
+            offset += 60 + (int) fileSize;
+            if (fileSize % 2 != 0) offset += 1;
+        }
+
+        if (dataTar == null) {
+            throw new Exception("data.tar not found in .deb");
+        }
+
+        // Step 4: Decompress (gzip or xz) to get raw tar
+        byte[] tarData;
+        String lowerName = new String(debBytes, offset, 16, StandardCharsets.US_ASCII).toLowerCase();
+        try {
+            if (lowerName.contains(".xz")) {
+                org.tukaani.xz.XZInputStream xzIn =
+                    new org.tukaani.xz.XZInputStream(new java.io.ByteArrayInputStream(dataTar));
+                tarData = xzIn.readAllBytes();
+                xzIn.close();
+            } else {
+                java.util.zip.GZIPInputStream gzIn =
+                    new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(dataTar));
+                tarData = gzIn.readAllBytes();
+                gzIn.close();
+            }
+        } catch (java.util.zip.ZipException e) {
+            tarData = dataTar; // not compressed
+        }
+
         File libDir = new File(prefixDir, "lib");
         libDir.mkdirs();
-        extractLibAndroidSupportFromTar(dataTarGz, libDir);
+        extractLibFromTar(tarData, libDir);
 
         File libSo = new File(libDir, "libandroid-support.so");
-        if (!libSo.exists()) {
+        if (!libSo.exists() || libSo.length() == 0) {
             throw new Exception("libandroid-support.so not found in package");
         }
         libSo.setExecutable(true, false);
+    }
+
+    /**
+     * Parse a tar byte array and extract libandroid-support.so into destDir.
+     */
+    private static void extractLibFromTar(byte[] tarData, File destDir) throws Exception {
+        int offset = 0;
+        while (offset + 512 <= tarData.length) {
+            byte[] header = new byte[512];
+            System.arraycopy(tarData, offset, header, 0, 512);
+
+            String name = new String(header, 0, 100, StandardCharsets.US_ASCII).trim();
+            String sizeStr = new String(header, 124, 12, StandardCharsets.US_ASCII).replaceAll("[^0-7]", "");
+            long fileSize;
+            try {
+                fileSize = Long.parseLong(sizeStr, 8);
+            } catch (NumberFormatException e) {
+                offset += 512;
+                continue;
+            }
+
+            boolean isDir = header[156] == '5' || name.endsWith("/");
+
+            String baseName = name.replaceAll(".*/", "");
+            if ("libandroid-support.so".equals(baseName) && !isDir && fileSize > 0) {
+                byte[] fileData = new byte[(int) fileSize];
+                System.arraycopy(tarData, offset + 512, fileData, 0, (int) fileSize);
+                File outFile = new File(destDir, baseName);
+                try (java.io.OutputStream out = new java.io.FileOutputStream(outFile)) {
+                    out.write(fileData);
+                }
+                outFile.setExecutable(true, false);
+                return;
+            }
+
+            int paddedSize = (int) ((fileSize + 511) / 512 * 512);
+            offset += 512 + paddedSize;
+        }
     }
 
     /**
@@ -284,9 +396,12 @@ public class PrefixInstaller {
             (HttpURLConnection) new URL(urlStr).openConnection();
         conn.setConnectTimeout(30_000);
         conn.setReadTimeout(120_000);
+        conn.setRequestProperty("User-Agent", "LarvIDE/1.0 (Android)");
+        conn.setRequestProperty("Accept", "*/*");
         conn.connect();
-        if (conn.getResponseCode() / 100 != 2) {
-            throw new IllegalStateException("HTTP " + conn.getResponseCode());
+        int code = conn.getResponseCode();
+        if (code / 100 != 2) {
+            throw new IllegalStateException("HTTP " + code + " when connecting to " + urlStr);
         }
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (InputStream in = new BufferedInputStream(conn.getInputStream())) {
@@ -397,7 +512,6 @@ public class PrefixInstaller {
                 return;
             }
 
-            // Skip file data (padded to 512-byte boundary)
             long remaining = fileSize;
             byte[] skipBuf = new byte[8192];
             while (remaining > 0) {
