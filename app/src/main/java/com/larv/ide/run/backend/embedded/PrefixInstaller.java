@@ -108,8 +108,9 @@ public class PrefixInstaller {
                 post(listener, () -> listener.onComplete());
             } catch (Exception e) {
                 Log.e(TAG, "Prefix install failed", e);
+                Log.e(TAG, "Prefix install failed at stage: installing=" + installing);
                 installing = false;
-                post(listener, () -> listener.onError(e.getMessage()));
+                post(listener, () -> listener.onError("Prefix install failed: " + e.getMessage() + "\nSee logcat for full stack trace (TAG=PrefixInstaller)"));
             }
         });
     }
@@ -347,9 +348,10 @@ public class PrefixInstaller {
 
         File libSo = new File(libDir, "libandroid-support.so");
         if (!libSo.exists() || libSo.length() == 0) {
-            throw new Exception("libandroid-support.so not found in package");
+            throw new Exception("libandroid-support.so not found in package at " + libDir.getAbsolutePath());
         }
-        libSo.setExecutable(true, false);
+        boolean libExec = libSo.setExecutable(true, false);
+        Log.d(TAG, "libandroid-support.so: exists=" + libSo.exists() + " size=" + libSo.length() + " executable=" + libExec + " path=" + libSo.getAbsolutePath());
 
         // Also copy to $PREFIX/bin/ so the dynamic linker finds it next to bash
         // inside proot's chroot (where /bin = $PREFIX/bin on host).
@@ -365,6 +367,7 @@ public class PrefixInstaller {
             }
         }
         binLibSo.setExecutable(true, false);
+        Log.d(TAG, "libandroid-support.so copied to bin/: exists=" + binLibSo.exists() + " size=" + binLibSo.length() + " executable=" + binLibSo.canExecute() + " path=" + binLibSo.getAbsolutePath());
     }
 
     /**
@@ -574,7 +577,8 @@ public class PrefixInstaller {
     private static void makeExecutable(File bash) {
         try {
             if (bash.exists()) {
-                bash.setExecutable(true, false);
+                boolean bashExec = bash.setExecutable(true, false);
+                Log.d(TAG, "makeExecutable: bash=" + bash.getAbsolutePath() + " executable=" + bashExec);
                 // Recursively make all files in $PREFIX/bin and $PREFIX/usr/bin executable
                 // so they can run inside proot's chroot.
                 File prefix = bash.getParentFile().getParentFile();
@@ -584,21 +588,39 @@ public class PrefixInstaller {
                     makeExecutableRecursive(new File(prefix, "usr/sbin"));
                     makeExecutableRecursive(new File(prefix, "bin/applets"));
                 }
+            } else {
+                Log.e(TAG, "makeExecutable: bash does not exist at " + bash.getAbsolutePath());
             }
         } catch (Exception ignored) {
         }
     }
 
     private static void makeExecutableRecursive(File dir) {
-        if (dir == null || !dir.exists()) return;
+        if (dir == null || !dir.exists()) {
+            Log.d(TAG, "makeExecutableRecursive: dir does not exist: " + dir);
+            return;
+        }
         File[] files = dir.listFiles();
-        if (files == null) return;
+        if (files == null) {
+            Log.d(TAG, "makeExecutableRecursive: cannot list files in " + dir);
+            return;
+        }
+        int count = 0;
         for (File f : files) {
             if (f.isDirectory()) {
                 makeExecutableRecursive(f);
             } else if (f.isFile() && !f.canExecute()) {
-                f.setExecutable(true, false);
+                boolean set = f.setExecutable(true, false);
+                count++;
+                if (count <= 5) {
+                    Log.d(TAG, "makeExecutableRecursive: set exec on " + f.getAbsolutePath() + " result=" + set);
+                }
             }
+        }
+        if (count > 5) {
+            Log.d(TAG, "makeExecutableRecursive: set exec on " + count + " files in " + dir.getAbsolutePath());
+        } else if (count > 0) {
+            Log.d(TAG, "makeExecutableRecursive: all files already executable or none found in " + dir.getAbsolutePath());
         }
     }
 }

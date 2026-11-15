@@ -117,10 +117,15 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         String bashPath = EmbeddedRuntime.bashFile(appContext).getAbsolutePath();
         String shellCmd = joinShell(request.getCommand());
 
+        Log.d(TAG, "buildProotCommand: proot=" + proot.getAbsolutePath() + " exists=" + proot.exists() + " executable=" + proot.canExecute());
+        Log.d(TAG, "buildProotCommand: bash=" + bashPath + " exists=" + new File(bashPath).exists() + " executable=" + new File(bashPath).canExecute());
+        Log.d(TAG, "buildProotCommand: command=" + shellCmd);
+
         List<String> cmd = new ArrayList<>();
         if (proot.exists()) {
             // Make proot executable (packaged from jniLibs may lose exec bit).
-            proot.setExecutable(true, false);
+            boolean prootExec = proot.setExecutable(true, false);
+            Log.d(TAG, "buildProotCommand: proot.setExecutable result=" + prootExec);
             cmd.add(proot.getAbsolutePath());
             // Bind shared workspace so Monaco + compiler see the same files.
             File sdcard = android.os.Environment.getExternalStorageDirectory();
@@ -147,6 +152,7 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
             cmd.add("-c");
             cmd.add(shellCmd);
         }
+        Log.d(TAG, "buildProotCommand: final cmd=" + cmd);
         return cmd;
     }
 
@@ -216,7 +222,14 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
 
         pb.redirectErrorStream(true);
         // NOTE: stdin intentionally left open — the terminal view drives it.
-        return pb.start();
+        Log.d(TAG, "openCommandProcess: workdir=" + (request.getWorkdir() != null ? request.getWorkdir() : "null"));
+        Log.d(TAG, "openCommandProcess: PREFIX=" + prefix.getAbsolutePath() + " exists=" + prefix.exists());
+        Log.d(TAG, "openCommandProcess: PATH=" + env.get("PATH"));
+        Log.d(TAG, "openCommandProcess: LD_LIBRARY_PATH=" + env.get("LD_LIBRARY_PATH"));
+        Log.d(TAG, "openCommandProcess: starting process: " + prootCmd);
+        Process p = pb.start();
+        Log.d(TAG, "openCommandProcess: process started");
+        return p;
     }
 
     /** Interactive shell process for the embedded terminal view. */
