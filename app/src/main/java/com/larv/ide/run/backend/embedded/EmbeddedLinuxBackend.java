@@ -90,6 +90,7 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         env.put("HOME", new File(appContext.getFilesDir(), "home").getAbsolutePath());
         env.put("TERM", "xterm-256color");
         env.put("PATH", prefix.getAbsolutePath() + "/bin:" + prefix.getAbsolutePath() + "/bin/applets");
+        env.put("LD_LIBRARY_PATH", "/lib:" + prefix.getAbsolutePath() + "/lib");
 
         // PROOT_LOADER tells proot to use the W^X-safe loader on Android 14+.
         File nativeDir = new File(appContext.getApplicationInfo().nativeLibraryDir);
@@ -204,6 +205,7 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         env.put("HOME", new File(appContext.getFilesDir(), "home").getAbsolutePath());
         env.put("TERM", "xterm-256color");
         env.put("PATH", prefix.getAbsolutePath() + "/bin:" + prefix.getAbsolutePath() + "/bin/applets");
+        env.put("LD_LIBRARY_PATH", "/lib:" + prefix.getAbsolutePath() + "/lib");
 
         // PROOT_LOADER tells proot to use the W^X-safe loader on Android 14+.
         File nativeDir = new File(appContext.getApplicationInfo().nativeLibraryDir);

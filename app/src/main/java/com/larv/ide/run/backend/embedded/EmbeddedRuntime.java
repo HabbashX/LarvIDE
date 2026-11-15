@@ -27,7 +27,9 @@ public final class EmbeddedRuntime {
         if (context == null) return false;
         if (readyCache != null) return readyCache;
         File bash = bashFile(context);
-        boolean ready = bash.exists() && bash.canExecute();
+        File lib = new File(prefixDir(context), "lib/libandroid-support.so");
+        boolean ready = bash.exists() && bash.canExecute()
+            && lib.exists() && lib.length() > 0;
         readyCache = ready;
         return ready;
     }
