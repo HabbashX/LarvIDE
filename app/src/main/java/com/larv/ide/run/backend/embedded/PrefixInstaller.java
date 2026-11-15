@@ -595,7 +595,7 @@ public class PrefixInstaller {
         }
     }
 
-    private static void makeExecutableRecursive(File dir) {
+    static void makeExecutableRecursive(File dir) {
         if (dir == null || !dir.exists()) {
             Log.d(TAG, "makeExecutableRecursive: dir does not exist: " + dir);
             return;

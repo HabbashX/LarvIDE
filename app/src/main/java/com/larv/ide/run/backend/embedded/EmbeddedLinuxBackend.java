@@ -227,6 +227,13 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         Log.d(TAG, "openCommandProcess: PATH=" + env.get("PATH"));
         Log.d(TAG, "openCommandProcess: LD_LIBRARY_PATH=" + env.get("LD_LIBRARY_PATH"));
         Log.d(TAG, "openCommandProcess: starting process: " + prootCmd);
+
+        // Make all binaries executable (toolchains installed after prefix setup may lack exec bit)
+        File binDir = new File(prefix, "bin");
+        if (binDir.exists()) {
+            PrefixInstaller.makeExecutableRecursive(binDir);
+        }
+
         Process p = pb.start();
         Log.d(TAG, "openCommandProcess: process started");
         return p;
@@ -312,7 +319,17 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         }
 
         pb.redirectErrorStream(true);
-        return pb.start();
+
+        // Make all binaries executable (toolchains installed after prefix setup may lack exec bit)
+        File binDir = new File(prefix, "bin");
+        if (binDir.exists()) {
+            PrefixInstaller.makeExecutableRecursive(binDir);
+        }
+
+        Log.d(TAG, "openShell: starting process: " + cmd);
+        Process p = pb.start();
+        Log.d(TAG, "openShell: process started");
+        return p;
     }
 
     public static void copyTo(OutputStream out, byte[] data, int len) {
