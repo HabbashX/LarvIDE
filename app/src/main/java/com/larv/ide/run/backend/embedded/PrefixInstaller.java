@@ -582,6 +582,7 @@ public class PrefixInstaller {
                     makeExecutableRecursive(new File(prefix, "bin"));
                     makeExecutableRecursive(new File(prefix, "usr/bin"));
                     makeExecutableRecursive(new File(prefix, "usr/sbin"));
+                    makeExecutableRecursive(new File(prefix, "bin/applets"));
                 }
             }
         } catch (Exception ignored) {

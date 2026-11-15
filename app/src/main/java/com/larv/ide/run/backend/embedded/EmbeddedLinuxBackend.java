@@ -237,8 +237,6 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
             // chroot into the prefix so /bin/bash is the prefix bash.
             cmd.add("-r");
             cmd.add(prefix.getAbsolutePath());
-            // --execa allows execution of programs inside the chroot.
-            cmd.add("--execa");
             // Make host filesystems visible inside the prefix.
             cmd.add("-b");
             cmd.add("/dev");
