@@ -1,5 +1,6 @@
 package com.larv.ide.run.backend.embedded;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
@@ -18,6 +19,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.zip.GZIPInputStream;
@@ -203,10 +205,11 @@ public class PrefixInstaller {
         }
     }
 
+    @SuppressLint("SdCardPath")
     private static void processSymlinks(File destDir) {
         File symlinks = new File(destDir, "SYMLINKS.txt");
         if (!symlinks.exists()) return;
-        java.util.List<String> lines;
+        List<String> lines;
         try {
             lines = java.nio.file.Files.readAllLines(symlinks.toPath(),
                 java.nio.charset.StandardCharsets.UTF_8);
@@ -214,12 +217,13 @@ public class PrefixInstaller {
             symlinks.delete();
             return;
         }
-        String filesRoot = destDir.getParentFile().getAbsolutePath();
+        assert !(destDir.getParentFile().getAbsoluteFile() == null);
+        final String filesRoot = destDir.getParentFile().getAbsolutePath();
         for (String raw : lines) {
             if (raw == null || raw.trim().isEmpty()) continue;
-            String[] parts = raw.split("\u2190", 2);
+            final String[] parts = raw.split("\u2190", 2);
             if (parts.length != 2) continue;
-            String target = parts[0].trim();
+            final String target = parts[0].trim();
             String link = parts[1].trim();
             if (target.isEmpty() || link.isEmpty()) continue;
             if (link.startsWith("./")) link = link.substring(2);
@@ -252,8 +256,7 @@ public class PrefixInstaller {
     private void installLibAndroidSupport(File prefixDir, Listener listener) throws Exception {
         post(listener, () -> listener.onProgress("Resolving package URL…", 86));
 
-        // Step 1: Fetch Packages index to find the correct .deb filename
-        String packagesText = downloadString(
+        final String packagesText = downloadString(
             "https://packages.termux.org/apt/termux-main/dists/stable/main/binary-aarch64/Packages");
 
         String debFilename = null;
@@ -277,7 +280,6 @@ public class PrefixInstaller {
             throw new Exception("libandroid-support not found in Termux Packages index");
         }
 
-        // Step 2: Download the .deb
         post(listener, () -> listener.onProgress("Downloading libandroid-support…", 88));
         // debFilename from Packages index is like "pool/main/liba/..." but full path is
         // "apt/termux-main/pool/main/liba/..."
@@ -573,17 +575,29 @@ public class PrefixInstaller {
         try {
             if (bash.exists()) {
                 bash.setExecutable(true, false);
-                File bin = bash.getParentFile();
-                File[] files = bin != null ? bin.listFiles() : null;
-                if (files != null) {
-                    for (File f : files) {
-                        if (f.isFile() && !f.canExecute()) {
-                            f.setExecutable(true, false);
-                        }
-                    }
+                // Recursively make all files in $PREFIX/bin and $PREFIX/usr/bin executable
+                // so they can run inside proot's chroot.
+                File prefix = bash.getParentFile().getParentFile();
+                if (prefix != null) {
+                    makeExecutableRecursive(new File(prefix, "bin"));
+                    makeExecutableRecursive(new File(prefix, "usr/bin"));
+                    makeExecutableRecursive(new File(prefix, "usr/sbin"));
                 }
             }
         } catch (Exception ignored) {
+        }
+    }
+
+    private static void makeExecutableRecursive(File dir) {
+        if (dir == null || !dir.exists()) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                makeExecutableRecursive(f);
+            } else if (f.isFile() && !f.canExecute()) {
+                f.setExecutable(true, false);
+            }
         }
     }
 }

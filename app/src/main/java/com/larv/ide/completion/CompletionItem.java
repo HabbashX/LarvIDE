@@ -79,14 +79,14 @@ public class CompletionItem {
     }
 
     public int getKindOrder() {
-        switch (kind) {
-            case CLASS: case INTERFACE: case ENUM: case RECORD: return 1;
-            case METHOD: return 2;
-            case FIELD: return 3;
-            case PACKAGE: return 4;
-            case KEYWORD: return 5;
-            case SNIPPET: return 6;
-            default: return 10;
-        }
+        return switch (kind) {
+            case CLASS, INTERFACE, ENUM, RECORD -> 1;
+            case METHOD -> 2;
+            case FIELD -> 3;
+            case PACKAGE -> 4;
+            case KEYWORD -> 5;
+            case SNIPPET -> 6;
+            default -> 10;
+        };
     }
 }

@@ -49,7 +49,6 @@ public final class CompletionManager {
                 }
             });
         } catch (RejectedExecutionException e) {
-            // Queue full: answer with an empty list so the editor never hangs.
             callback.onCompletions(Collections.emptyList());
         }
     }
