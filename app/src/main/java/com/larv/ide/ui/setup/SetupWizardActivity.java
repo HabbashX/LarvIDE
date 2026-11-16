@@ -298,21 +298,11 @@ public class SetupWizardActivity extends AppCompatActivity {
                 for (Map.Entry<SetupConfig.Language, String> e : pkgs.entrySet()) {
                     if (installCancelled) break;
                     String pkg = e.getValue();
-                    appendLog(log, "$ pkg install -y " + pkg + "\n");
+                    appendLog(log, "$ install " + pkg + " (direct .deb download)\n");
                     try {
-                        int exit = backend.executeCapture(
-                            new ExecRequest(
-                                Arrays.asList("pkg", "install", "-y", pkg), null, false),
-                            new EmbeddedLinuxBackend.OutputSink() {
-                                @Override public void onStdout(byte[] data, int len) {
-                                    appendLog(log, new String(data, 0, len));
-                                }
-                                @Override public void onStderr(byte[] data, int len) {
-                                    appendLog(log, new String(data, 0, len));
-                                }
-                                @Override public void onExit(int exitCode) {
-                                }
-                            });
+                        int exit = new com.larv.ide.core.run.backend.embedded.TermuxPackageInstaller(
+                            this, backend)
+                            .install(Arrays.asList(pkg), line -> appendLog(log, line));
                         if (exit == 0) {
                             prefs.edit().putBoolean(
                                 SetupConfig.toolchainFlag(pkg), true).apply();

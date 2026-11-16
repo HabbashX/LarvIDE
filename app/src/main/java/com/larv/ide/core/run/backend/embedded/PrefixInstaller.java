@@ -297,7 +297,7 @@ public class PrefixInstaller {
             + "/etc/ssl/certs/ca-certificates.crt\";\n").getBytes(StandardCharsets.US_ASCII));
     }
 
-    private static byte[] readAllBytes(File file) throws Exception {
+    static byte[] readAllBytes(File file) throws Exception {
         try (InputStream in = new java.io.FileInputStream(file);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             byte[] buf = new byte[8192];
@@ -349,7 +349,11 @@ public class PrefixInstaller {
         }
     }
 
-    private static String downloadString(String urlStr) throws Exception {
+    static String repoBase() { return REPO_BASE; }
+
+    static String packagesIndexUrl() { return PACKAGES_INDEX_URL; }
+
+    static String downloadString(String urlStr) throws Exception {
         HttpURLConnection conn =
             (HttpURLConnection) new URL(urlStr).openConnection();
         conn.setConnectTimeout(30_000);
@@ -705,7 +709,7 @@ public class PrefixInstaller {
     }
 
     /** Download bytes into memory. */
-    private static byte[] downloadBytes(String urlStr) throws Exception {
+    static byte[] downloadBytes(String urlStr) throws Exception {
         HttpURLConnection conn =
             (HttpURLConnection) new URL(urlStr).openConnection();
         conn.setConnectTimeout(30_000);
@@ -728,6 +732,38 @@ public class PrefixInstaller {
             conn.disconnect();
         }
         return baos.toByteArray();
+    }
+
+    /** Stream a URL to disk. Used for large packages that would not fit in heap. */
+    static void downloadToFile(String urlStr, File out) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
+        conn.setConnectTimeout(30_000);
+        conn.setReadTimeout(300_000);
+        conn.setRequestProperty("User-Agent", "LarvIDE/1.0 (Android)");
+        conn.setRequestProperty("Accept", "*/*");
+        conn.connect();
+        int code = conn.getResponseCode();
+        if (code / 100 != 2) {
+            conn.disconnect();
+            throw new IllegalStateException("HTTP " + code + " when connecting to " + urlStr);
+        }
+        File partial = new File(out.getAbsolutePath() + ".part");
+        try (InputStream in = new BufferedInputStream(conn.getInputStream());
+             OutputStream os = new FileOutputStream(partial)) {
+            byte[] buf = new byte[32 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+        } finally {
+            conn.disconnect();
+        }
+        if (!partial.renameTo(out)) {
+            if (out.exists() && !out.delete()) {
+                throw new Exception("Cannot replace " + out.getAbsolutePath());
+            }
+            if (!partial.renameTo(out)) {
+                throw new Exception("Cannot rename downloaded file to " + out.getAbsolutePath());
+            }
+        }
     }
 
     /** Read all bytes from an InputStream manually (works on API 24+). */

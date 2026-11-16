@@ -212,23 +212,13 @@ public class ProjectCreatorActivity extends AppCompatActivity {
         toolchainAction.setEnabled(false);
         createBtn.setEnabled(false);
         logView.setVisibility(View.VISIBLE);
-        logView.setText("$ pkg install -y " + lang.pkg + "\n");
+        logView.setText("$ install " + lang.pkg + " (direct .deb download)\n");
         toolchainStatus.setText("Installing " + lang.pkg + "…");
         executor.execute(() -> {
             try {
-                int exit = backend.executeCapture(
-                    new ExecRequest(
-                        Arrays.asList("pkg", "install", "-y", lang.pkg), null, false),
-                    new EmbeddedLinuxBackend.OutputSink() {
-                        @Override public void onStdout(byte[] data, int len) {
-                            appendLog(new String(data, 0, len));
-                        }
-                        @Override public void onStderr(byte[] data, int len) {
-                            appendLog(new String(data, 0, len));
-                        }
-                        @Override public void onExit(int exitCode) {
-                        }
-                    });
+                int exit = new com.larv.ide.core.run.backend.embedded.TermuxPackageInstaller(
+                    this, backend)
+                    .install(Arrays.asList(lang.pkg), this::appendLog);
                 final boolean ok = exit == 0;
                 if (ok) {
                     prefs.edit().putBoolean(

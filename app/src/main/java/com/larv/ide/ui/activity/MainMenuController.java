@@ -125,40 +125,30 @@ final class MainMenuController {
                         RunDispatcher.RunStreams rs = activity.runController.openRunTerminal(
                             "Installing " + pkg + " - watch the Run tab");
                         activity.runController.writeTerm(rs.programOut(),
-                            "$ pkg update -y && pkg install -y " + pkg + "\n");
+                            "$ install " + pkg + " (direct .deb download)\n");
                         activity.compilerExecutor.execute(() -> {
+                            int exitCode = -1;
                             try {
-                                activity.embeddedBackend.executeCapture(
-                                    new com.larv.ide.core.run.backend.ExecRequest(
-                                        java.util.Arrays.asList("pkg", "update", "-y", "&&", "pkg", "install", "-y", pkg),
-                                        null, false),
-                                    new com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend.OutputSink() {
-                                        @Override public void onStdout(byte[] data, int len) {
-                                            com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend.copyTo(
-                                                rs.programOut(), data, len);
-                                        }
-                                        @Override public void onStderr(byte[] data, int len) {
-                                            com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend.copyTo(
-                                                rs.programOut(), data, len);
-                                        }
-                                        @Override public void onExit(int exitCode) {
-                                            if (exitCode == 0) {
-                                                activity.prefs.edit().putBoolean(
-                                                    com.larv.ide.core.setup.SetupConfig.toolchainFlag(
-                                                        pkg), true).apply();
-                                            }
-                                            activity.runController.writeTerm(rs.programOut(),
-                                                "\nInstall finished (exit " + exitCode + ")\n");
-                                            activity.runController.closeTermStreams(
-                                                rs.programOut(), rs.stdinOut());
-                                        }
-                                    });
+                                // Download straight from the Termux repo and use
+                                // dpkg: apt's https method crashes on some MIUI
+                                // devices, so "pkg install" cannot be trusted.
+                                exitCode = new com.larv.ide.core.run.backend.embedded.TermuxPackageInstaller(
+                                    activity, activity.embeddedBackend)
+                                    .install(java.util.Arrays.asList(pkg), line ->
+                                        activity.runController.writeTerm(rs.programOut(), line));
                             } catch (Exception e) {
                                 activity.runController.writeTerm(rs.programOut(),
                                     "Install failed: " + e.getMessage() + "\n");
-                                activity.runController.closeTermStreams(
-                                    rs.programOut(), rs.stdinOut());
                             }
+                            if (exitCode == 0) {
+                                activity.prefs.edit().putBoolean(
+                                    com.larv.ide.core.setup.SetupConfig.toolchainFlag(
+                                        pkg), true).apply();
+                            }
+                            activity.runController.writeTerm(rs.programOut(),
+                                "\nInstall finished (exit " + exitCode + ")\n");
+                            activity.runController.closeTermStreams(
+                                rs.programOut(), rs.stdinOut());
                         });
                         Toast.makeText(activity, "Installing " + pkg + " - watch the Run tab",
                             Toast.LENGTH_LONG).show();
