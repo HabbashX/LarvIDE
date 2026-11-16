@@ -1,10 +1,12 @@
 package com.larv.ide.core.run.backend.embedded;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import com.larv.ide.core.concurrent.IOExecutor;
 import com.larv.ide.core.run.backend.BackendUnavailableException;
 import com.larv.ide.core.run.backend.ExecRequest;
 import com.larv.ide.core.run.backend.ExecutionBackend;
@@ -34,16 +36,18 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
     private static final String TAG = "EmbeddedLinux";
 
     /** Prefix path burned into Termux shebangs ({@code bin/pkg}) and ELF RUNPATHs. */
+    @SuppressLint("SdCardPath")
     static final String TERMUX_PREFIX = "/data/data/com.termux/files/usr";
     /** Home path Termux packages expect. */
+    @SuppressLint("SdCardPath")
     static final String TERMUX_HOME = "/data/data/com.termux/files/home";
 
     public interface OutputSink { void onStdout(byte[] data, int len); void onStderr(byte[] data, int len); void onExit(int exitCode); }
 
     private final Context appContext;
     private final PrefixInstaller installer;
-    private final com.larv.ide.core.concurrent.IOExecutor executor =
-        new com.larv.ide.core.concurrent.IOExecutor(1, 3);
+    private final IOExecutor executor =
+        new IOExecutor(1, 3);
 
     public EmbeddedLinuxBackend(@NonNull Context context) {
         this.appContext = context.getApplicationContext();
@@ -108,13 +112,38 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
     }
 
     /**
-     * Build: [proot, --kill-on-exit, -r <files>, -b ..., -w <cwd>, /bin/bash, -c, cmd].
+     * Build: [proot, --kill-on-exit, -r <files>, -b ..., -w <cwd>, <caller argv...>].
      * Every command goes through proot: running prefix binaries directly (or via
      * linker64) is denied with EACCES by the Android exec restriction.
+     *
+     * <p>The caller's argv is passed through verbatim. Do not join it into a
+     * string and re-wrap it in another {@code bash -c}: that re-parse drops the
+     * quoting of the original script, so {@code bash -c "mkdir -p '/x y'"}
+     * arrives as {@code bash -c mkdir -p '/x y'} and mkdir fails with
+     * "missing operand". Callers that need a shell already ask for
+     * {@code ["bash", "-c", script]} themselves.
      */
     List<String> buildProotCommand(ExecRequest request) {
-        List<String> program = Arrays.asList("/bin/bash", "-c", joinShell(request.getCommand()));
-        return prootCommand(request.getWorkdir(), program);
+        return prootCommand(request.getWorkdir(), resolveProgram(request.getCommand()));
+    }
+
+    /**
+     * Map a bare program name ({@code pkg}, {@code javac}, {@code python3}) to
+     * its absolute guest path inside the prefix, so proot never has to guess.
+     * Absolute paths and unknown names are passed through unchanged.
+     */
+    private List<String> resolveProgram(List<String> command) {
+        String name = command.get(0);
+        if (name.indexOf('/') >= 0) return command;
+        File prefix = EmbeddedRuntime.prefixDir(appContext);
+        for (String dir : new String[]{"bin", "bin/applets"}) {
+            if (new File(prefix, dir + File.separator + name).isFile()) {
+                List<String> resolved = new ArrayList<>(command);
+                resolved.set(0, TERMUX_PREFIX + "/" + dir + "/" + name);
+                return resolved;
+            }
+        }
+        return command;
     }
 
     /**
@@ -228,7 +257,10 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
                     + " is missing. The APK must package jniLibs with"
                     + " useLegacyPackaging=true so proot is extracted on install.");
         }
-        proot.setExecutable(true, false);
+        // lib/ is an immutable APK data dir, so setExecutable() is denied by
+        // SELinux and only logs an avc warning; it is already r-x. Ask only
+        // when the file really is not executable.
+        if (!proot.canExecute()) proot.setExecutable(true, false);
         if (!proot.canExecute()) {
             throw new IllegalStateException("proot is not executable: " + proot.getAbsolutePath());
         }
@@ -266,7 +298,7 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         File loader = new File(new File(appContext.getApplicationInfo().nativeLibraryDir),
             "libproot-loader.so");
         if (loader.isFile()) {
-            loader.setExecutable(true, false);
+            if (!loader.canExecute()) loader.setExecutable(true, false);
             env.put("PROOT_LOADER", loader.getAbsolutePath());
         } else {
             Log.e(TAG, "PROOT_LOADER missing at " + loader.getAbsolutePath()
@@ -279,15 +311,6 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         if (EmbeddedRuntime.hasRuntimeLibraries(appContext)) return;
         Log.d(TAG, "Runtime libraries missing, installing proot dependencies");
         installer.ensureRuntimeLibraries();
-    }
-
-    private static String joinShell(List<String> parts) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < parts.size(); i++) {
-            if (i > 0) sb.append(' ');
-            sb.append(parts.get(i));
-        }
-        return sb.toString();
     }
 
     private static Thread pump(InputStream in, boolean stdout, OutputSink sink) {

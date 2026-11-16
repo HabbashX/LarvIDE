@@ -50,6 +50,10 @@ public class PrefixInstaller {
     private static final String REPO_BASE = "https://packages.termux.org/apt/termux-main/";
     private static final String PACKAGES_INDEX_URL =
         REPO_BASE + "dists/stable/main/binary-aarch64/Packages";
+    /** Written into the prefix when a broken third-party mirror is detected. */
+    private static final String MANAGED_SOURCES =
+        "# LarvIDE-managed apt source (add # user-mirror to keep your own)\n"
+            + "deb " + REPO_BASE + " stable main\n";
 
     /**
      * Package name -> file that must exist in {@code $PREFIX/lib}. The first
@@ -148,6 +152,8 @@ public class PrefixInstaller {
                 }
 
                 post(listener, () -> listener.onProgress("Installing runtime libraries…", 85));
+                ensureAptSources(prefixDir, listener);
+                ensureCaCertificates(prefixDir, listener);
                 installRuntimeLibraries(prefixDir, listener);
 
                 EmbeddedRuntime.invalidateReadyCache();
@@ -173,8 +179,89 @@ public class PrefixInstaller {
         // Cheap idempotent pass: repairs links deleted by older builds without
         // a full bootstrap download.
         processSymlinks(prefixDir);
+        ensureAptSources(prefixDir, null);
+        ensureCaCertificates(prefixDir, null);
         installRuntimeLibraries(prefixDir, null);
         EmbeddedRuntime.invalidateReadyCache();
+    }
+
+    /**
+     * Keep apt pointed at the repository this app actually downloads from.
+     * A prefix can inherit a dead third-party mirror (e.g. a regional mirror
+     * that times out), which makes every "pkg install" fail before apt even
+     * reaches the network. Users can keep a custom mirror by adding a
+     * {@code # user-mirror} line to sources.list.
+     */
+    private static void ensureAptSources(File prefixDir, Listener listener) throws Exception {
+        File sources = new File(prefixDir, "etc/apt/sources.list");
+        String current = sources.isFile()
+            ? new String(readAllBytes(sources), StandardCharsets.UTF_8) : "";
+        if (current.contains(REPO_BASE) || current.contains("# user-mirror")) return;
+        Log.d(TAG, "Repairing apt sources.list (was: "
+            + current.replace('\n', ' ').trim() + ")");
+        writeFile(sources, MANAGED_SOURCES.getBytes(StandardCharsets.UTF_8));
+        if (listener != null) {
+            post(listener, () -> listener.onProgress("Restoring Termux package source…", 88));
+        }
+        // A fresh sources.list needs fresh indexes; stale lists from the dead
+        // mirror would otherwise be used for the first install.
+        File lists = new File(prefixDir, "var/lib/apt/lists");
+        if (lists.isDirectory()) {
+            File[] stale = lists.listFiles();
+            if (stale != null) {
+                for (File f : stale) {
+                    if (f.isFile()) f.delete();
+                }
+            }
+        }
+    }
+
+    /**
+     * The bootstrap has no CA bundle, so apt's https method cannot validate
+     * packages.termux.org and exits with "Method https has died unexpectedly".
+     * Build a bundle from the Android system trust store (already trusted by
+     * the Java downloader) and point apt at it.
+     */
+    private static void ensureCaCertificates(File prefixDir, Listener listener) throws Exception {
+        File bundle = new File(prefixDir, "etc/ssl/certs/ca-certificates.crt");
+        if (bundle.isFile() && bundle.length() > 0) return;
+        StringBuilder pem = new StringBuilder();
+        File[] stores = {
+            new File("/system/etc/security/cacerts"),
+            new File("/apex/com.android.conscrypt/cacerts"),
+        };
+        for (File store : stores) {
+            File[] certs = store.listFiles();
+            if (certs == null) continue;
+            for (File cert : certs) {
+                if (!cert.isFile() || cert.length() == 0 || cert.length() > 32 * 1024) continue;
+                String text = new String(readAllBytes(cert), StandardCharsets.US_ASCII);
+                int start = text.indexOf("-----BEGIN CERTIFICATE-----");
+                int end = text.indexOf("-----END CERTIFICATE-----");
+                if (start < 0 || end <= start) continue;
+                pem.append(text, start, end + "-----END CERTIFICATE-----".length()).append('\n');
+            }
+        }
+        if (pem.length() == 0) {
+            Log.w(TAG, "No Android CA certificates found; apt https may still fail");
+            return;
+        }
+        Log.d(TAG, "Installing " + (pem.length() / 1024) + "KB of CA certificates into prefix");
+        writeFile(bundle, pem.toString().getBytes(StandardCharsets.US_ASCII));
+        File conf = new File(prefixDir, "etc/apt/apt.conf.d/99larv-cainfo");
+        writeFile(conf, ("Acquire::https::CaInfo \""
+            + EmbeddedLinuxBackend.TERMUX_PREFIX
+            + "/etc/ssl/certs/ca-certificates.crt\";\n").getBytes(StandardCharsets.US_ASCII));
+    }
+
+    private static byte[] readAllBytes(File file) throws Exception {
+        try (InputStream in = new java.io.FileInputStream(file);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toByteArray();
+        }
     }
 
     private static void post(Listener l, Runnable r) {
