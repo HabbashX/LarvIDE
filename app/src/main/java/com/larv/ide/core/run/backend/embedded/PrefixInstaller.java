@@ -193,13 +193,56 @@ public class PrefixInstaller {
      * {@code # user-mirror} line to sources.list.
      */
     private static void ensureAptSources(File prefixDir, Listener listener) throws Exception {
-        File sources = new File(prefixDir, "etc/apt/sources.list");
-        String current = sources.isFile()
+        File apt = new File(prefixDir, "etc/apt");
+        File sources = new File(apt, "sources.list");
+        // Termux also honours sources.list.d/*.list; a mirror file there wins
+        // over the main list, so repairing only sources.list is not enough.
+        List<File> candidates = new ArrayList<>();
+        candidates.add(sources);
+        File extraDir = new File(apt, "sources.list.d");
+        File[] extras = extraDir.listFiles();
+        if (extras != null) {
+            for (File f : extras) {
+                if (f.isFile() && (f.getName().endsWith(".list")
+                    || f.getName().endsWith(".sources"))) candidates.add(f);
+            }
+        }
+
+        boolean repaired = false;
+        for (File file : candidates) {
+            if (!file.isFile()) continue;
+            String text = new String(readAllBytes(file), StandardCharsets.UTF_8);
+            if (text.contains("# user-mirror")) continue;
+            boolean hasForeignRepo = false;
+            boolean hasOfficialRepo = false;
+            for (String line : text.split("\\r?\\n")) {
+                String trimmed = line.trim();
+                if (!trimmed.startsWith("deb ") && !trimmed.startsWith("deb-src ")) continue;
+                if (trimmed.contains(REPO_BASE)) hasOfficialRepo = true;
+                else hasForeignRepo = true;
+            }
+            if (!hasForeignRepo) continue;
+            if (file == sources) {
+                Log.d(TAG, "Repairing apt sources.list (was: "
+                    + text.replace('\n', ' ').trim() + ")");
+                writeFile(sources, MANAGED_SOURCES.getBytes(StandardCharsets.UTF_8));
+            } else {
+                // Disable the extra source instead of overwriting it: keeping a
+                // .list file with an empty body is harmless to apt.
+                Log.d(TAG, "Disabling third-party apt source " + file.getName());
+                writeFile(file, "# disabled by LarvIDE: unreachable/mismatched mirror\n"
+                    .getBytes(StandardCharsets.UTF_8));
+            }
+            repaired = true;
+        }
+        // Make sure an official entry exists even if every source was disabled.
+        String main = sources.isFile()
             ? new String(readAllBytes(sources), StandardCharsets.UTF_8) : "";
-        if (current.contains(REPO_BASE) || current.contains("# user-mirror")) return;
-        Log.d(TAG, "Repairing apt sources.list (was: "
-            + current.replace('\n', ' ').trim() + ")");
-        writeFile(sources, MANAGED_SOURCES.getBytes(StandardCharsets.UTF_8));
+        if (!main.contains(REPO_BASE)) {
+            writeFile(sources, MANAGED_SOURCES.getBytes(StandardCharsets.UTF_8));
+            repaired = true;
+        }
+        if (!repaired) return;
         if (listener != null) {
             post(listener, () -> listener.onProgress("Restoring Termux package source…", 88));
         }

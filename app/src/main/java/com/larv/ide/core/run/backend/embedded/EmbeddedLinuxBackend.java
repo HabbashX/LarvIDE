@@ -116,15 +116,64 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
      * Every command goes through proot: running prefix binaries directly (or via
      * linker64) is denied with EACCES by the Android exec restriction.
      *
-     * <p>The caller's argv is passed through verbatim. Do not join it into a
-     * string and re-wrap it in another {@code bash -c}: that re-parse drops the
-     * quoting of the original script, so {@code bash -c "mkdir -p '/x y'"}
-     * arrives as {@code bash -c mkdir -p '/x y'} and mkdir fails with
-     * "missing operand". Callers that need a shell already ask for
-     * {@code ["bash", "-c", script]} themselves.
+     * <p>Callers that need a shell pass {@code ["bash", "-c", script]} and it is
+     * honoured verbatim — joining that argv into one string and re-wrapping it
+     * in another {@code bash -c} drops the script's quoting, so
+     * {@code mkdir -p '/x y'} runs with no operand. A plain argv is also exec'd
+     * verbatim, but an argv containing shell operators (e.g. a user-typed
+     * {@code pkg update -y && pkg install -y ...} split into tokens) is passed
+     * through the guest shell with every non-operator token quoted safely.
      */
     List<String> buildProotCommand(ExecRequest request) {
-        return prootCommand(request.getWorkdir(), resolveProgram(request.getCommand()));
+        List<String> command = request.getCommand();
+        if (isShellInvocation(command)) {
+            return prootCommand(request.getWorkdir(), command);
+        }
+        if (hasShellOperator(command)) {
+            return prootCommand(request.getWorkdir(),
+                Arrays.asList("/bin/bash", "-c", shellScript(command)));
+        }
+        return prootCommand(request.getWorkdir(), resolveProgram(command));
+    }
+
+    /** True for {@code ["bash"|"sh", "-c", script]} — already a shell command. */
+    private static boolean isShellInvocation(List<String> command) {
+        if (command.size() < 3 || !"-c".equals(command.get(1))) return false;
+        String shell = command.get(0);
+        return shell.equals("bash") || shell.equals("/bin/bash")
+            || shell.equals("sh") || shell.equals("/bin/sh");
+    }
+
+    /** Tokens a user-typed command line may contain that need a real shell. */
+    private static boolean isShellOperator(String token) {
+        switch (token) {
+            case "&&": case "||": case "|": case ";": case "&":
+            case ">": case ">>": case "<": case "2>": case "&>":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean hasShellOperator(List<String> command) {
+        for (String token : command) {
+            if (isShellOperator(token)) return true;
+        }
+        return false;
+    }
+
+    /** Rebuild a shell script from argv, quoting operands but not operators. */
+    private static String shellScript(List<String> command) {
+        StringBuilder sb = new StringBuilder();
+        for (String token : command) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(isShellOperator(token) ? token : shellQuote(token));
+        }
+        return sb.toString();
+    }
+
+    private static String shellQuote(String s) {
+        return "'" + s.replace("'", "'\\''") + "'";
     }
 
     /**
