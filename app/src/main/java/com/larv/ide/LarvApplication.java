@@ -24,7 +24,7 @@ public class LarvApplication extends MultiDexApplication {
                 .detectActivityLeaks()
                 .penaltyLog()
                 .build());
-            com.larv.ide.performance.MemoryMonitor.logHeap("startup");
+            com.larv.ide.core.performance.MemoryMonitor.logHeap("startup");
         }
     }
 

@@ -9,7 +9,7 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.larv.ide.R;
-import com.larv.ide.model.Diagnostic;
+import com.larv.ide.core.model.Diagnostic;
 
 import java.util.ArrayList;
 import java.util.List;

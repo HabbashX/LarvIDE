@@ -535,12 +535,12 @@ public class SettingsDialog {
     /* ----------------------------------------------------------------------- */
     private static LinearLayout linuxEnvironmentSection(Activity activity,
                                                         SharedPreferences prefs) {
-        com.larv.ide.run.backend.embedded.PrefixInstaller installer =
-            new com.larv.ide.run.backend.embedded.PrefixInstaller(activity);
+        com.larv.ide.core.run.backend.embedded.PrefixInstaller installer =
+            new com.larv.ide.core.run.backend.embedded.PrefixInstaller(activity);
         boolean ready =
-            com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity);
+            com.larv.ide.core.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity);
         boolean arm64 =
-            com.larv.ide.run.backend.embedded.EmbeddedRuntime.isArm64();
+            com.larv.ide.core.run.backend.embedded.EmbeddedRuntime.isArm64();
 
         LinearLayout section = new LinearLayout(activity);
         section.setOrientation(LinearLayout.VERTICAL);
@@ -570,7 +570,7 @@ public class SettingsDialog {
 
         Runnable refreshInfo = () -> {
             boolean r =
-                com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity);
+                com.larv.ide.core.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity);
             if (installer.isInstalling()) {
                 status.setText("Downloading…");
                 status.setTextColor(ContextCompat.getColor(activity, R.color.warning));
@@ -587,7 +587,7 @@ public class SettingsDialog {
 
         runBackground(() -> {
             String info;
-            if (com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity)) {
+            if (com.larv.ide.core.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(activity)) {
                 long bytes = dirSize(new java.io.File(activity.getFilesDir(), "usr"));
                 info = "arm64 · " + formatSize(bytes) + " in private storage"
                     + "\nUnlocks: C/C++ (Clang), OpenJDK 17, Node.js, Rust";
@@ -641,7 +641,7 @@ public class SettingsDialog {
             status.setText("Downloading…");
             status.setTextColor(ContextCompat.getColor(activity, R.color.warning));
             installer.installAsync(null,
-                new com.larv.ide.run.backend.embedded.PrefixInstaller.Listener() {
+                new com.larv.ide.core.run.backend.embedded.PrefixInstaller.Listener() {
                     @Override public void onProgress(String stage, int percent) {
                         status.setText(stage);
                         if (percent > 0) {
@@ -650,7 +650,7 @@ public class SettingsDialog {
                         }
                     }
                     @Override public void onComplete() {
-                        com.larv.ide.project.ProjectManager.setCppEnabled(true);
+                        com.larv.ide.core.project.ProjectManager.setCppEnabled(true);
                         downloadBtn.setEnabled(true);
                         downloadBtn.setText("Re-download");
                         removeBtn.setVisibility(android.view.View.VISIBLE);
@@ -674,7 +674,7 @@ public class SettingsDialog {
             runBackground(() -> {
                 deleteRecursive(new java.io.File(activity.getFilesDir(), "usr"));
                 activity.runOnUiThread(() -> {
-                    com.larv.ide.project.ProjectManager.setCppEnabled(false);
+                    com.larv.ide.core.project.ProjectManager.setCppEnabled(false);
                     removeBtn.setEnabled(true);
                     removeBtn.setVisibility(android.view.View.GONE);
                     downloadBtn.setText("Download");
@@ -689,7 +689,7 @@ public class SettingsDialog {
 
     private static void runBackground(Runnable task) {
         try {
-            new com.larv.ide.concurrent.IOExecutor(1).execute(task);
+            new com.larv.ide.core.concurrent.IOExecutor(1).execute(task);
         } catch (java.util.concurrent.RejectedExecutionException ignored) {
         }
     }

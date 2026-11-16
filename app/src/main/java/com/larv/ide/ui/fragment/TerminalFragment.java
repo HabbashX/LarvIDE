@@ -16,8 +16,8 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.larv.ide.R;
-import com.larv.ide.terminal.EmbeddedLinuxSession;
-import com.larv.ide.terminal.EmbeddedShellSession;
+import com.larv.ide.core.terminal.EmbeddedLinuxSession;
+import com.larv.ide.core.terminal.EmbeddedShellSession;
 import com.larv.ide.ui.view.SafeEmulatorView;
 
 import java.io.File;
@@ -79,7 +79,7 @@ public class TerminalFragment extends Fragment {
             startPending = true;
             return;
         }
-        if (!com.larv.ide.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(requireContext())) {
+        if (!com.larv.ide.core.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(requireContext())) {
             closeSession();
             terminalContainer.setVisibility(View.GONE);
             emptyView.setVisibility(View.VISIBLE);

@@ -2,6 +2,8 @@ package com.larv.ide.ui.setup;
 
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -17,12 +19,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
 import com.larv.ide.R;
-import com.larv.ide.project.ProjectManager;
-import com.larv.ide.run.backend.ExecRequest;
-import com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend;
-import com.larv.ide.run.backend.embedded.EmbeddedRuntime;
-import com.larv.ide.run.backend.embedded.PrefixInstaller;
-import com.larv.ide.setup.SetupConfig;
+import com.larv.ide.core.project.ProjectManager;
+import com.larv.ide.core.run.backend.ExecRequest;
+import com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend;
+import com.larv.ide.core.run.backend.embedded.EmbeddedRuntime;
+import com.larv.ide.core.run.backend.embedded.PrefixInstaller;
+import com.larv.ide.core.setup.SetupConfig;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -47,8 +49,18 @@ public class SetupWizardActivity extends AppCompatActivity {
 
     private final List<CheckBox> languageBoxes = new ArrayList<>();
     private EmbeddedLinuxBackend backend;
-    private ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private SharedPreferences prefs;
+
+    /** Set by Skip/Finish so the install loop stops after the current package. */
+    private volatile boolean installCancelled = false;
+
+    // pkg writes output in many tiny chunks; coalescing them keeps the UI
+    // responsive instead of posting one Runnable per chunk.
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private final StringBuilder logBuffer = new StringBuilder();
+    private TextView activeLog;
+    private boolean logFlushScheduled = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -89,7 +101,12 @@ public class SetupWizardActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        executor.shutdownNow();
+        // Let a package that is already installing finish: pkg writes to the
+        // prefix and killing it mid-transaction corrupts the runtime. The loop
+        // stops before the next package instead.
+        installCancelled = true;
+        flushLog();
+        executor.shutdown();
         super.onDestroy();
     }
 
@@ -237,16 +254,27 @@ public class SetupWizardActivity extends AppCompatActivity {
         }
 
         stepHost.addView(buttonRow(
-            navButton("Back", v -> showStep(1)),
+            navButton("Back", v -> {
+                // Stop before the next package; the current one finishes safely.
+                installCancelled = true;
+                showStep(1);
+            }),
+            navButton("Skip", v -> {
+                installCancelled = true;
+                completeSetup();
+            }),
             navButton("Finish", v -> {
+                installCancelled = true;
                 completeSetup();
             })));
 
         install.setOnClickListener(v -> {
             install.setEnabled(false);
-            log.setText("");
+            installCancelled = false;
+            resetLog(log);
             executor.execute(() -> {
                 for (Map.Entry<SetupConfig.Language, String> e : pkgs.entrySet()) {
+                    if (installCancelled) break;
                     String pkg = e.getValue();
                     appendLog(log, "$ pkg install -y " + pkg + "\n");
                     try {
@@ -273,8 +301,11 @@ public class SetupWizardActivity extends AppCompatActivity {
                         appendLog(log, "✗ " + pkg + ": " + ex.getMessage() + "\n\n");
                     }
                 }
+                boolean cancelled = installCancelled;
                 runOnUiThread(() -> {
-                    appendLog(log, "Done. You can re-install anytime from Languages.\n");
+                    appendLog(log, cancelled
+                        ? "Stopped. Install the rest anytime from Languages.\n"
+                        : "Done. You can re-install anytime from Languages.\n");
                     fetchLanguagePacks(selected);
                 });
             });
@@ -302,6 +333,7 @@ public class SetupWizardActivity extends AppCompatActivity {
     }
 
     private void completeSetup() {
+        installCancelled = true;
         persistSelection();
         prefs.edit().putBoolean(SetupConfig.PREF_SETUP_COMPLETE, true).apply();
         // C++ templates unlock exactly when the runtime is usable.
@@ -316,8 +348,41 @@ public class SetupWizardActivity extends AppCompatActivity {
         // and register via window.registerLanguagePack. Core 8 stay baked in.
     }
 
+    /** Clears both the visible log and any text still queued for flush. */
+    private void resetLog(TextView log) {
+        synchronized (logBuffer) {
+            logBuffer.setLength(0);
+            activeLog = log;
+        }
+        log.setText("");
+    }
+
+    /**
+     * Buffers output from pkg (which writes many small chunks) and flushes at
+     * most every 80 ms, so the wizard stays responsive during downloads.
+     */
     private void appendLog(TextView log, String text) {
-        runOnUiThread(() -> log.append(text));
+        if (text == null || text.isEmpty()) return;
+        synchronized (logBuffer) {
+            logBuffer.append(text);
+            activeLog = log;
+            if (logFlushScheduled) return;
+            logFlushScheduled = true;
+        }
+        uiHandler.postDelayed(this::flushLog, 80);
+    }
+
+    private void flushLog() {
+        String chunk;
+        TextView target;
+        synchronized (logBuffer) {
+            logFlushScheduled = false;
+            if (logBuffer.length() == 0) return;
+            chunk = logBuffer.toString();
+            logBuffer.setLength(0);
+            target = activeLog;
+        }
+        if (target != null) target.append(chunk);
     }
 
     private Button navButton(String text, View.OnClickListener l) {

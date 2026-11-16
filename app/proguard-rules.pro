@@ -15,16 +15,16 @@
 -keep class com.google.gson.** { *; }
 
 # Keep our model classes
--keep class com.larv.ide.model.** { *; }
+-keep class com.larv.ide.core.model.** { *; }
 
 # Keep compiler classes
 -keep class com.larv.ide.compiler.** { *; }
 
 # Keep completion classes
--keep class com.larv.ide.completion.** { *; }
+-keep class com.larv.ide.core.completion.** { *; }
 
 # Keep project classes
--keep class com.larv.ide.project.** { *; }
+-keep class com.larv.ide.core.project.** { *; }
 
 # Keep UI classes
 -keep class com.larv.ide.ui.** { *; }

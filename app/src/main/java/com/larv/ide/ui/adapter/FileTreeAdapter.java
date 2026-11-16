@@ -14,7 +14,7 @@ import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.larv.ide.R;
-import com.larv.ide.model.FileNode;
+import com.larv.ide.core.model.FileNode;
 
 import java.util.ArrayList;
 import java.util.List;

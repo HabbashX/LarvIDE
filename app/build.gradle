@@ -64,6 +64,17 @@ android {
         resources {
             excludes += "META-INF/*"
         }
+        // The embedded runtime exec()s libproot.so / libproot-loader.so straight
+        // out of nativeLibraryDir. With the AGP 8 default (extractNativeLibs
+        // false) the libs stay inside the APK and never exist on disk, so every
+        // command fails with "Permission denied". Legacy packaging extracts
+        // them at install time with mode 0755.
+        jniLibs {
+            useLegacyPackaging = true
+            // Never run llvm-strip over prebuilt Termux binaries.
+            keepDebugSymbols += "**/libproot.so"
+            keepDebugSymbols += "**/libproot-loader.so"
+        }
     }
 
     sourceSets {

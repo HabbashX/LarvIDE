@@ -1,5 +1,6 @@
 package com.larv.ide.ui.setup;
 
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -18,12 +19,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
 import com.larv.ide.R;
-import com.larv.ide.project.ProjectManager;
-import com.larv.ide.model.Project;
-import com.larv.ide.run.backend.ExecRequest;
-import com.larv.ide.run.backend.embedded.EmbeddedLinuxBackend;
-import com.larv.ide.run.backend.embedded.EmbeddedRuntime;
-import com.larv.ide.setup.SetupConfig;
+import com.larv.ide.core.project.ProjectManager;
+import com.larv.ide.core.model.Project;
+import com.larv.ide.core.run.backend.ExecRequest;
+import com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend;
+import com.larv.ide.core.run.backend.embedded.EmbeddedRuntime;
+import com.larv.ide.core.setup.SetupConfig;
 
 import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
@@ -50,7 +51,7 @@ public class ProjectCreatorActivity extends AppCompatActivity {
 
     private ProjectManager projectManager;
     private EmbeddedLinuxBackend backend;
-    private ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private SharedPreferences prefs;
 
     /** Parallel to the radio order: null = Empty, then SetupConfig order. */
@@ -61,6 +62,7 @@ public class ProjectCreatorActivity extends AppCompatActivity {
         return i < values.length ? values[i] : null;
     }
 
+    @SuppressLint("SetTextI18n")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

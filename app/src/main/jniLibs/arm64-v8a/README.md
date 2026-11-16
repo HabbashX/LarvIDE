@@ -1,30 +1,42 @@
 # Native Libraries for arm64-v8a
 
-This directory contains native libraries required for the embedded Linux runtime on Android 14+.
+These files are the real Termux binaries required by the embedded Linux runtime.
+They are not compiled by this project — they are extracted from the Termux
+`proot` package (`proot_5.1.107.102_aarch64.deb`) and shipped as JNI libraries so
+Android extracts them into `nativeLibraryDir` at install time.
 
-## Files
+| File | Size (bytes) | Purpose |
+|---|---|---|
+| `libproot.so` | 259832 | Termux `proot` binary (`usr/bin/proot`). Intercepts syscalls so guest binaries can be mapped without `execve`. |
+| `libproot-loader.so` | 18136 | Real proot loader (`usr/libexec/proot/loader`), pointed to by `PROOT_LOADER`. |
 
-| File | Purpose |
-|---|---|
-| `libproot.so` | proot binary — provides chroot isolation for the Linux prefix |
-| `libproot-loader.so` | proot loader — W^X-safe loader for Android 14+ (targetSdk 34) |
+## Why they must be extracted
 
-## How these work
+Android denies `execve()` of files inside an app's data directory (targetSdk >= 29),
+so the prefix binaries in `<filesDir>/usr/bin` can only run through proot. Proot
+itself must be a *real executable file* on disk:
 
-- `libproot.so` is executed directly by `EmbeddedLinuxBackend` to run commands inside the proot prefix.
-- `libproot-loader.so` is referenced via the `PROOT_LOADER` environment variable. Proot uses it to mmap+execute code in a way that bypasses Android 14's W^X memory restrictions.
+- `app/build.gradle` sets `packagingOptions.jniLibs.useLegacyPackaging = true`
+  (merged manifest `extractNativeLibs="true"`), which makes Android extract these
+  libs into `applicationInfo.nativeLibraryDir` with mode 0755.
+- With the AGP 8 default (`extractNativeLibs="false"`) they stay inside the APK
+  and `new File(nativeLibraryDir, "libproot.so").exists()` is false — every command
+  then failed with "Permission denied".
 
-## Obtaining the real libraries
+`libproot.so` has `DT_NEEDED` entries for `libtalloc.so.2` and
+`libandroid-shmem.so`; those are installed into `<filesDir>/usr/lib` by
+`PrefixInstaller` from the Termux package index.
 
-The files currently in this directory are copies of the Termux `proot` binary (extracted from `proot_5.1.107.102_aarch64.deb`). They will work for basic execution, but for full Android 14 W^X bypass you should build proper shared libraries from the [proot source](https://github.com/proot-me/proot) using the Android NDK:
+## Refreshing these files
 
 ```bash
-# Build proot for Android arm64
-ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=Android.mk APP_ABI=arm64-v8a
+curl -LO https://packages.termux.org/apt/termux-main/pool/main/p/proot/proot_5.1.107.102_aarch64.deb
+ar x proot_5.1.107.102_aarch64.deb data.tar.xz
+tar xJf data.tar.xz ./data/data/com.termux/files/usr/bin/proot
+tar xJf data.tar.xz ./data/data/com.termux/files/usr/libexec/proot/loader
+cp data/data/com.termux/files/usr/bin/proot                   libproot.so
+cp data/data/com.termux/files/usr/libexec/proot/loader        libproot-loader.so
 ```
 
-Place the resulting `libproot.so` and `libproot-loader.so` here, replacing the placeholder copies.
-
-## Fallback
-
-If these libraries are missing, LarvIDE falls back to executing `/system/bin/linker64` + `bash` directly (works on most devices but lacks chroot isolation).
+Always verify `libproot-loader.so` is ~18 KB and a static ELF (`e_type=2`), not a
+second copy of proot (259 KB).
