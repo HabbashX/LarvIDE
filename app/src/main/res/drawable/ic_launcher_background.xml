@@ -1,10 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon BACKGROUND layer (API 26+).
+
+  The full square artwork lives in design/app-icon.svg and in the legacy
+  mipmap PNGs. For an adaptive icon the system only shows the centre ~66dp of
+  this 108dp canvas, so the colour circles are anchored outside the corners and
+  bleed into the visible mask instead of being cropped away.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
     <path
         android:fillColor="#2B1F9E"
-        android:pathData="M4,4 h100 a8,8 0 0,1 8,8 v88 a8,8 0 0,1 -8,8 h-100 a8,8 0 0,1 -8,-8 v-88 a8,8 0 0,1 8,-8" />
+        android:pathData="M0,0 H108 V108 H0 Z" />
+
+    <path
+        android:fillColor="#D92F86"
+        android:pathData="M43,-77 a71,71 0 1,0 142,0 a71,71 0 1,0 -142,0 Z" />
+    <path
+        android:fillColor="#F26B2B"
+        android:pathData="M62,-28 a40,40 0 1,0 80,0 a40,40 0 1,0 -80,0 Z" />
+    <path
+        android:fillColor="#10A99A"
+        android:pathData="M-68,114 a62,62 0 1,0 124,0 a62,62 0 1,0 -124,0 Z" />
+    <path
+        android:fillColor="#0B7F8C"
+        android:pathData="M-41,114 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0 Z" />
+    <path
+        android:fillColor="#14FFFFFF"
+        android:pathData="M0,0 H54 L0,54 Z" />
 </vector>

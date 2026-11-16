@@ -130,11 +130,20 @@ public class SetupWizardActivity extends AppCompatActivity {
 
     private void buildLanguageStep() {
         TextView hint = new TextView(this);
-        hint.setText("LarvIDE installs only what you need. You can change this later in Settings.");
+        hint.setText("LarvIDE installs only what you need. You can change this later in Settings.\n"
+            + "Any other Termux package can be added from the Terminal with: pkg install <name>");
         hint.setTextSize(13);
         hint.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
         hint.setPadding(0, 0, 0, dp(8));
         stepHost.addView(hint);
+
+        CheckBox selectAll = new CheckBox(this);
+        selectAll.setText("Select all supported languages");
+        selectAll.setTextSize(14);
+        selectAll.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        selectAll.setTypeface(null, android.graphics.Typeface.BOLD);
+        selectAll.setPadding(0, dp(4), 0, dp(8));
+        stepHost.addView(selectAll);
 
         List<SetupConfig.Language> stored = SetupConfig.parseStored(
             prefs.getStringSet(SetupConfig.PREF_SETUP_LANGUAGES, null));
@@ -149,12 +158,25 @@ public class SetupWizardActivity extends AppCompatActivity {
             languageBoxes.add(box);
         }
 
+        selectAll.setChecked(allLanguagesChecked());
+        selectAll.setOnCheckedChangeListener((button, checked) -> {
+            for (CheckBox box : languageBoxes) box.setChecked(checked);
+        });
+
         stepHost.addView(buttonRow(
             navButton("Later", v -> finish()),
             navButton("Continue", v -> {
                 persistSelection();
                 showStep(1);
             })));
+    }
+
+    private boolean allLanguagesChecked() {
+        if (languageBoxes.isEmpty()) return false;
+        for (CheckBox box : languageBoxes) {
+            if (!box.isChecked()) return false;
+        }
+        return true;
     }
 
     private void buildRuntimeStep() {

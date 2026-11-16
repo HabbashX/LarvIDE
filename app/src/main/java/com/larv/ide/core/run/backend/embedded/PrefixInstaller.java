@@ -115,7 +115,18 @@ public class PrefixInstaller {
                 File prefixDir = new File(appContext.getFilesDir(), "usr");
                 prefixDir.mkdirs();
                 File bash = new File(prefixDir, "bin/bash");
+                File symlinkManifest = new File(prefixDir, "SYMLINKS.txt");
                 boolean bootstrapReady = bash.isFile() && bash.length() > 0;
+
+                // Prefixes created before the symlink fix deleted SYMLINKS.txt
+                // and wrote host-absolute links (/data/user/0/...) that proot
+                // cannot resolve (e.g. libreadline.so.8). Re-extract to rebuild
+                // them with guest-correct targets.
+                if (bootstrapReady && !symlinkManifest.isFile()) {
+                    Log.d(TAG, "Prefix has no SYMLINKS.txt (legacy install); "
+                        + "re-extracting bootstrap to repair symlinks");
+                    bootstrapReady = false;
+                }
 
                 if (!bootstrapReady) {
                     String url = overrideUrl != null && !overrideUrl.isEmpty()
@@ -159,6 +170,9 @@ public class PrefixInstaller {
     public synchronized void ensureRuntimeLibraries() throws Exception {
         File prefixDir = new File(appContext.getFilesDir(), "usr");
         prefixDir.mkdirs();
+        // Cheap idempotent pass: repairs links deleted by older builds without
+        // a full bootstrap download.
+        processSymlinks(prefixDir);
         installRuntimeLibraries(prefixDir, null);
         EmbeddedRuntime.invalidateReadyCache();
     }
@@ -257,16 +271,17 @@ public class PrefixInstaller {
     @SuppressLint("SdCardPath")
     private static void processSymlinks(File destDir) {
         File symlinks = new File(destDir, "SYMLINKS.txt");
-        if (!symlinks.exists()) return;
-        List<String> lines;
-        try {
-            lines = java.nio.file.Files.readAllLines(symlinks.toPath(),
-                java.nio.charset.StandardCharsets.UTF_8);
+        if (!symlinks.isFile()) return;
+        List<String> lines = new ArrayList<>();
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(new java.io.FileInputStream(symlinks),
+                    StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) lines.add(line);
         } catch (Exception e) {
-            symlinks.delete();
+            // Keep the manifest so a later run can retry.
             return;
         }
-        final String filesRoot = destDir.getParentFile().getAbsolutePath();
         for (String raw : lines) {
             if (raw == null || raw.trim().isEmpty()) continue;
             final String[] parts = raw.split("\u2190", 2);
@@ -276,23 +291,62 @@ public class PrefixInstaller {
             if (target.isEmpty() || link.isEmpty()) continue;
             if (link.startsWith("./")) link = link.substring(2);
             File linkFile = new File(destDir, link);
-            if (linkFile.exists()) continue;
+
+            String existing = readLink(linkFile);
+            if (existing != null) {
+                // Older builds resolved relative targets to absolute host paths
+                // (/data/user/0/...), which proot cannot resolve because the
+                // guest root is files/ - replace only those, keep valid links.
+                if (!existing.startsWith("/data/user/")) continue;
+                linkFile.delete();
+            } else if (linkFile.exists()) {
+                continue;
+            }
+
             File parent = linkFile.getParentFile();
             if (parent != null) parent.mkdirs();
-            String resolvedTarget = target;
-            if (target.startsWith("/data/data/com.termux/files")) {
-                resolvedTarget = filesRoot + target.substring("/data/data/com.termux/files".length());
-            }
-            java.nio.file.Path targetPath = java.nio.file.Paths.get(resolvedTarget);
-            if (!targetPath.isAbsolute()) {
-                targetPath = linkFile.getParentFile().toPath().resolve(resolvedTarget).normalize();
-            }
             try {
-                java.nio.file.Files.createSymbolicLink(linkFile.toPath(), targetPath);
-            } catch (Exception ignored) {
+                // Keep the manifest target verbatim: relative targets resolve
+                // against the link's own directory both on the host and inside
+                // proot, and /data/data/com.termux/... is the guest mount.
+                android.system.Os.symlink(target, linkFile.getAbsolutePath());
+            } catch (Exception e) {
+                // Filesystems that refuse symlinks: materialise a copy instead.
+                File resolved = resolveForHost(target, linkFile, destDir);
+                if (resolved == null || !resolved.isFile()) continue;
+                try {
+                    if (!resolved.getCanonicalPath().equals(linkFile.getCanonicalPath())) {
+                        copyFile(resolved, linkFile);
+                    }
+                } catch (Exception ignored) {
+                }
             }
         }
-        symlinks.delete();
+        // SYMLINKS.txt is intentionally kept: it lets a later run repair any
+        // link that went missing without re-downloading the bootstrap.
+    }
+
+    /** Read a symlink target, or null when {@code f} is not a symlink. */
+    private static String readLink(File f) {
+        try {
+            return android.system.Os.readlink(f.getAbsolutePath());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Map a guest symlink target to a real host file (fallback copy only). */
+    private static File resolveForHost(String target, File linkFile, File destDir) {
+        if (target.startsWith("/data/data/com.termux/files")) {
+            File filesRoot = destDir.getParentFile();
+            if (filesRoot != null) {
+                return new File(filesRoot,
+                    target.substring("/data/data/com.termux/files".length()));
+            }
+        }
+        File t = new File(target);
+        if (t.isAbsolute()) return t;
+        return new File(linkFile.getParentFile(), target);
     }
 
     /**
@@ -383,7 +437,10 @@ public class PrefixInstaller {
             String name = readString(debBytes, offset, 16).trim();
             long fileSize;
             try {
-                fileSize = Long.parseLong(readString(debBytes, offset + 48, 12).trim());
+                // ar header: name(16) mtime(12) uid(6) gid(6) mode(8) size(10) magic(2).
+                // Reading 12 bytes would swallow the "`\n" magic and break the parse
+                // for every member, so the scan never reaches data.tar.*.
+                fileSize = Long.parseLong(readString(debBytes, offset + 48, 10).trim());
             } catch (NumberFormatException e) {
                 offset += 60;
                 continue;
