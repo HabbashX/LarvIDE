@@ -9,9 +9,9 @@ import android.widget.Toast;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.tabs.TabLayout;
-import com.larv.ide.core.model.FileNode;
-import com.larv.ide.core.model.OpenFile;
-import com.larv.ide.core.project.ProjectManager;
+import com.larv.ide.infrastructure.model.FileNode;
+import com.larv.ide.infrastructure.model.OpenFile;
+import com.larv.ide.infrastructure.project.ProjectManager;
 import com.larv.ide.ui.adapter.FileTreeAdapter;
 
 import java.io.File;

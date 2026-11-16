@@ -2,7 +2,6 @@ package com.larv.ide.ui;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -11,11 +10,9 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.larv.ide.R;
-import com.larv.ide.core.model.Project;
-import com.larv.ide.core.project.ProjectManager;
+import com.larv.ide.infrastructure.model.Project;
+import com.larv.ide.infrastructure.project.ProjectManager;
 
-import java.io.File;
 import java.util.List;
 
 public class ProjectHomeActivity extends AppCompatActivity {

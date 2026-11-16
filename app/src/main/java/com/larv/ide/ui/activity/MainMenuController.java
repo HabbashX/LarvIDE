@@ -2,13 +2,11 @@ package com.larv.ide.ui.activity;
 
 import com.larv.ide.R;
 
-import android.content.Intent;
 import android.view.Menu;
 import android.view.View;
 import android.widget.Toast;
 
-import com.larv.ide.core.model.OpenFile;
-import com.larv.ide.core.run.RunDispatcher;
+import com.larv.ide.infrastructure.run.RunDispatcher;
 import com.larv.ide.ui.fragment.EditorFragment;
 
 import java.io.File;
@@ -132,7 +130,7 @@ final class MainMenuController {
                                 // Download straight from the Termux repo and use
                                 // dpkg: apt's https method crashes on some MIUI
                                 // devices, so "pkg install" cannot be trusted.
-                                exitCode = new com.larv.ide.core.run.backend.embedded.TermuxPackageInstaller(
+                                exitCode = new com.larv.ide.infrastructure.run.backend.embedded.TermuxPackageInstaller(
                                     activity, activity.embeddedBackend)
                                     .install(java.util.Arrays.asList(pkg), line ->
                                         activity.runController.writeTerm(rs.programOut(), line));
@@ -142,7 +140,7 @@ final class MainMenuController {
                             }
                             if (exitCode == 0) {
                                 activity.prefs.edit().putBoolean(
-                                    com.larv.ide.core.setup.SetupConfig.toolchainFlag(
+                                    com.larv.ide.infrastructure.setup.SetupConfig.toolchainFlag(
                                         pkg), true).apply();
                             }
                             activity.runController.writeTerm(rs.programOut(),

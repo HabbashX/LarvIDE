@@ -1,0 +1,107 @@
+package com.larv.ide.infrastructure.setup;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Pure-Java model for the first-launch setup wizard: which languages the user
+ * works in and which prefix packages each one needs. No Android dependencies
+ * so it is unit-testable on the JVM.
+ */
+public final class SetupConfig {
+
+    public static final String PREF_SETUP_COMPLETE = "setup_complete";
+    public static final String PREF_SETUP_LANGUAGES = "setup_languages";
+
+    public enum Language {
+        JAVA("Java", "openjdk-17",
+            "Java coursework — compiled and run by the Linux JRE (javac + java)"),
+        CPP("C / C++", "clang",
+            "Native code — compiles with clang++"),
+        PYTHON("Python", "python",
+            "Scripts and assignments — runs with python3"),
+        NODE("JavaScript / Node", "nodejs",
+            "JS beyond the browser — runs with node"),
+        GO("Go", "golang",
+            "Compiled, statically typed — runs with go"),
+        PHP("PHP", "php",
+            "Server-side scripting — runs with php"),
+        RUBY("Ruby", "ruby",
+            "Object-oriented scripting — runs with ruby"),
+        RUST("Rust", "rust",
+            "Systems programming — compiles with rustc"),
+        PERL("Perl", "perl",
+            "Text processing — runs with perl"),
+        LUA("Lua", "lua",
+            "Lightweight scripting — runs with lua");
+
+        public final String title;
+        public final String pkg;
+        public final String blurb;
+
+        Language(String title, String pkg, String blurb) {
+            this.title = title;
+            this.pkg = pkg;
+            this.blurb = blurb;
+        }
+    }
+
+    private SetupConfig() {}
+
+    /** Ordered language → package map for batch install. */
+    public static Map<Language, String> packagesFor(List<Language> selected) {
+        Map<Language, String> out = new LinkedHashMap<>();
+        if (selected == null) return out;
+        for (Language l : selected) {
+            if (l != null && !out.containsKey(l)) out.put(l, l.pkg);
+        }
+        return out;
+    }
+
+    /** Parse persisted language names back; unknown names are dropped. */
+    public static List<Language> parseStored(java.util.Set<String> stored) {
+        List<Language> out = new ArrayList<>();
+        if (stored == null) return out;
+        for (String name : stored) {
+            try {
+                out.add(Language.valueOf(name));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return out;
+    }
+
+    public static java.util.Set<String> storeNames(List<Language> selected) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        if (selected == null) return out;
+        for (Language l : selected) {
+            if (l != null) out.add(l.name());
+        }
+        return out;
+    }
+
+    /** Entry file scaffolded for a fresh project of this language. */
+    public static String entryFileName(Language lang) {
+        if (lang == null) return null;
+        switch (lang) {
+            case JAVA: return "Main.java";
+            case CPP: return "main.cpp";
+            case PYTHON: return "main.py";
+            case NODE: return "index.js";
+            case GO: return "main.go";
+            case PHP: return "index.php";
+            case RUBY: return "main.rb";
+            case RUST: return "main.rs";
+            case PERL: return "main.pl";
+            case LUA: return "main.lua";
+            default: return null;
+        }
+    }
+
+    /** Pref key recording a successful toolchain install. */
+    public static String toolchainFlag(String pkg) {
+        return "toolchain_installed_" + pkg;
+    }
+}

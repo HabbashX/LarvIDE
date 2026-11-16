@@ -76,16 +76,16 @@ final class MainDialogs {
 
     /** In-app Linux runtime setup: download bootstrap (arm64, WiFi) - no external app. */
     static void showEmbeddedSetup(Activity activity,
-                                  com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend backend,
+                                  com.larv.ide.infrastructure.run.backend.embedded.EmbeddedLinuxBackend backend,
                                   SharedPreferences prefs, TextView statusText) {
-        com.larv.ide.core.run.backend.ExecutionBackend.SetupState state =
+        com.larv.ide.infrastructure.run.backend.ExecutionBackend.SetupState state =
             backend != null ? backend.setupState()
-                : com.larv.ide.core.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING;
-        if (state == com.larv.ide.core.run.backend.ExecutionBackend.SetupState.READY) {
+                : com.larv.ide.infrastructure.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING;
+        if (state == com.larv.ide.infrastructure.run.backend.ExecutionBackend.SetupState.READY) {
             Toast.makeText(activity, "Linux runtime ready", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (state == com.larv.ide.core.run.backend.ExecutionBackend.SetupState.EMBEDDED_INSTALLING) {
+        if (state == com.larv.ide.infrastructure.run.backend.ExecutionBackend.SetupState.EMBEDDED_INSTALLING) {
             Toast.makeText(activity, "Linux runtime is downloading-", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -100,13 +100,13 @@ final class MainDialogs {
                 statusText.setText("Downloading Linux runtime-");
                 backend.installer().installAsync(
                     prefs.getString("embeddedBootstrapUrl", null),
-                    new com.larv.ide.core.run.backend.embedded.PrefixInstaller.Listener() {
+                    new com.larv.ide.infrastructure.run.backend.embedded.PrefixInstaller.Listener() {
                         @Override public void onProgress(String stage, int percent) {
                             activity.runOnUiThread(() -> statusText.setText(stage));
                         }
                         @Override public void onComplete() {
                             activity.runOnUiThread(() -> {
-                                com.larv.ide.core.project.ProjectManager.setCppEnabled(true);
+                                com.larv.ide.infrastructure.project.ProjectManager.setCppEnabled(true);
                                 statusText.setText("Linux runtime ready");
                                 Toast.makeText(activity,
                                     "Linux runtime ready - C/C++ unlocked",

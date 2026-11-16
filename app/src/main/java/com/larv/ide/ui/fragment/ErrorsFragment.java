@@ -13,7 +13,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.larv.ide.R;
-import com.larv.ide.core.model.Diagnostic;
+import com.larv.ide.infrastructure.model.Diagnostic;
 import com.larv.ide.ui.adapter.ErrorAdapter;
 
 import java.util.List;

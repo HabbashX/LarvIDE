@@ -19,12 +19,11 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
 import com.larv.ide.R;
-import com.larv.ide.core.project.ProjectManager;
-import com.larv.ide.core.model.Project;
-import com.larv.ide.core.run.backend.ExecRequest;
-import com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend;
-import com.larv.ide.core.run.backend.embedded.EmbeddedRuntime;
-import com.larv.ide.core.setup.SetupConfig;
+import com.larv.ide.infrastructure.project.ProjectManager;
+import com.larv.ide.infrastructure.model.Project;
+import com.larv.ide.infrastructure.run.backend.embedded.EmbeddedLinuxBackend;
+import com.larv.ide.infrastructure.run.backend.embedded.EmbeddedRuntime;
+import com.larv.ide.infrastructure.setup.SetupConfig;
 
 import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
@@ -216,7 +215,7 @@ public class ProjectCreatorActivity extends AppCompatActivity {
         toolchainStatus.setText("Installing " + lang.pkg + "…");
         executor.execute(() -> {
             try {
-                int exit = new com.larv.ide.core.run.backend.embedded.TermuxPackageInstaller(
+                int exit = new com.larv.ide.infrastructure.run.backend.embedded.TermuxPackageInstaller(
                     this, backend)
                     .install(Arrays.asList(lang.pkg), this::appendLog);
                 final boolean ok = exit == 0;

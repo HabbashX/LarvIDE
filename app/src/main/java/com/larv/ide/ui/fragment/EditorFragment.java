@@ -20,8 +20,8 @@ import androidx.fragment.app.Fragment;
 
 import com.google.gson.Gson;
 import com.larv.ide.R;
-import com.larv.ide.core.completion.CompletionItem;
-import com.larv.ide.core.model.Diagnostic;
+import com.larv.ide.infrastructure.completion.CompletionItem;
+import com.larv.ide.infrastructure.model.Diagnostic;
 
 import java.util.List;
 

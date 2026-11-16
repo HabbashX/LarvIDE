@@ -36,14 +36,14 @@ import androidx.viewpager2.widget.ViewPager2;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 
-import com.larv.ide.core.completion.ProjectIndexer;
-import com.larv.ide.core.model.FileNode;
+import com.larv.ide.infrastructure.completion.ProjectIndexer;
+import com.larv.ide.infrastructure.model.FileNode;
 
-import com.larv.ide.core.model.OpenFile;
-import com.larv.ide.core.model.Project;
-import com.larv.ide.core.project.ProjectManager;
-import com.larv.ide.core.project.ProjectRecognizer;
-import com.larv.ide.core.run.RunDispatcher;
+import com.larv.ide.infrastructure.model.OpenFile;
+import com.larv.ide.infrastructure.model.Project;
+import com.larv.ide.infrastructure.project.ProjectManager;
+import com.larv.ide.infrastructure.project.ProjectRecognizer;
+import com.larv.ide.infrastructure.run.RunDispatcher;
 import com.larv.ide.ui.session.SessionManager;
 
 import com.larv.ide.ui.adapter.BottomPanelAdapter;
@@ -120,16 +120,16 @@ public class MainActivity extends AppCompatActivity
 
     ProjectManager projectManager;
     ProjectIndexer projectIndexer;
-    private com.larv.ide.core.performance.CacheManager cacheManager;
-    private com.larv.ide.core.analysis.CompletionManager completionManager;
-    final com.larv.ide.core.concurrent.TaskScheduler taskScheduler =
-        new com.larv.ide.core.concurrent.TaskScheduler(
-            new com.larv.ide.core.concurrent.IOExecutor(1),
-            new com.larv.ide.core.concurrent.CPUExecutor(1),
-            new com.larv.ide.core.concurrent.CompilationExecutor());
-    final com.larv.ide.core.concurrent.CompilationExecutor compilerExecutor =
+    private com.larv.ide.infrastructure.performance.CacheManager cacheManager;
+    private com.larv.ide.infrastructure.analysis.CompletionManager completionManager;
+    final com.larv.ide.infrastructure.concurrent.TaskScheduler taskScheduler =
+        new com.larv.ide.infrastructure.concurrent.TaskScheduler(
+            new com.larv.ide.infrastructure.concurrent.IOExecutor(1),
+            new com.larv.ide.infrastructure.concurrent.CPUExecutor(1),
+            new com.larv.ide.infrastructure.concurrent.CompilationExecutor());
+    final com.larv.ide.infrastructure.concurrent.CompilationExecutor compilerExecutor =
         taskScheduler.compilation();
-    final com.larv.ide.core.concurrent.CPUExecutor indexerExecutor =
+    final com.larv.ide.infrastructure.concurrent.CPUExecutor indexerExecutor =
         taskScheduler.cpu();
     Project currentProject;
     final List<OpenFile> openFiles = new ArrayList<>();
@@ -147,7 +147,7 @@ public class MainActivity extends AppCompatActivity
     EditorTabsController editorTabs;
     MainMenuController menuController;
     FileTreeDragController fileTreeDrag;
-    com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend embeddedBackend;
+    com.larv.ide.infrastructure.run.backend.embedded.EmbeddedLinuxBackend embeddedBackend;
     SessionManager sessionManager;
 
     @Override
@@ -177,7 +177,7 @@ public class MainActivity extends AppCompatActivity
     private void maybeShowSetupWizard() {
         if (prefs == null) return;
         if (!prefs.getBoolean(
-                com.larv.ide.core.setup.SetupConfig.PREF_SETUP_COMPLETE, false)) {
+                com.larv.ide.infrastructure.setup.SetupConfig.PREF_SETUP_COMPLETE, false)) {
             startActivity(new Intent(this,
                 com.larv.ide.ui.setup.SetupWizardActivity.class));
         }
@@ -198,17 +198,17 @@ public class MainActivity extends AppCompatActivity
         if (runtimeGateShowing) return;
         // A prefix without proot's dependencies only needs a small repair
         // instead of the full bootstrap download.
-        boolean repair = com.larv.ide.core.run.backend.embedded.EmbeddedRuntime
+        boolean repair = com.larv.ide.infrastructure.run.backend.embedded.EmbeddedRuntime
             .bashFile(this).isFile();
         // "Later" only opts out of the initial download; a half-installed
         // runtime (the prefix is there but proot cannot launch) is broken and
         // must be repaired, otherwise every command fails with "Permission denied".
         if (prefs != null && prefs.getBoolean("runtimeGateDismissed", false) && !repair) return;
-        if (com.larv.ide.core.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this)) {
+        if (com.larv.ide.infrastructure.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this)) {
             maybeShowSetupWizard();
             return;
         }
-        if (!com.larv.ide.core.run.backend.embedded.EmbeddedRuntime.isArm64()) {
+        if (!com.larv.ide.infrastructure.run.backend.embedded.EmbeddedRuntime.isArm64()) {
             new AlertDialog.Builder(this)
                 .setTitle("Device not supported")
                 .setMessage("The Linux runtime needs arm64 - this device cannot install it. "
@@ -350,7 +350,7 @@ public class MainActivity extends AppCompatActivity
         status.setText("Downloading Linux Environment…");
         embeddedBackend.installer().installAsync(
             prefs.getString("embeddedBootstrapUrl", null),
-            new com.larv.ide.core.run.backend.embedded.PrefixInstaller.Listener() {
+            new com.larv.ide.infrastructure.run.backend.embedded.PrefixInstaller.Listener() {
                 @Override public void onProgress(String stage, int percent) {
                     runOnUiThread(() -> {
                         if (!dialog.isShowing()) return;
@@ -395,7 +395,7 @@ public class MainActivity extends AppCompatActivity
         // Settings) - re-evaluate the C++ gate every return. If it was
         // removed, the mandatory gate re-appears.
         ProjectManager.setCppEnabled(
-            com.larv.ide.core.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this));
+            com.larv.ide.infrastructure.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this));
         enforceRuntimeGate();
     }
 
@@ -498,12 +498,12 @@ public class MainActivity extends AppCompatActivity
         projectManager = new ProjectManager(getApplicationContext(), taskScheduler.io());
         projectManager.setListener(this);
 
-        embeddedBackend = new com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend(
+        embeddedBackend = new com.larv.ide.infrastructure.run.backend.embedded.EmbeddedLinuxBackend(
             getApplicationContext());
         runController = new RunController(this);
         runController.setEmbeddedBackend(embeddedBackend);
         ProjectManager.setCppEnabled(
-            com.larv.ide.core.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this));
+            com.larv.ide.infrastructure.run.backend.embedded.EmbeddedRuntime.isEmbeddedReady(this));
         sessionManager = new SessionManager(new SessionManager.Host() {
             @Override public Project currentProject() { return currentProject; }
             @Override public java.util.List<OpenFile> openFiles() { return openFiles; }
@@ -523,8 +523,8 @@ public class MainActivity extends AppCompatActivity
             @Override public void runOnUiThread(Runnable action) { MainActivity.this.runOnUiThread(action); }
         });
         projectIndexer = new ProjectIndexer();
-        cacheManager = com.larv.ide.core.performance.CacheManager.create(getApplicationContext());
-        completionManager = new com.larv.ide.core.analysis.CompletionManager(
+        cacheManager = com.larv.ide.infrastructure.performance.CacheManager.create(getApplicationContext());
+        completionManager = new com.larv.ide.infrastructure.analysis.CompletionManager(
             projectIndexer, indexerExecutor);
     }
 
@@ -1019,7 +1019,7 @@ public class MainActivity extends AppCompatActivity
         MainDialogs.showEmbeddedSetup(this, embeddedBackend, prefs, statusText);
     }
 
-    private java.util.List<com.larv.ide.core.model.Diagnostic> parseCompilerDiagnostics(String output) {
+    private java.util.List<com.larv.ide.infrastructure.model.Diagnostic> parseCompilerDiagnostics(String output) {
         return runController.parseCompilerDiagnostics(output);
     }
 

@@ -10,8 +10,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.google.android.material.tabs.TabLayout;
-import com.larv.ide.core.model.OpenFile;
-import com.larv.ide.core.project.ProjectManager;
+import com.larv.ide.infrastructure.model.OpenFile;
+import com.larv.ide.infrastructure.project.ProjectManager;
 
 import java.io.File;
 import java.io.IOException;

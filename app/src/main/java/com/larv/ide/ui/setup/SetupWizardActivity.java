@@ -19,12 +19,11 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
 import com.larv.ide.R;
-import com.larv.ide.core.project.ProjectManager;
-import com.larv.ide.core.run.backend.ExecRequest;
-import com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend;
-import com.larv.ide.core.run.backend.embedded.EmbeddedRuntime;
-import com.larv.ide.core.run.backend.embedded.PrefixInstaller;
-import com.larv.ide.core.setup.SetupConfig;
+import com.larv.ide.infrastructure.project.ProjectManager;
+import com.larv.ide.infrastructure.run.backend.embedded.EmbeddedLinuxBackend;
+import com.larv.ide.infrastructure.run.backend.embedded.EmbeddedRuntime;
+import com.larv.ide.infrastructure.run.backend.embedded.PrefixInstaller;
+import com.larv.ide.infrastructure.setup.SetupConfig;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -300,7 +299,7 @@ public class SetupWizardActivity extends AppCompatActivity {
                     String pkg = e.getValue();
                     appendLog(log, "$ install " + pkg + " (direct .deb download)\n");
                     try {
-                        int exit = new com.larv.ide.core.run.backend.embedded.TermuxPackageInstaller(
+                        int exit = new com.larv.ide.infrastructure.run.backend.embedded.TermuxPackageInstaller(
                             this, backend)
                             .install(Arrays.asList(pkg), line -> appendLog(log, line));
                         if (exit == 0) {

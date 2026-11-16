@@ -8,10 +8,10 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 
 import com.google.android.material.tabs.TabLayout;
-import com.larv.ide.core.completion.ProjectIndexer;
-import com.larv.ide.core.model.OpenFile;
-import com.larv.ide.core.model.Project;
-import com.larv.ide.core.project.ProjectManager;
+import com.larv.ide.infrastructure.completion.ProjectIndexer;
+import com.larv.ide.infrastructure.model.OpenFile;
+import com.larv.ide.infrastructure.model.Project;
+import com.larv.ide.infrastructure.project.ProjectManager;
 import com.larv.ide.ui.fragment.EditorFragment;
 
 import org.jetbrains.annotations.Contract;
@@ -20,7 +20,6 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -135,7 +134,7 @@ public class SessionManager {
             root.put("buffers", buffers);
             File file = sessionFile(project);
             file.getParentFile().mkdirs();
-            com.larv.ide.core.io.AtomicFileWriter.write(file, root.toString());
+            com.larv.ide.infrastructure.io.AtomicFileWriter.write(file, root.toString());
         } catch (Exception e) {
             Log.w(TAG, "saveSession failed", e);
         }

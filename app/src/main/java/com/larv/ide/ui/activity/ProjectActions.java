@@ -1,7 +1,5 @@
 package com.larv.ide.ui.activity;
 
-import com.larv.ide.R;
-
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.view.View;
@@ -12,9 +10,9 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 
-import com.larv.ide.core.model.FileNode;
-import com.larv.ide.core.model.Project;
-import com.larv.ide.core.project.ProjectManager;
+import com.larv.ide.infrastructure.model.FileNode;
+import com.larv.ide.infrastructure.model.Project;
+import com.larv.ide.infrastructure.project.ProjectManager;
 
 import java.io.File;
 import java.util.ArrayList;

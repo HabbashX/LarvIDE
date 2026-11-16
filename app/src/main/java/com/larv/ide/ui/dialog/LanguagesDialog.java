@@ -12,8 +12,8 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.ContextCompat;
 
 import com.larv.ide.R;
-import com.larv.ide.core.run.backend.embedded.EmbeddedRuntime;
-import com.larv.ide.core.setup.SetupConfig;
+import com.larv.ide.infrastructure.run.backend.embedded.EmbeddedRuntime;
+import com.larv.ide.infrastructure.setup.SetupConfig;
 
 import java.io.File;
 import java.util.LinkedHashMap;

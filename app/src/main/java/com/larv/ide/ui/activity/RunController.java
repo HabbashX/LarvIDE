@@ -1,18 +1,16 @@
 package com.larv.ide.ui.activity;
 
-import com.larv.ide.R;
-
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.widget.Toast;
 
-import com.larv.ide.core.build.LarvBuildParser;
-import com.larv.ide.core.model.Diagnostic;
-import com.larv.ide.core.model.Project;
-import com.larv.ide.core.run.RunDispatcher;
-import com.larv.ide.core.run.RunEligibility;
+import com.larv.ide.infrastructure.build.LarvBuildParser;
+import com.larv.ide.infrastructure.model.Diagnostic;
+import com.larv.ide.infrastructure.model.Project;
+import com.larv.ide.infrastructure.run.RunDispatcher;
+import com.larv.ide.infrastructure.run.RunEligibility;
 import com.larv.ide.ui.TerminalActivity;
 import com.larv.ide.ui.fragment.OutputFragment;
 
@@ -48,7 +46,7 @@ final class RunController {
         this.dispatcher = new RunDispatcher(new RunHost());
     }
 
-    void setEmbeddedBackend(com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend backend) {
+    void setEmbeddedBackend(com.larv.ide.infrastructure.run.backend.embedded.EmbeddedLinuxBackend backend) {
         dispatcher.setEmbeddedBackend(backend);
     }
 
@@ -188,23 +186,23 @@ final class RunController {
             });
         }
         @Override public android.content.SharedPreferences prefs() { return activity.prefs; }
-        @Override public void runEmbeddedInteractive(com.larv.ide.core.run.backend.ExecRequest request,
+        @Override public void runEmbeddedInteractive(com.larv.ide.infrastructure.run.backend.ExecRequest request,
                 byte[] stdinPrefeed)
-                throws com.larv.ide.core.run.backend.BackendUnavailableException {
+                throws com.larv.ide.infrastructure.run.backend.BackendUnavailableException {
             // REAL Linux session: process stdin stays open, terminal keystrokes
             // flow straight into the program (Scanner / input() / readline).
-            com.larv.ide.core.run.backend.embedded.EmbeddedLinuxBackend backend =
+            com.larv.ide.infrastructure.run.backend.embedded.EmbeddedLinuxBackend backend =
                 activity.embeddedBackend;
             if (backend == null || !backend.isAvailable()) {
-                throw new com.larv.ide.core.run.backend.BackendUnavailableException(
+                throw new com.larv.ide.infrastructure.run.backend.BackendUnavailableException(
                     backend != null ? backend.setupState()
-                        : com.larv.ide.core.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
+                        : com.larv.ide.infrastructure.run.backend.ExecutionBackend.SetupState.EMBEDDED_MISSING);
             }
             try {
                 Process proc = backend.openCommandProcess(request);
                 attachExternalProcess(proc,
                     "$ " + String.join(" ", request.getCommand()) + "\n", stdinPrefeed);
-            } catch (com.larv.ide.core.run.backend.BackendUnavailableException e) {
+            } catch (com.larv.ide.infrastructure.run.backend.BackendUnavailableException e) {
                 throw e;
             } catch (Exception e) {
                 toast("Embedded run failed: " + e.getMessage());
