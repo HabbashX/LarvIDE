@@ -500,6 +500,7 @@ public class MainActivity extends AppCompatActivity
         fileTreeRecyclerView.setAdapter(fileTreeAdapter);
         fileTreeDrag.setup();
         applyMenuBarGlass();
+        applyGlassBackground();
 
         bottomPanelAdapter = new BottomPanelAdapter(this);
         bottomViewPager.setAdapter(bottomPanelAdapter);
@@ -1054,6 +1055,33 @@ public class MainActivity extends AppCompatActivity
         });
         glass.setStroke(1, Color.argb(70, r, g, b));
         bar.setBackground(glass);
+    }
+
+    /**
+     * Glassy app canvas behind the tool windows. Only the root background is
+     * touched — the editor and file tree keep their own solid panel colours.
+     */
+    private void applyGlassBackground() {
+        View root = findViewById(R.id.mainRoot);
+        if (root == null) return;
+        int accent = themeColorOrFallback(
+            com.google.android.material.R.attr.colorPrimary, R.color.ide_accent);
+        int base = ContextCompat.getColor(this, R.color.background);
+        GradientDrawable glass = new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[]{
+                mix(base, accent, 0.16f),
+                base,
+                mix(base, accent, 0.09f)
+            });
+        root.setBackground(glass);
+    }
+
+    private static int mix(int base, int accent, float amount) {
+        int r = Math.round(Color.red(base) * (1f - amount) + Color.red(accent) * amount);
+        int g = Math.round(Color.green(base) * (1f - amount) + Color.green(accent) * amount);
+        int b = Math.round(Color.blue(base) * (1f - amount) + Color.blue(accent) * amount);
+        return Color.rgb(r, g, b);
     }
 
     private int themeColor(int attr) {
