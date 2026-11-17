@@ -56,7 +56,8 @@ final class MainDialogs {
 
     static void showSettings(Activity activity, SharedPreferences prefs, int accentColor,
                              Runnable applyEditorPrefs, Runnable onAccentChanged,
-                             Runnable onInspectionSettingsChanged) {
+                             Runnable onInspectionSettingsChanged,
+                             Runnable onLanguageServerSettingsChanged) {
         SettingsDialog.show(activity, new SettingsDialog.Callbacks() {
             @Override public SharedPreferences prefs() { return prefs; }
             @Override public int accentColor() { return accentColor; }
@@ -74,6 +75,9 @@ final class MainDialogs {
             }
             @Override public void onInspectionSettingsApplied() {
                 onInspectionSettingsChanged.run();
+            }
+            @Override public void onLanguageServerSettingsApplied() {
+                onLanguageServerSettingsChanged.run();
             }
         });
     }

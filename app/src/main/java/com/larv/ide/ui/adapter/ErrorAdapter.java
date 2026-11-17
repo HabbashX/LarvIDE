@@ -1,5 +1,6 @@
 package com.larv.ide.ui.adapter;
 
+import android.annotation.SuppressLint;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -18,6 +19,7 @@ public class ErrorAdapter extends RecyclerView.Adapter<ErrorAdapter.ErrorViewHol
 
     private List<Diagnostic> errors = new ArrayList<>();
 
+    @SuppressLint("NotifyDataSetChanged")
     public void setErrors(List<Diagnostic> errors) {
         this.errors = errors;
         notifyDataSetChanged();

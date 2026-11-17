@@ -91,6 +91,7 @@ final class EditorTabsController {
         if (opened != null) {
             activity.scheduleInspection(filePath, opened.getContent(), true);
         }
+        activity.syncLanguageServers();
 
         ensureEditorFragment();
         OpenFile openFile = activity.findOpenFile(filePath);

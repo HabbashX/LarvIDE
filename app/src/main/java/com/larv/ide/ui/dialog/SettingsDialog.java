@@ -49,6 +49,7 @@ public class SettingsDialog {
         void onEditorSettingsApplied(String themeId, String fontFamily,
                                      int fontSize, int tabSize);
         void onInspectionSettingsApplied();
+        void onLanguageServerSettingsApplied();
     }
 
     public static void show(Activity activity, @NonNull Callbacks callbacks) {
@@ -102,6 +103,8 @@ public class SettingsDialog {
                 "editor font size tab wrap line numbers minimap indent guides autosave"},
             {"inspections", "Inspections", "I",
                 "inspection warnings errors problems todo unused import whitespace code quality"},
+            {"lsp", "Language Servers (experimental)", "L",
+                "language server LSP clangd pylsp jdtls typescript memory ram performance experimental"},
             {"build", "Build, Execution, Deployment", "B",
                 "build java jdk language level linux termux runtime pkg terminal environment"},
             {"project", "Project", "P", "project hidden files"},
@@ -323,6 +326,19 @@ public class SettingsDialog {
             ed.putInt("editorFontSize", newFontSize).putInt("editorTabSize", newTabSize);
         }
 
+        LinearLayout lspPane = panes.get("lsp");
+        if (lspPane != null && lspPane.getTag() instanceof Object[]) {
+            Object[] state = (Object[]) lspPane.getTag();
+            @SuppressWarnings("unchecked")
+            java.util.List<EditText> fields = (java.util.List<EditText>) state[0];
+            @SuppressWarnings("unchecked")
+            java.util.List<String> langList = (java.util.List<String>) state[1];
+            for (int i = 0; i < fields.size() && i < langList.size(); i++) {
+                ed.putString("lsp." + langList.get(i) + ".command",
+                    fields.get(i).getText().toString().trim());
+            }
+        }
+
         LinearLayout inspections = panes.get("inspections");
         if (inspections != null && inspections.getTag() instanceof Object[]) {
             Object[] state = (Object[]) inspections.getTag();
@@ -343,6 +359,7 @@ public class SettingsDialog {
 
         ed.apply();
         callbacks.onInspectionSettingsApplied();
+        callbacks.onLanguageServerSettingsApplied();
 
         if (editor != null) {
             callbacks.onEditorSettingsApplied(
@@ -413,6 +430,8 @@ public class SettingsDialog {
             buildEditorPane(pane, activity, prefs, callbacks, accent);
         } else if ("inspections".equals(category)) {
             buildInspectionsPane(pane, activity, prefs, accent);
+        } else if ("lsp".equals(category)) {
+            buildLanguageServersPane(pane, activity, prefs, accent);
         } else if ("build".equals(category)) {
             buildBuildPane(pane, activity, prefs, callbacks, accent);
         } else if ("project".equals(category)) {
@@ -574,6 +593,7 @@ public class SettingsDialog {
         pane.addView(divider(activity));
         pane.addView(sectionTitle(activity, "Enabled inspections"));
         String[][] checks = {
+            {prefix + "syntax", "Syntax errors: braces, strings, ';', ':' (error)"},
             {prefix + "unusedImports", "Unused imports (warning)"},
             {prefix + "trailingWhitespace", "Trailing whitespace (weak warning)"},
             {prefix + "longLines", "Long lines (weak warning)"},
@@ -583,7 +603,7 @@ public class SettingsDialog {
             {prefix + "stringComparison", "String == comparison (warning)"},
             {prefix + "tabs", "Tab characters (weak warning)"},
         };
-        boolean[] defaults = {true, true, true, true, true, true, true, false};
+        boolean[] defaults = {true, true, true, true, true, true, true, true, false};
         for (int i = 0; i < checks.length; i++) {
             final String key = checks[i][0];
             pane.addView(toggle(activity, accent, checks[i][1],
@@ -609,6 +629,83 @@ public class SettingsDialog {
         pane.addView(severitySpinner);
 
         pane.setTag(new Object[]{lengthSpinner, severitySpinner, severityValues});
+    }
+
+    // ---- Language servers (opt-in) ------------------------------------------
+
+    private static void buildLanguageServersPane(LinearLayout pane, Activity activity,
+                                                 SharedPreferences prefs, int accent) {
+        TextView warning = new TextView(activity);
+        warning.setText("EXPERIMENTAL — language servers are separate processes that can use "
+            + "100–400 MB of RAM each (jdtls needs a full JVM). On a 2 GB device this can "
+            + "slow the editor down, drain the battery or trigger Android's low-memory killer. "
+            + "Only enable one you actually need, and install its package first.");
+        warning.setTextSize(12);
+        warning.setTextColor(ContextCompat.getColor(activity, R.color.warning));
+        warning.setPadding(dp(activity, 10), dp(activity, 10), dp(activity, 10), dp(activity, 10));
+        warning.setBackgroundColor(ContextCompat.getColor(activity, R.color.surface_variant));
+        pane.addView(warning);
+
+        final String[] langs = com.larv.ide.infrastructure.analysis.LanguageServerManager.LANGS;
+        final String[] titles = com.larv.ide.infrastructure.analysis.LanguageServerManager.TITLES;
+        final String[] defaults =
+            com.larv.ide.infrastructure.analysis.LanguageServerManager.DEFAULT_COMMANDS;
+        final String[] packages =
+            com.larv.ide.infrastructure.analysis.LanguageServerManager.PACKAGES;
+
+        final java.util.List<EditText> commandFields = new java.util.ArrayList<>();
+        final java.util.List<String> commandLangs = new java.util.ArrayList<>();
+        for (int i = 0; i < langs.length; i++) {
+            final String lang = langs[i];
+            final String key = "lsp." + lang + ".enabled";
+            pane.addView(sectionTitle(activity, titles[i]));
+            pane.addView(label(activity, "Requires Termux package: " + packages[i]));
+            pane.addView(toggle(activity, accent, "Enable " + titles[i] + " language server",
+                prefs.getBoolean(key, false),
+                (button, checked) -> {
+                    if (!checked) {
+                        prefs.edit().putBoolean(key, false).apply();
+                        return;
+                    }
+                    if (com.larv.ide.infrastructure.analysis.LanguageServerManager
+                        .warningAccepted(prefs)) {
+                        prefs.edit().putBoolean(key, true).apply();
+                    } else {
+                        button.setChecked(false);
+                        confirmLspWarning(activity, prefs, () ->
+                            prefs.edit().putBoolean(key, true).apply());
+                    }
+                }));
+            EditText command = new EditText(activity);
+            command.setHint(defaults[i]);
+            command.setText(com.larv.ide.infrastructure.analysis.LanguageServerManager
+                .commandFor(prefs, lang));
+            command.setSingleLine(true);
+            command.setTextSize(12);
+            command.setBackground(ContextCompat.getDrawable(activity, R.drawable.edittext_ide));
+            command.setTextColor(ContextCompat.getColor(activity, R.color.text_primary));
+            command.setPadding(dp(activity, 8), dp(activity, 8), dp(activity, 8), dp(activity, 8));
+            pane.addView(command);
+            commandFields.add(command);
+            commandLangs.add(lang);
+        }
+        pane.setTag(new Object[]{commandFields, commandLangs});
+    }
+
+    private static void confirmLspWarning(Activity activity, SharedPreferences prefs,
+                                          Runnable onAccepted) {
+        new AlertDialog.Builder(activity)
+            .setTitle("High memory usage")
+            .setMessage("Language servers run as extra processes inside the Linux runtime. "
+                + "Java's jdtls alone can use 200–400 MB of RAM. On a low-end device this "
+                + "will reduce performance and may crash apps when memory runs out.\n\n"
+                + "Only continue if you understand this and have installed the server package.")
+            .setPositiveButton("I understand", (d, w) -> {
+                prefs.edit().putBoolean("lsp.warningAccepted", true).apply();
+                onAccepted.run();
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
     }
 
     // ---- Build, Execution, Deployment ---------------------------------------

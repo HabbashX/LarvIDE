@@ -132,6 +132,9 @@ public class MainActivity extends AppCompatActivity
     private com.larv.ide.infrastructure.performance.CacheManager cacheManager;
     private com.larv.ide.infrastructure.analysis.CompletionManager completionManager;
     private com.larv.ide.infrastructure.analysis.InspectionManager inspectionManager;
+    private com.larv.ide.infrastructure.analysis.LanguageServerManager lspManager;
+    private final List<com.larv.ide.infrastructure.model.Diagnostic> lspDiagnostics =
+        new ArrayList<>();
     private final List<com.larv.ide.infrastructure.model.Diagnostic> compilerDiagnostics =
         new ArrayList<>();
     private final List<com.larv.ide.infrastructure.model.Diagnostic> inspectionDiagnostics =
@@ -547,6 +550,13 @@ public class MainActivity extends AppCompatActivity
             projectIndexer, indexerExecutor);
         inspectionManager = new com.larv.ide.infrastructure.analysis.InspectionManager(
             indexerExecutor);
+        lspManager = new com.larv.ide.infrastructure.analysis.LanguageServerManager(
+            getApplicationContext(), embeddedBackend);
+        lspManager.setDiagnosticsCallback((file, list) -> {
+            lspDiagnostics.clear();
+            lspDiagnostics.addAll(list);
+            refreshProblems();
+        });
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -728,6 +738,7 @@ public class MainActivity extends AppCompatActivity
     public void onProjectOpened(@NonNull Project project) {
         currentProject = project;
         selectedDirectory = project.getPath();
+        syncLanguageServers();
         if (prefs != null) {
             prefs.edit().putString(PREF_LAST_PROJECT, project.getPath()).apply();
         }
@@ -778,6 +789,8 @@ public class MainActivity extends AppCompatActivity
             sessionManager.saveProjectNow(currentProject);
         }
         currentProject = null;
+        if (lspManager != null) lspManager.stopAll();
+        lspDiagnostics.clear();
         sessionManager.reset();
         if (projectIndexer != null) projectIndexer.cancelIndexing();
         openFiles.clear();
@@ -845,11 +858,42 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    /** Merge compiler errors and inspections into one Problems list. */
+    /** Start/stop optional language servers and open the active file. */
+    void syncLanguageServers() {
+        if (lspManager == null) return;
+        if (currentProject == null) {
+            lspManager.stopAll();
+            return;
+        }
+        lspManager.configure(prefs, currentProject.getRootDir().getAbsolutePath());
+        lspManager.sync();
+        String lang = lspLangFor(currentEditorFile);
+        if (lang == null || !com.larv.ide.infrastructure.analysis.LanguageServerManager
+            .isEnabled(prefs, lang)) return;
+        OpenFile open = findOpenFile(currentEditorFile);
+        if (open != null) lspManager.open(lang, currentEditorFile, open.getContent());
+    }
+
+    private static String lspLangFor(String file) {
+        if (file == null) return null;
+        String f = file.toLowerCase(java.util.Locale.ROOT);
+        if (f.endsWith(".java")) return "java";
+        if (f.endsWith(".py")) return "python";
+        if (f.endsWith(".c") || f.endsWith(".cc") || f.endsWith(".cpp")
+            || f.endsWith(".cxx") || f.endsWith(".h") || f.endsWith(".hpp")) return "cpp";
+        if (f.endsWith(".js") || f.endsWith(".jsx") || f.endsWith(".ts")
+            || f.endsWith(".tsx")) return "typescript";
+        return null;
+    }
+
+    /** Merge compiler errors, inspections and LSP diagnostics into one list. */
     private void refreshProblems() {
         List<com.larv.ide.infrastructure.model.Diagnostic> merged =
             new ArrayList<>(compilerDiagnostics);
-        for (com.larv.ide.infrastructure.model.Diagnostic d : inspectionDiagnostics) {
+        List<com.larv.ide.infrastructure.model.Diagnostic> allExtra =
+            new ArrayList<>(inspectionDiagnostics);
+        allExtra.addAll(lspDiagnostics);
+        for (com.larv.ide.infrastructure.model.Diagnostic d : allExtra) {
             boolean duplicate = false;
             for (com.larv.ide.infrastructure.model.Diagnostic existing : merged) {
                 if (existing.getLine() == d.getLine()
@@ -878,6 +922,7 @@ public class MainActivity extends AppCompatActivity
     void clearProblems() {
         compilerDiagnostics.clear();
         inspectionDiagnostics.clear();
+        lspDiagnostics.clear();
         if (inspectionManager != null) inspectionManager.cancelPending();
         if (editorFragment != null) editorFragment.clearDiagnostics();
         if (bottomPanelAdapter != null) {
@@ -921,6 +966,10 @@ public class MainActivity extends AppCompatActivity
                         autosaveHandler.postDelayed(autosaveRunnable, 1000);
                     }
                     scheduleInspection(file, content, false);
+                    String lspLang = lspLangFor(file);
+                    if (lspLang != null && lspManager != null) {
+                        lspManager.change(lspLang, file, content);
+                    }
                 });
             }
         }
@@ -1102,7 +1151,8 @@ public class MainActivity extends AppCompatActivity
             () -> {
                 OpenFile open = findOpenFile(currentEditorFile);
                 if (open != null) scheduleInspection(currentEditorFile, open.getContent(), true);
-            });
+            },
+            this::syncLanguageServers);
     }
 
     private void showWelcomeStatus(boolean projectOpen) {
@@ -1292,6 +1342,7 @@ public class MainActivity extends AppCompatActivity
         taskScheduler.shutdown();
         if (completionManager != null) completionManager.cancelPending();
         if (inspectionManager != null) inspectionManager.cancelPending();
+        if (lspManager != null) lspManager.stopAll();
         if (projectIndexer != null) {
             projectIndexer.clear();
         }

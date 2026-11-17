@@ -413,6 +413,23 @@ public class EmbeddedLinuxBackend implements ExecutionBackend {
         return p;
     }
 
+    /**
+     * Start a long-running language server inside proot. stderr is deliberately
+     * NOT merged into stdout: LSP frames must stay byte-clean. The caller must
+     * drain getErrorStream() itself.
+     */
+    public Process openLanguageServerProcess(List<String> command, String workdir) throws Exception {
+        SetupState state = setupState();
+        if (state != SetupState.READY) throw new BackendUnavailableException(state);
+        ensureRuntimeLibraries();
+        List<String> prootCmd = buildProotCommand(new ExecRequest(command, workdir, false));
+        ProcessBuilder pb = new ProcessBuilder(prootCmd);
+        if (workdir != null) pb.directory(new File(workdir));
+        configureEnvironment(pb);
+        makePrefixBinariesExecutable();
+        return pb.start();
+    }
+
     /** Interactive shell process for the embedded terminal view. */
     public Process openShell(String workdir) throws Exception {
         SetupState state = setupState();

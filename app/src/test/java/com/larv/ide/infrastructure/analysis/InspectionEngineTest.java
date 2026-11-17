@@ -53,9 +53,29 @@ public class InspectionEngineTest {
     @Test
     public void disabledChecksProduceNothing() {
         InspectionConfig cfg = new InspectionConfig(true, 120,
-            Diagnostic.Severity.INFO, false, false, false, false, false, false, false, false);
+            Diagnostic.Severity.INFO, false, false, false, false, false, false, false, false, false);
         String source = "import java.util.List; // TODO\n";
         assertTrue(InspectionEngine.inspect("/T.java", source, cfg).isEmpty());
+    }
+
+    @Test
+    public void detectsSyntaxErrorsInSeveralLanguages() {
+        InspectionConfig cfg = InspectionConfig.allEnabled();
+        List<Diagnostic> java = InspectionEngine.inspect("/T.java",
+            "class T {\n    void m() {\n        foo()\n    }\n", cfg);
+        assertTrue(has(java, Diagnostic.Severity.WARNING, "missing ';'"));
+
+        List<Diagnostic> braces = InspectionEngine.inspect("/T.java",
+            "class T {\n    void m() {\n", cfg);
+        assertTrue(has(braces, Diagnostic.Severity.ERROR, "unclosed"));
+
+        List<Diagnostic> string = InspectionEngine.inspect("/T.java",
+            "class T {\n    String s = \"oops\n}\n", cfg);
+        assertTrue(has(string, Diagnostic.Severity.ERROR, "unterminated string"));
+
+        List<Diagnostic> py = InspectionEngine.inspect("/t.py",
+            "def foo()\n    pass\n", cfg);
+        assertTrue(has(py, Diagnostic.Severity.ERROR, "expected ':'"));
     }
 
     private static boolean has(List<Diagnostic> list, Diagnostic.Severity severity, String text) {

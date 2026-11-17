@@ -26,11 +26,12 @@ public final class InspectionConfig {
     public final boolean emptyCatch;
     public final boolean stringComparison;
     public final boolean tabs;
+    public final boolean syntax;
 
     public InspectionConfig(boolean live, int maxLineLength, Diagnostic.Severity minSeverity,
-                             boolean unusedImports, boolean trailingWhitespace, boolean longLines,
-                             boolean todoComments, boolean debugStatements, boolean emptyCatch,
-                             boolean stringComparison, boolean tabs) {
+                            boolean unusedImports, boolean trailingWhitespace, boolean longLines,
+                            boolean todoComments, boolean debugStatements, boolean emptyCatch,
+                            boolean stringComparison, boolean tabs, boolean syntax) {
         this.live = live;
         this.maxLineLength = maxLineLength;
         this.minSeverity = minSeverity;
@@ -42,12 +43,13 @@ public final class InspectionConfig {
         this.emptyCatch = emptyCatch;
         this.stringComparison = stringComparison;
         this.tabs = tabs;
+        this.syntax = syntax;
     }
 
     /** All checks enabled at default thresholds — also handy for unit tests. */
     public static InspectionConfig allEnabled() {
         return new InspectionConfig(true, 120, Diagnostic.Severity.INFO,
-            true, true, true, true, true, true, true, false);
+            true, true, true, true, true, true, true, false, true);
     }
 
     public static InspectionConfig from(SharedPreferences prefs) {
@@ -69,7 +71,8 @@ public final class InspectionConfig {
             prefs.getBoolean(PREFIX + "debugStatements", true),
             prefs.getBoolean(PREFIX + "emptyCatch", true),
             prefs.getBoolean(PREFIX + "stringComparison", true),
-            prefs.getBoolean(PREFIX + "tabs", false)
+            prefs.getBoolean(PREFIX + "tabs", false),
+            prefs.getBoolean(PREFIX + "syntax", true)
         );
     }
 
