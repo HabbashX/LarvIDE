@@ -1027,33 +1027,32 @@ public class MainActivity extends AppCompatActivity
     }
 
     /**
-     * Glassy menu bar: a translucent accent gradient with rounded bottom
-     * corners. Rebuilt from the current accent so it follows Settings instantly
-     * after the activity is recreated. No blur effect on the view itself — that
-     * would blur the menu labels; the translucency + gradient is the cheap,
-     * low-end-safe way to get the same look.
+     * One continuous glass surface: the app canvas is accent-tinted at the top,
+     * and the menu bar fades transparently into that same colour. Using the
+     * same vertical axis avoids the hard seam the two separate gradients had.
      */
     private void applyMenuBarGlass() {
         View bar = findViewById(R.id.menuBar);
         if (bar == null) return;
         int accent = themeColorOrFallback(
             com.google.android.material.R.attr.colorPrimary, R.color.ide_accent);
-        int r = Color.red(accent);
-        int g = Color.green(accent);
-        int b = Color.blue(accent);
+        int base = ContextCompat.getColor(this, R.color.background);
+        int top = mix(base, accent, 0.26f);
+        int middle = mix(base, accent, 0.14f);
         int radius = dp(14);
         GradientDrawable glass = new GradientDrawable(
-            GradientDrawable.Orientation.LEFT_RIGHT,
+            GradientDrawable.Orientation.TOP_BOTTOM,
             new int[]{
-                Color.argb(70, r, g, b),
-                Color.argb(150, 22, 23, 26),
-                Color.argb(45, r, g, b)
+                top,
+                withAlpha(middle, 200),
+                Color.TRANSPARENT
             });
         glass.setCornerRadii(new float[]{
             0, 0, 0, 0,
             radius, radius, radius, radius
         });
-        glass.setStroke(1, Color.argb(70, r, g, b));
+        glass.setStroke(1, Color.argb(45,
+            Color.red(accent), Color.green(accent), Color.blue(accent)));
         bar.setBackground(glass);
     }
 
@@ -1068,13 +1067,17 @@ public class MainActivity extends AppCompatActivity
             com.google.android.material.R.attr.colorPrimary, R.color.ide_accent);
         int base = ContextCompat.getColor(this, R.color.background);
         GradientDrawable glass = new GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
+            GradientDrawable.Orientation.TOP_BOTTOM,
             new int[]{
-                mix(base, accent, 0.16f),
+                mix(base, accent, 0.18f),
                 base,
-                mix(base, accent, 0.09f)
+                base
             });
         root.setBackground(glass);
+    }
+
+    private static int withAlpha(int color, int alpha) {
+        return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color));
     }
 
     private static int mix(int base, int accent, float amount) {

@@ -29,11 +29,7 @@ public final class InspectionEngine {
     private InspectionEngine() {}
 
     public static List<Diagnostic> inspect(String filePath, String content, InspectionConfig cfg) {
-        if (content == null || content.isEmpty() || cfg == null || !cfg.live) {
-            return Collections.emptyList();
-        }
-        // Very large files only get the cheap line pass, and even that is
-        // capped by MAX_INSPECTION_FINDINGS.
+        if (content == null || content.isEmpty() || cfg == null || !cfg.live) {return Collections.emptyList();}
         String name = filePath == null ? "buffer" : new java.io.File(filePath).getName();
         String ext = extensionOf(name);
         boolean java = "java".equals(ext);
@@ -51,16 +47,12 @@ public final class InspectionEngine {
         final int length = content.length();
         while (lineStart <= length && out.size() < limit) {
             int nl = content.indexOf('\n', lineStart);
-            int rawEnd = nl < 0 ? length : nl;
-            int end = rawEnd;
+            int end = nl < 0 ? length : nl;
             if (end > lineStart && content.charAt(end - 1) == '\r') end--;
             int len = end - lineStart;
             if (len > 0 && len <= MAX_LINE_SCAN) {
                 scanLine(content, lineStart, end, lineNo, name, cfg, java, python, js, out, limit);
-                if (cfg.syntax) {
-                    checkSyntaxLine(content, lineStart, end, lineNo, name, java, cpp, python, js,
-                        out, limit);
-                }
+                if (cfg.syntax) {checkSyntaxLine(content, lineStart, end, lineNo, name, java, cpp, python, js, out, limit);}
             }
             if (nl < 0) break;
             lineStart = nl + 1;
