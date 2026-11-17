@@ -156,8 +156,14 @@ public class SettingsDialog {
         final Map<String, LinearLayout> panes = new LinkedHashMap<>();
         final Map<String, ScrollView> scrollers = new LinkedHashMap<>();
         FrameLayout content = new FrameLayout(activity);
-        content.setLayoutParams(new LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+        // Weight applies to HEIGHT in a vertical split and to WIDTH in a
+        // horizontal one. Using the wrong axis collapses the pane to 0 px,
+        // which made Settings invisible in portrait.
+        content.setLayoutParams(narrow
+            ? new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+            : new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
         for (NavNode node : allNodes) {
             LinearLayout pane = new LinearLayout(activity);
             pane.setOrientation(LinearLayout.VERTICAL);
