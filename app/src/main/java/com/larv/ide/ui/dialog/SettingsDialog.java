@@ -178,28 +178,31 @@ public class SettingsDialog {
             content.addView(scroller);
         }
 
+        // The tree stays a vertical tree in BOTH orientations. In portrait it
+        // simply occupies the top portion of the dialog instead of becoming a
+        // cramped horizontal strip.
         LinearLayout navList = new LinearLayout(activity);
-        navList.setOrientation(narrow ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        navList.setOrientation(LinearLayout.VERTICAL);
         navList.setLayoutParams(new ViewGroup.LayoutParams(
-            narrow ? ViewGroup.LayoutParams.WRAP_CONTENT : ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT));
-        final View navHost;
-        if (narrow) {
-            HorizontalScrollView horizontal = new HorizontalScrollView(activity);
-            horizontal.setHorizontalScrollBarEnabled(false);
-            horizontal.addView(navList);
-            horizontal.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 56)));
-            navHost = horizontal;
-        } else {
-            ScrollView vertical = new ScrollView(activity);
-            vertical.addView(navList);
-            vertical.setBackgroundColor(ContextCompat.getColor(activity, R.color.surface_variant));
-            vertical.setLayoutParams(new LinearLayout.LayoutParams(
-                dp(activity, 250), ViewGroup.LayoutParams.MATCH_PARENT));
-            navHost = vertical;
-        }
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        ScrollView navHost = new ScrollView(activity);
+        navHost.addView(navList);
+        navHost.setBackgroundColor(ContextCompat.getColor(activity, R.color.surface_variant));
+        navHost.setLayoutParams(narrow
+            ? new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                Math.min(dp(activity, 210), (int) (dm.heightPixels * 0.30f)))
+            : new LinearLayout.LayoutParams(dp(activity, 250),
+                ViewGroup.LayoutParams.MATCH_PARENT));
         split.addView(navHost);
+
+        if (narrow) {
+            View divider = new View(activity);
+            divider.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 1));
+            divider.setBackgroundColor(ContextCompat.getColor(activity, R.color.divider));
+            split.addView(divider);
+        }
         split.addView(content);
 
         final String[] selected = {"appearance"};
