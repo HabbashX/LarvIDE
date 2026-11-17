@@ -70,8 +70,10 @@ public class SetupWizardActivity extends AppCompatActivity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(20);
-        root.setPadding(pad, dp(16), pad, dp(16));
+        float screenDp = getResources().getDisplayMetrics().widthPixels
+            / Math.max(1f, getResources().getDisplayMetrics().density);
+        int pad = dp(screenDp < 480 ? 12 : 20);
+        root.setPadding(pad, dp(12), pad, dp(12));
         root.setBackgroundColor(ContextCompat.getColor(this, R.color.background));
 
         TextView brand = new TextView(this);
@@ -87,12 +89,18 @@ public class SetupWizardActivity extends AppCompatActivity {
         stepTitle.setPadding(0, dp(4), 0, dp(12));
         root.addView(stepTitle);
 
+        // The step content can be taller than the screen in landscape or on
+        // small phones, so it scrolls while the header stays fixed.
+        ScrollView stepScroller = new ScrollView(this);
+        stepScroller.setFillViewport(true);
+        stepScroller.setLayoutParams(new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         stepHost = new LinearLayout(this);
         stepHost.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams hostLp = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        stepHost.setLayoutParams(hostLp);
-        root.addView(stepHost);
+        stepHost.setLayoutParams(new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        stepScroller.addView(stepHost);
+        root.addView(stepScroller);
 
         setContentView(root);
         showStep(0);
@@ -144,6 +152,16 @@ public class SetupWizardActivity extends AppCompatActivity {
         selectAll.setPadding(0, dp(4), 0, dp(8));
         stepHost.addView(selectAll);
 
+        // Guard so a programmatic update from one side does not echo back and
+        // overwrite the other side's state.
+        final boolean[] syncing = {false};
+        selectAll.setOnCheckedChangeListener((button, checked) -> {
+            if (syncing[0]) return;
+            syncing[0] = true;
+            for (CheckBox box : languageBoxes) box.setChecked(checked);
+            syncing[0] = false;
+        });
+
         List<SetupConfig.Language> stored = SetupConfig.parseStored(
             prefs.getStringSet(SetupConfig.PREF_SETUP_LANGUAGES, null));
         for (SetupConfig.Language lang : SetupConfig.Language.values()) {
@@ -155,12 +173,17 @@ public class SetupWizardActivity extends AppCompatActivity {
             box.setPadding(0, dp(6), 0, dp(6));
             stepHost.addView(box);
             languageBoxes.add(box);
+            box.setOnCheckedChangeListener((button, checked) -> {
+                if (syncing[0]) return;
+                syncing[0] = true;
+                selectAll.setChecked(allLanguagesChecked());
+                syncing[0] = false;
+            });
         }
 
+        syncing[0] = true;
         selectAll.setChecked(allLanguagesChecked());
-        selectAll.setOnCheckedChangeListener((button, checked) -> {
-            for (CheckBox box : languageBoxes) box.setChecked(checked);
-        });
+        syncing[0] = false;
 
         stepHost.addView(buttonRow(
             navButton("Later", v -> finish()),

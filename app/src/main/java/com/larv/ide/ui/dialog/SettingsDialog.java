@@ -1,14 +1,21 @@
 package com.larv.ide.ui.dialog;
 
 import android.app.Activity;
+import android.app.Dialog;
 import android.content.SharedPreferences;
 import android.graphics.PorterDuff;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.ArrayAdapter;
 import android.widget.CompoundButton;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -21,6 +28,12 @@ import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.content.ContextCompat;
 
 import com.larv.ide.R;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * IntelliJ-style settings dialog: search bar at the top, a category tree on
@@ -40,140 +53,227 @@ public class SettingsDialog {
     public static void show(Activity activity, @NonNull Callbacks callbacks) {
         SharedPreferences prefs = callbacks.prefs();
         final int accent = callbacks.accentColor();
+        DisplayMetrics dm = activity.getResources().getDisplayMetrics();
+        final boolean narrow = dm.widthPixels < dp(activity, 620);
 
-        // ------------------------------------------------------------------ root
+        // IntelliJ's dialog is a fixed-size window with a title bar, search,
+        // a navigation pane and a scrolling content pane. Using MATCH_PARENT
+        // here is essential: the two panes share space via layout weights.
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(activity, 16);
-        root.setPadding(pad, pad, pad, pad);
+        root.setLayoutParams(new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         root.setBackgroundColor(ContextCompat.getColor(activity, R.color.background));
 
-        // ---------------------------------------------------------------- search
-        TextView searchLabel = new TextView(activity);
-        searchLabel.setText("Search settings");
-        searchLabel.setTextSize(12);
-        searchLabel.setTextColor(ContextCompat.getColor(activity, R.color.text_secondary));
-        searchLabel.setPadding(0, 0, 0, dp(activity, 4));
-        root.addView(searchLabel);
+        TextView title = new TextView(activity);
+        title.setText("Settings");
+        title.setTextSize(18);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        title.setTextColor(ContextCompat.getColor(activity, R.color.text_primary));
+        title.setBackgroundColor(ContextCompat.getColor(activity, R.color.surface_variant));
+        title.setPadding(dp(activity, 16), dp(activity, 12), dp(activity, 16), dp(activity, 12));
+        root.addView(title);
 
-        EditText searchField = new EditText(activity);
-        searchField.setHint("Search...");
-        searchField.setTextSize(14);
-        searchField.setBackground(ContextCompat.getDrawable(activity, R.drawable.edittext_ide));
-        searchField.setPadding(dp(activity, 12), dp(activity, 10), dp(activity, 12), dp(activity, 10));
-        searchField.setTextColor(ContextCompat.getColor(activity, R.color.text_primary));
-        root.addView(searchField);
+        EditText search = new EditText(activity);
+        search.setHint("Search settings...");
+        search.setSingleLine(true);
+        search.setTextSize(14);
+        search.setBackground(ContextCompat.getDrawable(activity, R.drawable.edittext_ide));
+        search.setTextColor(ContextCompat.getColor(activity, R.color.text_primary));
+        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        searchLp.setMargins(dp(activity, 12), dp(activity, 10), dp(activity, 12), 0);
+        search.setLayoutParams(searchLp);
+        root.addView(search);
 
-        // ---------------------------------------------------------- split pane
         LinearLayout split = new LinearLayout(activity);
-        split.setOrientation(LinearLayout.HORIZONTAL);
+        split.setOrientation(narrow ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
         split.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         split.setPadding(0, dp(activity, 8), 0, 0);
         root.addView(split);
 
-        // left category pane
-        LinearLayout categories = new LinearLayout(activity);
-        categories.setOrientation(LinearLayout.VERTICAL);
-        categories.setLayoutParams(new LinearLayout.LayoutParams(
-                dp(activity, 200), ViewGroup.LayoutParams.MATCH_PARENT));
-        categories.setBackgroundColor(ContextCompat.getColor(activity, R.color.surface_variant));
-        split.addView(categories);
-
-        // right settings pane (scrollable)
-        ScrollView settingsScroller = new ScrollView(activity);
-        settingsScroller.setFillViewport(true);
-        LinearLayout.LayoutParams rightLp = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
-        rightLp.leftMargin = dp(activity, 8);
-        settingsScroller.setLayoutParams(rightLp);
-        split.addView(settingsScroller);
-
-        LinearLayout settingsPane = new LinearLayout(activity);
-        settingsPane.setOrientation(LinearLayout.VERTICAL);
-        settingsPane.setPadding(dp(activity, 16), dp(activity, 8), dp(activity, 16), dp(activity, 16));
-        settingsScroller.addView(settingsPane);
-
-        // state
-        final String[] currentCat = {"appearance"};
-
-        // ------------------------------------------------------------ categories
-        String[][] catGroups = {
-                {"appearance", "Appearance & Behavior"},
-                {"editor", "Editor"},
-                {"build", "Build, Execution, Deployment"},
-                {"project", "Project"},
+        // Category groups: id, label, badge, search keywords.
+        final String[][] groups = {
+            {"appearance", "Appearance & Behavior", "A",
+                "theme accent color font appearance light dark"},
+            {"editor", "Editor", "E",
+                "editor font size tab wrap line numbers minimap indent guides autosave"},
+            {"build", "Build, Execution, Deployment", "B",
+                "build java jdk language level linux termux runtime pkg terminal environment"},
+            {"project", "Project", "P", "project hidden files"},
         };
 
-        for (String[] group : catGroups) {
-            TextView cat = categoryItem(activity, group[1], group[0].equals(currentCat[0]));
-            cat.setTag(group[0]);
-            cat.setOnClickListener(v -> {
-                currentCat[0] = (String) v.getTag();
-                refreshCategories(activity, categories, catGroups, currentCat[0]);
-                buildSettingsPane(settingsPane, activity, prefs, callbacks,
-                        currentCat[0], accent);
-            });
-            categories.addView(cat);
+        // Build every pane ONCE so unsaved edits are not lost when switching
+        // categories (the old implementation rebuilt and discarded them).
+        final Map<String, LinearLayout> panes = new LinkedHashMap<>();
+        final Map<String, ScrollView> scrollers = new LinkedHashMap<>();
+        FrameLayout content = new FrameLayout(activity);
+        content.setLayoutParams(new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+        for (String[] group : groups) {
+            LinearLayout pane = new LinearLayout(activity);
+            pane.setOrientation(LinearLayout.VERTICAL);
+            pane.setPadding(dp(activity, 16), dp(activity, 8), dp(activity, 16), dp(activity, 16));
+            buildSettingsPane(pane, activity, prefs, callbacks, group[0], accent);
+            panes.put(group[0], pane);
+
+            ScrollView scroller = new ScrollView(activity);
+            scroller.setFillViewport(true);
+            scroller.addView(pane);
+            scrollers.put(group[0], scroller);
+            content.addView(scroller);
         }
 
-        // ---------------------------------------------------------- build panes
-        buildSettingsPane(settingsPane, activity, prefs, callbacks,
-                currentCat[0], accent);
+        LinearLayout navList = new LinearLayout(activity);
+        navList.setOrientation(narrow ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        navList.setLayoutParams(new ViewGroup.LayoutParams(
+            narrow ? ViewGroup.LayoutParams.WRAP_CONTENT : ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT));
+        final View navHost;
+        if (narrow) {
+            HorizontalScrollView horizontal = new HorizontalScrollView(activity);
+            horizontal.setHorizontalScrollBarEnabled(false);
+            horizontal.addView(navList);
+            horizontal.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 52)));
+            navHost = horizontal;
+        } else {
+            ScrollView vertical = new ScrollView(activity);
+            vertical.addView(navList);
+            vertical.setBackgroundColor(ContextCompat.getColor(activity, R.color.surface_variant));
+            vertical.setLayoutParams(new LinearLayout.LayoutParams(
+                dp(activity, 200), ViewGroup.LayoutParams.MATCH_PARENT));
+            navHost = vertical;
+        }
+        split.addView(navHost);
+        split.addView(content);
 
-        // -------------------------------------------------------------- buttons
+        final String[] selected = {"appearance"};
+
+        // Re-built on every selection/search change, so click handlers are
+        // always fresh (refreshCategories used to drop them).
+        final Runnable[] renderNav = {null};
+        renderNav[0] = () -> {
+            String query = search.getText().toString().trim().toLowerCase(Locale.ROOT);
+            boolean anyVisible = false;
+            List<String> visible = new ArrayList<>();
+            for (String[] group : groups) {
+                String haystack = (group[1] + " " + group[3]).toLowerCase(Locale.ROOT);
+                if (query.isEmpty() || haystack.contains(query)) visible.add(group[0]);
+            }
+            if (!visible.isEmpty() && !visible.contains(selected[0])) {
+                selected[0] = visible.get(0);
+            }
+            navList.removeAllViews();
+            for (String[] group : groups) {
+                if (!visible.contains(group[0])) continue;
+                anyVisible = true;
+                LinearLayout row = categoryRow(activity, group,
+                    group[0].equals(selected[0]), accent);
+                row.setLayoutParams(narrow
+                    ? new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                    : new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                row.setOnClickListener(v -> {
+                    selected[0] = group[0];
+                    renderNav[0].run();
+                    showPane(scrollers, selected[0]);
+                });
+                navList.addView(row);
+            }
+            if (!anyVisible) {
+                TextView empty = new TextView(activity);
+                empty.setText("No matching settings");
+                empty.setTextSize(13);
+                empty.setTextColor(ContextCompat.getColor(activity, R.color.text_secondary));
+                empty.setPadding(dp(activity, 14), dp(activity, 12), dp(activity, 12), dp(activity, 12));
+                navList.addView(empty);
+            }
+            showPane(scrollers, selected[0]);
+        };
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(Editable s) { renderNav[0].run(); }
+        });
+        renderNav[0].run();
+
         LinearLayout buttons = new LinearLayout(activity);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.END);
-        buttons.setPadding(0, dp(activity, 12), 0, 0);
+        buttons.setPadding(0, dp(activity, 10), 0, 0);
         root.addView(buttons);
 
-        android.widget.Button cancelBtn = new android.widget.Button(activity, null, 0);
-        cancelBtn.setText("Cancel");
-        cancelBtn.setTextSize(13);
-        cancelBtn.setPadding(dp(activity, 16), dp(activity, 8), dp(activity, 16), dp(activity, 8));
+        android.widget.Button cancelBtn = dialogButton(activity, "Cancel", accent, false);
+        android.widget.Button applyBtn = dialogButton(activity, "Apply", accent, true);
+        android.widget.Button okBtn = dialogButton(activity, "OK", accent, true);
         buttons.addView(cancelBtn);
-
-        android.widget.Button applyBtn = new android.widget.Button(activity, null, 0);
-        applyBtn.setText("Apply");
-        applyBtn.setTextSize(13);
-        applyBtn.setTextColor(ContextCompat.getColor(activity, R.color.text_on_primary));
-        applyBtn.setBackgroundColor(ContextCompat.getColor(activity, R.color.ide_accent));
-        applyBtn.setPadding(dp(activity, 16), dp(activity, 8), dp(activity, 16), dp(activity, 8));
         buttons.addView(applyBtn);
+        buttons.addView(okBtn);
 
         final AlertDialog dialog = new AlertDialog.Builder(activity)
-                .setView(root)
-                .setCancelable(true)
-                .create();
+            .setView(root)
+            .setCancelable(true)
+            .create();
 
         cancelBtn.setOnClickListener(v -> dialog.dismiss());
-        applyBtn.setOnClickListener(v -> {
-            applySettings(activity, prefs, callbacks, settingsPane, currentCat[0], accent);
+        applyBtn.setOnClickListener(v -> applySettings(activity, prefs, callbacks, panes));
+        okBtn.setOnClickListener(v -> {
+            applySettings(activity, prefs, callbacks, panes);
             dialog.dismiss();
         });
 
         dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            int w = Math.min(dp(activity, 920), (int) (dm.widthPixels * 0.94f));
+            int h = Math.min(dp(activity, 680), (int) (dm.heightPixels * 0.86f));
+            window.setLayout(w, h);
+        }
+    }
+
+    private static void showPane(Map<String, ScrollView> scrollers, String selected) {
+        for (Map.Entry<String, ScrollView> entry : scrollers.entrySet()) {
+            entry.getValue().setVisibility(
+                entry.getKey().equals(selected) ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private static android.widget.Button dialogButton(Activity activity, String text,
+                                                       int accent, boolean primary) {
+        android.widget.Button b = new android.widget.Button(activity, null, 0);
+        b.setText(text);
+        b.setTextSize(13);
+        b.setPadding(dp(activity, 14), dp(activity, 8), dp(activity, 14), dp(activity, 8));
+        if (primary) {
+            b.setTextColor(ContextCompat.getColor(activity, R.color.text_on_primary));
+            b.setBackgroundColor(accent);
+        }
+        return b;
     }
 
     /* =========================================================================
      * Apply: read UI controls back into prefs, then fire the right callback
      * ========================================================================= */
 
+    /**
+     * Apply every category, not just the visible one. The panes are kept alive
+     * for the whole dialog, so changes on one tab are never silently discarded
+     * when the user taps another tab.
+     */
     private static void applySettings(Activity activity,
                                       SharedPreferences prefs,
                                       Callbacks callbacks,
-                                      LinearLayout pane,
-                                      String category,
-                                      int accent) {
+                                      Map<String, LinearLayout> panes) {
         SharedPreferences.Editor ed = prefs.edit();
+        String oldAccent = prefs.getString("appAccent", "blue");
+        String newAccent = oldAccent;
 
-        Object tag = pane.getTag();
-        boolean accentChanged = false;
-        String newAccent = prefs.getString("appAccent", "blue");
-
-        if (tag instanceof Object[] && category.equals("appearance")) {
-            Object[] state = (Object[]) tag;
+        LinearLayout appearance = panes.get("appearance");
+        if (appearance != null && appearance.getTag() instanceof Object[]) {
+            Object[] state = (Object[]) appearance.getTag();
             Spinner accentSpinner = (Spinner) state[0];
             EditText customAccent = (EditText) state[1];
             Spinner themeSpinner = (Spinner) state[2];
@@ -195,77 +295,88 @@ public class SettingsDialog {
             if ("custom".equals(newAccent)) {
                 String hex = customAccent.getText().toString().trim();
                 try {
-                    int color = android.graphics.Color.parseColor(hex);
-                    ed.putInt("customAccentColor", color);
+                    ed.putInt("customAccentColor", android.graphics.Color.parseColor(hex));
                 } catch (IllegalArgumentException e) {
                     ed.remove("customAccentColor");
                 }
             } else {
                 ed.remove("customAccentColor");
             }
+        }
 
-            accentChanged = !newAccent.equals(prefs.getString("appAccent", "blue"));
-        } else if (tag instanceof Object[] && category.equals("editor")) {
-            Object[] state = (Object[]) tag;
+        int newFontSize = prefs.getInt("editorFontSize", 14);
+        int newTabSize = prefs.getInt("editorTabSize", 4);
+        LinearLayout editor = panes.get("editor");
+        if (editor != null && editor.getTag() instanceof Object[]) {
+            Object[] state = (Object[]) editor.getTag();
             SeekBar fontSeek = (SeekBar) state[0];
             Spinner tabSpinner = (Spinner) state[1];
-
+            int fontMin = 10;
             boolean hasNativeMin =
                 android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O;
-            int fontMin = 10;
-            int newSize = hasNativeMin ? fontSeek.getProgress()
+            newFontSize = hasNativeMin ? fontSeek.getProgress()
                 : fontSeek.getProgress() + fontMin;
-            int newTabSize = Integer.parseInt((String) tabSpinner.getSelectedItem());
+            newTabSize = Integer.parseInt((String) tabSpinner.getSelectedItem());
+            ed.putInt("editorFontSize", newFontSize).putInt("editorTabSize", newTabSize);
+        }
 
-            ed.putInt("editorFontSize", newSize)
-                .putInt("editorTabSize", newTabSize);
-
-            // re-apply editor live
-            callbacks.onEditorSettingsApplied(
-                prefs.getString("editorTheme", "islands-dark"),
-                prefs.getString("editorFontFamily", "jetbrains"),
-                newSize, newTabSize);
-        } else if (tag instanceof Object[] && category.equals("build")) {
-            Object[] state = (Object[]) tag;
-            Spinner levelSpinner = (Spinner) state[0];
+        LinearLayout build = panes.get("build");
+        if (build != null && build.getTag() instanceof Object[]) {
+            Spinner levelSpinner = (Spinner) ((Object[]) build.getTag())[0];
             ed.putString("javaLevel", (String) levelSpinner.getSelectedItem());
         }
 
         ed.apply();
 
-        if (accentChanged) {
-            callbacks.onAccentChanged(newAccent);
+        if (editor != null) {
+            callbacks.onEditorSettingsApplied(
+                prefs.getString("editorTheme", "islands-dark"),
+                prefs.getString("editorFontFamily", "jetbrains"),
+                newFontSize, newTabSize);
         }
+        if (!newAccent.equals(oldAccent)) callbacks.onAccentChanged(newAccent);
     }
 
     /* =========================================================================
      * Category tree
      * ========================================================================= */
 
-    private static TextView categoryItem(Activity activity, String text, boolean selected) {
-        TextView item = new TextView(activity);
-        item.setText(text);
-        item.setTextSize(13);
-        item.setPadding(dp(activity, 14), dp(activity, 10), dp(activity, 10), dp(activity, 10));
-        item.setTextColor(selected
-                ? ContextCompat.getColor(activity, R.color.ide_accent)
-                : ContextCompat.getColor(activity, R.color.text_primary));
-        item.setBackgroundColor(selected
-                ? ContextCompat.getColor(activity, R.color.primary_light)
-                : android.graphics.Color.TRANSPARENT);
-        return item;
-    }
+    /** One IntelliJ-like navigation row: a small badge plus the category name. */
+    private static LinearLayout categoryRow(Activity activity, String[] group,
+                                            boolean selected, int accent) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(activity, 12), dp(activity, 10), dp(activity, 12), dp(activity, 10));
+        row.setBackgroundColor(selected
+            ? ContextCompat.getColor(activity, R.color.primary_light)
+            : android.graphics.Color.TRANSPARENT);
 
-    private static void refreshCategories(Activity activity,
-                                          LinearLayout categories,
-                                          String[][] catGroups,
-                                          String selected) {
-        categories.removeAllViews();
-        for (String[] group : catGroups) {
-            TextView cat = categoryItem(activity, group[1], group[0].equals(selected));
-            cat.setTag(group[0]);
-            categories.addView(cat);
-        }
+        TextView badge = new TextView(activity);
+        badge.setText(group[2]);
+        badge.setTextSize(12);
+        badge.setTypeface(null, android.graphics.Typeface.BOLD);
+        badge.setGravity(Gravity.CENTER);
+        badge.setTextColor(ContextCompat.getColor(activity,
+            selected ? R.color.text_on_primary : R.color.text_primary));
+        badge.setBackgroundColor(selected ? accent
+            : ContextCompat.getColor(activity, R.color.surface_variant));
+        badge.setWidth(dp(activity, 22));
+        badge.setHeight(dp(activity, 22));
+        row.addView(badge);
+
+        TextView label = new TextView(activity);
+        label.setText(group[1]);
+        label.setTextSize(13);
+        label.setTextColor(selected
+            ? ContextCompat.getColor(activity, R.color.ide_accent)
+            : ContextCompat.getColor(activity, R.color.text_primary));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        lp.leftMargin = dp(activity, 10);
+        label.setLayoutParams(lp);
+        row.addView(label);
+        return row;
     }
 
     /* =========================================================================
@@ -310,7 +421,10 @@ public class SettingsDialog {
 
         final EditText customAccent = new EditText(activity);
         customAccent.setHint("#RRGGBB");
-        customAccent.setText(prefs.getString("customAccentColor", ""));
+        // Stored as an int by applySettings(); getString() would throw.
+        int savedCustom = prefs.getInt("customAccentColor", 0);
+        customAccent.setText(savedCustom == 0 ? ""
+            : String.format(Locale.ROOT, "#%06X", savedCustom & 0xFFFFFF));
         customAccent.setTextSize(13);
         customAccent.setBackground(ContextCompat.getDrawable(activity, R.drawable.edittext_ide));
         customAccent.setPadding(dp(activity, 8), dp(activity, 8), dp(activity, 8), dp(activity, 8));
