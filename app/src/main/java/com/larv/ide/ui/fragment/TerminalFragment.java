@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -110,7 +111,7 @@ public class TerminalFragment extends Fragment {
             if (terminalView == null || terminalView.getParent() == null) {
                 attachView(activeSession);
             }
-            if (terminalView != null) terminalView.requestFocus();
+            if (terminalView != null) focusTerminal(terminalView);
             showExtraKeysBar();
             return;
         }
@@ -136,20 +137,24 @@ public class TerminalFragment extends Fragment {
         SafeEmulatorView view = new SafeEmulatorView(requireContext(), session,
             getResources().getDisplayMetrics());
         view.setTextSize(13);
-        view.setUseCookedIME(false);
+        view.setUseCookedIME(true);
         view.setColorScheme(DARK_SCHEME);
 
         terminalContainer.addView(view, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         terminalView = view;
-        view.requestFocus();
-        android.view.inputmethod.InputMethodManager imm =
-            (android.view.inputmethod.InputMethodManager) requireContext()
-                .getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
-        if (imm != null) {
-            imm.showSoftInput(view,
-                android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
-        }
+        focusTerminal(view);
+    }
+
+    /** Focus and raise the keyboard once the view is actually in the window. */
+    private void focusTerminal(SafeEmulatorView view) {
+        view.post(() -> {
+            if (terminalView != view || view.getParent() == null) return;
+            view.requestFocus();
+            InputMethodManager imm = (InputMethodManager) requireContext()
+                .getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
+        });
     }
 
     private boolean isSessionAlive() {

@@ -79,7 +79,7 @@ public class OutputFragment extends Fragment {
 
         SafeEmulatorView view = new SafeEmulatorView(requireContext(), session, getResources().getDisplayMetrics());
         view.setTextSize(13);
-        view.setUseCookedIME(false);
+        view.setUseCookedIME(true);
         view.setColorScheme(DARK_SCHEME);
 
         terminalContainer.addView(view, new FrameLayout.LayoutParams(
@@ -89,13 +89,17 @@ public class OutputFragment extends Fragment {
 
         terminalView = view;
         currentSession = session;
+        focusTerminal(view);
+    }
 
-        view.requestFocus();
-        InputMethodManager imm = (InputMethodManager) requireContext()
-            .getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm != null) {
-            imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
-        }
+    private void focusTerminal(SafeEmulatorView view) {
+        view.post(() -> {
+            if (terminalView != view || view.getParent() == null) return;
+            view.requestFocus();
+            InputMethodManager imm = (InputMethodManager) requireContext()
+                .getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
+        });
     }
 
     public void clear() {

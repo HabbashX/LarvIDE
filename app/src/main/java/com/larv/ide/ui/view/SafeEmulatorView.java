@@ -3,19 +3,14 @@ package com.larv.ide.ui.view;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.text.InputType;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
-import android.view.inputmethod.InputMethodManager;
-import android.widget.Toast;
-
-import androidx.annotation.NonNull;
-
-import com.larv.ide.R;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
 
 import jackpal.androidterm.emulatorview.EmulatorView;
 import jackpal.androidterm.emulatorview.TermSession;
-
-import java.nio.charset.StandardCharsets;
 
 /**
  * Emulator view that stays focused and forwards key input to the terminal
@@ -32,6 +27,27 @@ public class SafeEmulatorView extends EmulatorView {
         setFocusableInTouchMode(true);
         setClickable(true);
         setLongClickable(true);
+        // Raw (TYPE_NULL) IME mode relies on hardware key events, which most
+        // soft keyboards never send for ordinary characters. Cooked mode lets
+        // the IME commit text through InputConnection, which EmulatorView maps
+        // into terminal bytes (including Ctrl via commitText/control state).
+        setUseCookedIME(true);
+    }
+
+    /**
+     * Advertise a normal text field to soft keyboards. Without this, Gboard
+     * and friends may refuse to show or may never call commitText().
+     * FLAG_NO_ENTER_ACTION keeps Return as a key event so EmulatorView sends
+     * the terminal's CR byte instead of swallowing it as an IME action.
+     */
+    @Override
+    public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+        outAttrs.inputType = InputType.TYPE_CLASS_TEXT
+            | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_ENTER_ACTION
+            | EditorInfo.IME_FLAG_NO_FULLSCREEN;
+        outAttrs.label = "Terminal";
+        return super.onCreateInputConnection(outAttrs);
     }
 
     public void setInputEnabled(boolean enabled) {
@@ -54,17 +70,9 @@ public class SafeEmulatorView extends EmulatorView {
         if (!isScreenAlive() || !inputEnabled) {
             return false;
         }
-        // Printable characters: send directly to the shell.
-        int unicode = event.getUnicodeChar();
-        if (unicode > 0 && !Character.isISOControl((char) unicode)) {
-            try {
-                byte[] bytes = String.valueOf((char) unicode).getBytes(StandardCharsets.UTF_8);
-                getTermSession().write(bytes, 0, bytes.length);
-            } catch (Exception ignored) {
-            }
-            return true;
-        }
-        // Special keys: let EmulatorView handle them (Enter, Backspace, arrows, etc.)
+        // Let EmulatorView/TermKeyListener do the mapping for every key.
+        // Writing event.getUnicodeChar() here would bypass control/Alt/Fn
+        // handling and could duplicate text already committed by the IME.
         return super.onKeyDown(keyCode, event);
     }
 
