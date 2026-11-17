@@ -64,9 +64,12 @@
         <!-- Left Tool Window Content (Project, Structure, etc.) -->
         <FrameLayout
             android:id="@+id/leftToolWindowContent"
-            android:layout_width="170dp"
+            android:layout_width="190dp"
             android:layout_height="0dp"
-            android:background="@color/surface"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp"
+            android:background="@drawable/bg_project_panel"
             android:visibility="visible"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -260,9 +263,12 @@
         <!-- Left Resizer -->
         <View
             android:id="@+id/leftResizer"
-            android:layout_width="2dp"
+            android:layout_width="12dp"
             android:layout_height="0dp"
-            android:background="@color/resizer"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp"
+            android:background="@drawable/bg_resizer"
+            android:contentDescription="Resize project panel"
             android:visibility="visible"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"

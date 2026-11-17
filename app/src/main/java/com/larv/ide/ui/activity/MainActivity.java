@@ -68,6 +68,8 @@ public class MainActivity extends AppCompatActivity
     static final String TAG = "MainActivity";
     private static final int REQUEST_STORAGE_PERMISSION = 1001;
     private static final String PREFS_NAME = "larv_ide";
+    private static final String PREF_LEFT_PANEL_WIDTH_DP = "left_panel_width_dp";
+    private static final int DEFAULT_LEFT_PANEL_WIDTH_DP = 190;
     private static final String PREF_LAST_PROJECT = "last_project_path";
 
     SharedPreferences prefs;
@@ -106,6 +108,10 @@ public class MainActivity extends AppCompatActivity
 
     private View leftResizer;
     View bottomResizer;
+    private int leftPanelWidthDp = 190;
+    private float leftResizeStartX;
+    private float leftResizeStartWidth;
+    private long leftResizeDownTime;
 
     private final Handler autosaveHandler = new Handler(Looper.getMainLooper());
     private final Runnable autosaveRunnable = this::autoSaveModifiedFiles;
@@ -455,6 +461,9 @@ public class MainActivity extends AppCompatActivity
         btnCollapseAll = findViewById(R.id.btnCollapseAll);
         btnCloseProjectWindow = findViewById(R.id.btnCloseProjectWindow);
         leftResizer = findViewById(R.id.leftResizer);
+        leftToolWindowContent.setClipToOutline(true);
+        leftPanelWidthDp = prefs.getInt(PREF_LEFT_PANEL_WIDTH_DP, DEFAULT_LEFT_PANEL_WIDTH_DP);
+        applyLeftPanelWidth(leftPanelWidthDp);
 
         editorContainer = findViewById(R.id.editorContainer);
         noEditorPlaceholder = findViewById(R.id.noEditorPlaceholder);
@@ -631,16 +640,31 @@ public class MainActivity extends AppCompatActivity
         });
 
         leftResizer.setOnTouchListener((v, event) -> {
-            if (event.getAction() == MotionEvent.ACTION_MOVE) {
-                float x = event.getRawX();
-                int screenWidth = getResources().getDisplayMetrics().widthPixels;
-                int newWidth = (int) x;
-                ViewGroup.LayoutParams params = leftToolWindowContent.getLayoutParams();
-                params.width = Math.max(140, Math.min(screenWidth - 300, newWidth));
-                leftToolWindowContent.setLayoutParams(params);
-                return true;
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    leftResizeStartX = event.getRawX();
+                    leftResizeStartWidth = leftToolWindowContent.getWidth();
+                    leftResizeDownTime = System.currentTimeMillis();
+                    return true;
+                case MotionEvent.ACTION_MOVE: {
+                    int movedDp = pxToDp(event.getRawX() - leftResizeStartX);
+                    applyLeftPanelWidth(pxToDp(leftResizeStartWidth) + movedDp);
+                    return true;
+                }
+                case MotionEvent.ACTION_UP:
+                    // A quick tap without movement resets to the default width.
+                    if (System.currentTimeMillis() - leftResizeDownTime < 300
+                        && Math.abs(event.getRawX() - leftResizeStartX) < dp(8)) {
+                        leftPanelWidthDp = DEFAULT_LEFT_PANEL_WIDTH_DP;
+                        applyLeftPanelWidth(leftPanelWidthDp);
+                    } else {
+                        leftPanelWidthDp = pxToDp(leftToolWindowContent.getWidth());
+                    }
+                    prefs.edit().putInt(PREF_LEFT_PANEL_WIDTH_DP, leftPanelWidthDp).apply();
+                    return true;
+                default:
+                    return false;
             }
-            return false;
         });
 
         bottomResizer.setOnTouchListener((v, event) -> {
@@ -1105,6 +1129,22 @@ public class MainActivity extends AppCompatActivity
     @NonNull
     private View wrapDialogView(View view) {
         return MainDialogs.wrapDialogView(this, view);
+    }
+
+    private int pxToDp(float px) {
+        return Math.round(px / getResources().getDisplayMetrics().density);
+    }
+
+    /** Clamp and apply the project panel width (IntelliJ-style resizing). */
+    private void applyLeftPanelWidth(int widthDp) {
+        int screenWidthDp = Math.round(getResources().getDisplayMetrics().widthPixels
+            / Math.max(1f, getResources().getDisplayMetrics().density));
+        int maxDp = Math.max(180, Math.min(480, screenWidthDp - 220));
+        int clamped = Math.max(140, Math.min(maxDp, widthDp));
+        ViewGroup.LayoutParams params = leftToolWindowContent.getLayoutParams();
+        if (params == null) return;
+        params.width = dp(clamped);
+        leftToolWindowContent.setLayoutParams(params);
     }
 
     private int dp(int v) {
