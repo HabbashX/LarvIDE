@@ -22,6 +22,7 @@ import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -112,6 +113,8 @@ public class MainActivity extends AppCompatActivity
 
     androidx.recyclerview.widget.RecyclerView fileTreeRecyclerView;
     FileTreeAdapter fileTreeAdapter;
+    private View projectSearchBar;
+    private android.widget.EditText projectSearchInput;
 
     EditorFragment editorFragment;
     String currentEditorFile = "";
@@ -471,7 +474,9 @@ public class MainActivity extends AppCompatActivity
         statusPosition = findViewById(R.id.statusPosition);
 
         fileTreeRecyclerView = findViewById(R.id.fileTreeRecyclerView);
-        fileTreeAdapter = new FileTreeAdapter(this);
+        projectSearchBar = findViewById(R.id.projectSearchBar);
+        projectSearchInput = findViewById(R.id.projectSearchInput);
+        fileTreeAdapter = new FileTreeAdapter(this, this);
         fileTreeRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         fileTreeRecyclerView.setAdapter(fileTreeAdapter);
         fileTreeDrag.setup();
@@ -546,6 +551,36 @@ public class MainActivity extends AppCompatActivity
         });
         btnRefreshProject.setOnClickListener(v -> projectManager.refreshFileTree());
         btnCollapseAll.setOnClickListener(v -> fileTreeAdapter.collapseAll());
+
+        findViewById(R.id.btnProjectSearch).setOnClickListener(v -> {
+            boolean show = projectSearchBar.getVisibility() != View.VISIBLE;
+            projectSearchBar.setVisibility(show ? View.VISIBLE : View.GONE);
+            if (show) {
+                projectSearchInput.requestFocus();
+                android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                if (imm != null) imm.showSoftInput(projectSearchInput,
+                    android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+            } else {
+                projectSearchInput.setText("");
+            }
+        });
+        findViewById(R.id.btnClearProjectSearch).setOnClickListener(v -> {
+            projectSearchInput.setText("");
+            projectSearchInput.requestFocus();
+        });
+        projectSearchInput.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(android.text.Editable s) {
+                fileTreeAdapter.setFilter(s.toString());
+            }
+        });
+        findViewById(R.id.btnProjectSort).setOnClickListener(v -> {
+            String mode = fileTreeAdapter.toggleSortMode();
+            Toast.makeText(this, "Sort: " + mode, Toast.LENGTH_SHORT).show();
+        });
+        findViewById(R.id.btnLocateFile).setOnClickListener(v -> highlightTreeFile(currentEditorFile));
 
         newTabButton.setOnClickListener(v -> {
             if (currentProject == null) {
@@ -1041,6 +1076,21 @@ public class MainActivity extends AppCompatActivity
 
     private void updateWindowTitle() {
         editorTabs.updateWindowTitle();
+        TextView projectTitle = findViewById(R.id.projectTitle);
+        if (projectTitle != null) {
+            projectTitle.setText(currentProject != null
+                ? currentProject.getName() : getString(R.string.project));
+        }
+    }
+
+    /** Select and scroll the project tree to the file open in the editor. */
+    void highlightTreeFile(String path) {
+        if (path == null || path.isEmpty() || fileTreeAdapter == null) return;
+        int position = fileTreeAdapter.revealPath(path);
+        if (position >= 0) {
+            fileTreeRecyclerView.scrollToPosition(position);
+            fileTreeAdapter.setSelectedPath(path);
+        }
     }
 
     private static void deleteRecursive(File f) {

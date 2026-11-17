@@ -1,25 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.larv.ide.ui.view.FileTreeItemView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:layout_marginStart="4dp"
+    android:layout_marginStart="2dp"
     android:layout_marginEnd="4dp"
     android:layout_marginTop="1dp"
     android:layout_marginBottom="1dp"
     android:background="@drawable/bg_file_tree_item"
-    android:paddingStart="8dp"
-    android:paddingEnd="8dp"
-    android:paddingTop="4dp"
-    android:paddingBottom="4dp">
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp"
+    android:paddingTop="3dp"
+    android:paddingBottom="3dp"
+    android:minHeight="31dp">
+
+    <ImageView
+        android:id="@+id/fileChevron"
+        android:layout_width="14dp"
+        android:layout_height="14dp"
+        android:layout_gravity="center_vertical"
+        android:src="@drawable/ic_chevron_right"
+        app:tint="@color/text_secondary"
+        android:contentDescription="Expand" />
 
     <ImageView
         android:id="@+id/fileIcon"
-        android:layout_width="12dp"
-        android:layout_height="12dp"
+        android:layout_width="14dp"
+        android:layout_height="14dp"
+        android:layout_marginStart="4dp"
         android:layout_gravity="center_vertical"
-        android:src="@drawable/ic_file"  android:contentDescription="Icon" />
+        android:src="@drawable/ic_file"
+        android:contentDescription="Icon" />
 
     <TextView
         android:id="@+id/fileName"
@@ -31,13 +44,15 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/text_primary"
-        android:textSize="11sp" />
+        android:textSize="12sp" />
 
     <ImageView
         android:id="@+id/fileMore"
         android:layout_width="14dp"
         android:layout_height="14dp"
+        android:layout_marginStart="2dp"
         android:layout_gravity="center_vertical"
         android:src="@android:drawable/ic_menu_more"
-        app:tint="@color/text_disabled"  android:contentDescription="Icon" />
-</LinearLayout>
+        app:tint="@color/text_disabled"
+        android:contentDescription="More" />
+</com.larv.ide.ui.view.FileTreeItemView>

@@ -84,85 +84,161 @@
                     android:layout_height="match_parent">
 
                     <!-- Project Toolbar -->
-                    <LinearLayout
+                    <HorizontalScrollView
                         android:id="@+id/projectToolbar"
                         android:layout_width="0dp"
                         android:layout_height="32dp"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:paddingHorizontal="6dp"
+                        android:fillViewport="true"
+                        android:scrollbars="none"
                         android:background="@color/surface"
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
                         app:layout_constraintEnd_toEndOf="parent">
 
-                        <TextView
+                        <LinearLayout
                             android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/project"
-                            android:textColor="@color/text_primary"
-                            android:textSize="12sp"
-                            android:textStyle="bold"
-                            android:layout_marginEnd="16dp" />
+                            android:layout_height="match_parent"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:paddingHorizontal="6dp">
 
-                        <ImageButton
-                            android:id="@+id/btnNewFile"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:background="?attr/selectableItemBackgroundBorderless"
-                            android:contentDescription="@string/new_file"
-                            android:src="@drawable/ic_new_file"
-                            app:tint="@color/text_secondary"
-                            android:scaleType="centerInside" />
+                            <TextView
+                                android:id="@+id/projectTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:maxLines="1"
+                                android:text="@string/project"
+                                android:textColor="@color/text_primary"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                android:layout_marginEnd="8dp" />
 
-                        <ImageButton
-                            android:id="@+id/btnNewFolder"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:layout_marginStart="4dp"
-                            android:background="?attr/selectableItemBackgroundBorderless"
-                            android:contentDescription="@string/new_folder"
-                            android:src="@drawable/ic_new_folder"
-                            app:tint="@color/text_secondary"
-                            android:scaleType="centerInside" />
+                            <ImageButton
+                                android:id="@+id/btnNewFile"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:background="?attr/selectableItemBackgroundBorderless"
+                                android:contentDescription="@string/new_file"
+                                android:src="@drawable/ic_new_file"
+                                app:tint="@color/text_secondary"
+                                android:scaleType="centerInside" />
 
-                        <ImageButton
-                            android:id="@+id/btnRefreshProject"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:layout_marginStart="4dp"
-                            android:background="?attr/selectableItemBackgroundBorderless"
-                            android:contentDescription="Refresh"
-                            android:src="@drawable/ic_refresh"
-                            app:tint="@color/text_secondary"
-                            android:scaleType="centerInside" />
+                            <ImageButton
+                                android:id="@+id/btnNewFolder"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:layout_marginStart="4dp"
+                                android:background="?attr/selectableItemBackgroundBorderless"
+                                android:contentDescription="@string/new_folder"
+                                android:src="@drawable/ic_new_folder"
+                                app:tint="@color/text_secondary"
+                                android:scaleType="centerInside" />
 
-                        <ImageButton
-                            android:id="@+id/btnCollapseAll"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:layout_marginStart="4dp"
-                            android:background="?attr/selectableItemBackgroundBorderless"
-                            android:contentDescription="Collapse All"
-                            android:src="@drawable/ic_collapse_all"
-                            app:tint="@color/text_secondary"
-                            android:scaleType="centerInside" />
+                            <ImageButton
+                                android:id="@+id/btnRefreshProject"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:layout_marginStart="4dp"
+                                android:background="?attr/selectableItemBackgroundBorderless"
+                                android:contentDescription="Refresh"
+                                android:src="@drawable/ic_refresh"
+                                app:tint="@color/text_secondary"
+                                android:scaleType="centerInside" />
 
-                        <View
+                            <ImageButton
+                                android:id="@+id/btnCollapseAll"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:layout_marginStart="4dp"
+                                android:background="?attr/selectableItemBackgroundBorderless"
+                                android:contentDescription="Collapse All"
+                                android:src="@drawable/ic_collapse_all"
+                                app:tint="@color/text_secondary"
+                                android:scaleType="centerInside" />
+
+                            <ImageButton
+                                android:id="@+id/btnProjectSearch"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:background="?attr/selectableItemBackgroundBorderless"
+                                android:contentDescription="Search files"
+                                android:src="@drawable/ic_search"
+                                app:tint="@color/text_secondary"
+                                android:scaleType="centerInside" />
+
+                            <ImageButton
+                                android:id="@+id/btnProjectSort"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:layout_marginStart="2dp"
+                                android:background="?attr/selectableItemBackgroundBorderless"
+                                android:contentDescription="Sort files"
+                                android:src="@drawable/ic_sort"
+                                app:tint="@color/text_secondary"
+                                android:scaleType="centerInside" />
+
+                            <ImageButton
+                                android:id="@+id/btnLocateFile"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:layout_marginStart="2dp"
+                                android:background="?attr/selectableItemBackgroundBorderless"
+                                android:contentDescription="Locate current file"
+                                android:src="@drawable/ic_locate"
+                                app:tint="@color/text_secondary"
+                                android:scaleType="centerInside" />
+
+                            <ImageButton
+                                android:id="@+id/btnCloseProjectWindow"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:layout_marginStart="4dp"
+                                android:background="?attr/selectableItemBackgroundBorderless"
+                                android:contentDescription="Close project panel"
+                                android:src="@drawable/ic_close"
+                                app:tint="@color/text_secondary"
+                                android:scaleType="centerInside" />
+                        </LinearLayout>
+                    </HorizontalScrollView>
+
+                    <!-- Project search (toggle from the toolbar) -->
+                    <LinearLayout
+                        android:id="@+id/projectSearchBar"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:paddingStart="6dp"
+                        android:paddingEnd="6dp"
+                        android:background="@color/surface_variant"
+                        android:visibility="gone"
+                        app:layout_constraintTop_toBottomOf="@id/projectToolbar"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintEnd_toEndOf="parent">
+
+                        <EditText
+                            android:id="@+id/projectSearchInput"
                             android:layout_width="0dp"
-                            android:layout_height="0dp"
-                            android:layout_weight="1" />
+                            android:layout_height="30dp"
+                            android:layout_weight="1"
+                            android:hint="Search project files…"
+                            android:textSize="12sp"
+                            android:singleLine="true"
+                            android:background="@drawable/edittext_ide"
+                            android:textColor="@color/text_primary"
+                            android:paddingStart="8dp"
+                            android:paddingEnd="8dp" />
 
                         <ImageButton
-                            android:id="@+id/btnCloseProjectWindow"
+                            android:id="@+id/btnClearProjectSearch"
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:layout_marginStart="4dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
-                            android:contentDescription="Close project panel"
+                            android:contentDescription="Clear search"
                             android:src="@drawable/ic_close"
-                            app:tint="@color/text_secondary"
-                            android:scaleType="centerInside" />
+                            app:tint="@color/text_secondary" />
                     </LinearLayout>
 
                     <!-- Project Tree -->
@@ -171,9 +247,9 @@
                         android:layout_width="0dp"
                         android:layout_height="0dp"
                         android:clipToPadding="false"
-                        android:paddingTop="4dp"
-                        android:paddingBottom="4dp"
-                        app:layout_constraintTop_toBottomOf="@id/projectToolbar"
+                        android:paddingTop="2dp"
+                        android:paddingBottom="6dp"
+                        app:layout_constraintTop_toBottomOf="@id/projectSearchBar"
                         app:layout_constraintBottom_toBottomOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
                         app:layout_constraintEnd_toEndOf="parent" />
