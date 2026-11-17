@@ -230,7 +230,7 @@ final class RunController {
             activity.statusText.setText(statusLine);
             outputFragment.clear();
             outputFragment.startProgram(rs.programIn, rs.stdinOut);
-            activity.bottomPanelAdapter.getErrorsFragment().setErrors(new ArrayList<>());
+            activity.clearProblems();
             activity.bottomViewPager.setCurrentItem(0);
             activity.bottomWindowVisible = true;
             activity.bottomToolWindow.setVisibility(View.VISIBLE);
@@ -307,9 +307,8 @@ final class RunController {
                 List<Diagnostic> diagnostics = parseCompilerDiagnostics(output.toString());
                 activity.runOnUiThread(() -> {
                     activity.statusText.setText(code == 0 ? "Done" : "Finished with errors");
+                    activity.setCompilerDiagnostics(diagnostics);
                     if (!diagnostics.isEmpty()) {
-                        activity.bottomPanelAdapter.getErrorsFragment().setErrors(
-                            new ArrayList<>(diagnostics));
                         activity.bottomViewPager.setCurrentItem(1);
                     }
                 });

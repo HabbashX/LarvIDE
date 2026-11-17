@@ -55,7 +55,8 @@ final class MainDialogs {
     }
 
     static void showSettings(Activity activity, SharedPreferences prefs, int accentColor,
-                             Runnable applyEditorPrefs, Runnable onAccentChanged) {
+                             Runnable applyEditorPrefs, Runnable onAccentChanged,
+                             Runnable onInspectionSettingsChanged) {
         SettingsDialog.show(activity, new SettingsDialog.Callbacks() {
             @Override public SharedPreferences prefs() { return prefs; }
             @Override public int accentColor() { return accentColor; }
@@ -70,6 +71,9 @@ final class MainDialogs {
                     applyEditorPrefs, 600);
                 Toast.makeText(activity,
                     "Editor: " + fontSize + " pt applied", Toast.LENGTH_SHORT).show();
+            }
+            @Override public void onInspectionSettingsApplied() {
+                onInspectionSettingsChanged.run();
             }
         });
     }

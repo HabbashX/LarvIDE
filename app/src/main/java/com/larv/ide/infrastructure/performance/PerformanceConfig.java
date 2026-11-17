@@ -32,6 +32,21 @@ public final class PerformanceConfig {
     /** Skip indexing files larger than this (they are not useful for symbols). */
     public static final long MAX_INDEXED_FILE_BYTES = 512 * 1024;
 
+    /** Hard cap on completion items sent across the WebView bridge. */
+    public static final int MAX_COMPLETIONS = 80;
+
+    /** Hard cap on inspection findings for one file (protects low-end devices). */
+    public static final int MAX_INSPECTION_FINDINGS = 200;
+
+    /** Files larger than this skip deep inspections; cheap line checks still run. */
+    public static final long MAX_INSPECTION_FILE_BYTES = 512 * 1024;
+
+    /** Debounce for live inspections; no work is done between keystrokes. */
+    public static final long INSPECTION_DEBOUNCE_MS = 700L;
+
+    /** Maximum lines scanned backwards for locals during completion. */
+    public static final int MAX_LOCAL_SCAN_LINES = 60;
+
     /** Number of timing samples kept per metric before aggregation resets. */
     public static final int MONITOR_SAMPLE_WINDOW = 64;
 

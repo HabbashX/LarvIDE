@@ -131,6 +131,11 @@ public class MainActivity extends AppCompatActivity
     ProjectIndexer projectIndexer;
     private com.larv.ide.infrastructure.performance.CacheManager cacheManager;
     private com.larv.ide.infrastructure.analysis.CompletionManager completionManager;
+    private com.larv.ide.infrastructure.analysis.InspectionManager inspectionManager;
+    private final List<com.larv.ide.infrastructure.model.Diagnostic> compilerDiagnostics =
+        new ArrayList<>();
+    private final List<com.larv.ide.infrastructure.model.Diagnostic> inspectionDiagnostics =
+        new ArrayList<>();
     final com.larv.ide.infrastructure.concurrent.TaskScheduler taskScheduler =
         new com.larv.ide.infrastructure.concurrent.TaskScheduler(
             new com.larv.ide.infrastructure.concurrent.IOExecutor(1),
@@ -497,7 +502,7 @@ public class MainActivity extends AppCompatActivity
         new TabLayoutMediator(bottomTabLayout, bottomViewPager, (tab, position) -> {
             String title;
             switch (position) {
-                case 1: title = getString(R.string.errors_title); break;
+                case 1: title = "Problems"; break;
                 case 2: title = "Preview"; break;
                 case 3: title = "Terminal"; break;
                 default: title = getString(R.string.run_code); break;
@@ -540,6 +545,8 @@ public class MainActivity extends AppCompatActivity
         cacheManager = com.larv.ide.infrastructure.performance.CacheManager.create(getApplicationContext());
         completionManager = new com.larv.ide.infrastructure.analysis.CompletionManager(
             projectIndexer, indexerExecutor);
+        inspectionManager = new com.larv.ide.infrastructure.analysis.InspectionManager(
+            indexerExecutor);
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -814,6 +821,70 @@ public class MainActivity extends AppCompatActivity
         runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show());
     }
 
+    /** Debounced from onContentChange; no inspection work between keystrokes. */
+    void scheduleInspection(String file, String content, boolean immediate) {
+        if (inspectionManager == null || file == null || file.isEmpty()) return;
+        com.larv.ide.infrastructure.analysis.InspectionConfig config =
+            com.larv.ide.infrastructure.analysis.InspectionConfig.from(prefs);
+        if (!config.live) {
+            inspectionDiagnostics.clear();
+            refreshProblems();
+            return;
+        }
+        com.larv.ide.infrastructure.analysis.InspectionManager.Callback callback = (resultFile, list) -> {
+            // Drop results for a file that is no longer visible.
+            if (!resultFile.equals(currentEditorFile)) return;
+            inspectionDiagnostics.clear();
+            inspectionDiagnostics.addAll(list);
+            refreshProblems();
+        };
+        if (immediate) {
+            inspectionManager.requestNow(file, content, config, callback);
+        } else {
+            inspectionManager.request(file, content, config, callback);
+        }
+    }
+
+    /** Merge compiler errors and inspections into one Problems list. */
+    private void refreshProblems() {
+        List<com.larv.ide.infrastructure.model.Diagnostic> merged =
+            new ArrayList<>(compilerDiagnostics);
+        for (com.larv.ide.infrastructure.model.Diagnostic d : inspectionDiagnostics) {
+            boolean duplicate = false;
+            for (com.larv.ide.infrastructure.model.Diagnostic existing : merged) {
+                if (existing.getLine() == d.getLine()
+                    && existing.getMessage().equals(d.getMessage())) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) merged.add(d);
+        }
+        final List<com.larv.ide.infrastructure.model.Diagnostic> result = merged;
+        runOnUiThread(() -> {
+            if (editorFragment != null) editorFragment.showDiagnostics(result);
+            if (bottomPanelAdapter != null) {
+                bottomPanelAdapter.getErrorsFragment().setErrors(result);
+            }
+        });
+    }
+
+    void setCompilerDiagnostics(List<com.larv.ide.infrastructure.model.Diagnostic> list) {
+        compilerDiagnostics.clear();
+        compilerDiagnostics.addAll(list);
+        refreshProblems();
+    }
+
+    void clearProblems() {
+        compilerDiagnostics.clear();
+        inspectionDiagnostics.clear();
+        if (inspectionManager != null) inspectionManager.cancelPending();
+        if (editorFragment != null) editorFragment.clearDiagnostics();
+        if (bottomPanelAdapter != null) {
+            bottomPanelAdapter.getErrorsFragment().setErrors(new ArrayList<>());
+        }
+    }
+
     @Override
     public void onFileClick(@NonNull FileNode node) {
         if (node.getType() == FileNode.Type.DIRECTORY) {
@@ -849,6 +920,7 @@ public class MainActivity extends AppCompatActivity
                         autosaveHandler.removeCallbacks(autosaveRunnable);
                         autosaveHandler.postDelayed(autosaveRunnable, 1000);
                     }
+                    scheduleInspection(file, content, false);
                 });
             }
         }
@@ -1026,7 +1098,11 @@ public class MainActivity extends AppCompatActivity
             themeColorOrFallback(
                 com.google.android.material.R.attr.colorPrimary, R.color.ide_accent),
             this::applyPrefsToEditor,
-            this::recreate);
+            this::recreate,
+            () -> {
+                OpenFile open = findOpenFile(currentEditorFile);
+                if (open != null) scheduleInspection(currentEditorFile, open.getContent(), true);
+            });
     }
 
     private void showWelcomeStatus(boolean projectOpen) {
@@ -1215,6 +1291,7 @@ public class MainActivity extends AppCompatActivity
         runController.cancelPendingChecks();
         taskScheduler.shutdown();
         if (completionManager != null) completionManager.cancelPending();
+        if (inspectionManager != null) inspectionManager.cancelPending();
         if (projectIndexer != null) {
             projectIndexer.clear();
         }

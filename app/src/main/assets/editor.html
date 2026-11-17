@@ -400,7 +400,7 @@
             function toMonacoSuggestions(items, range) {
                 return (items || []).map(function(item) {
                     let sortText = String(item.sortPriority || 9999).padStart(5, '0') + (item.label || '');
-                    return {
+                    const suggestion = {
                         label: item.label,
                         kind: monacoKindFor(item.kind),
                         detail: item.detail || '',
@@ -412,6 +412,20 @@
                         sortText: sortText,
                         range: range
                     };
+                    // Auto-import: insert the import line at the top of the file
+                    // in the same edit, so accepting the suggestion just works.
+                    if (item.importText && editor && editor.getModel()) {
+                        const m = editor.getModel();
+                        const line = computeImportInsertLine(m);
+                        suggestion.additionalTextEdits = [{
+                            range: {
+                                startLineNumber: line, startColumn: 1,
+                                endLineNumber: line, endColumn: 1
+                            },
+                            text: item.importText + '\n'
+                        }];
+                    }
+                    return suggestion;
                 });
             }
 
@@ -481,12 +495,50 @@
                 return (lastImport || packageLine || 0) + 1;
             }
 
-            monaco.languages.registerCodeActionProvider('java', {
+            ['java', 'python', 'javascript'].forEach(function(lang) {
+            monaco.languages.registerCodeActionProvider(lang, {
                 provideCodeActions: function(model, range, context) {
                     const actions = [];
                     const markers = context.markers || [];
                     for (let i = 0; i < markers.length; i++) {
                         const marker = markers[i];
+                        // Inspection quick fixes.
+                        if (marker.code === 'unused-import') {
+                            actions.push({
+                                title: "Remove unused import",
+                                kind: 'quickfix',
+                                isPreferred: true,
+                                diagnostics: [marker],
+                                edit: { edits: [{
+                                    range: {
+                                        startLineNumber: marker.startLineNumber, startColumn: 1,
+                                        endLineNumber: marker.startLineNumber + 1, endColumn: 1
+                                    },
+                                    text: ''
+                                }] }
+                            });
+                            continue;
+                        }
+                        if (marker.code === 'trailing-whitespace') {
+                            const lineText = model.getLineContent(marker.startLineNumber);
+                            const trimmed = lineText.replace(/[ \t]+$/, '');
+                            if (trimmed !== lineText) {
+                                actions.push({
+                                    title: "Trim trailing whitespace",
+                                    kind: 'quickfix',
+                                    diagnostics: [marker],
+                                    edit: { edits: [{
+                                        range: {
+                                            startLineNumber: marker.startLineNumber, startColumn: 1,
+                                            endLineNumber: marker.startLineNumber,
+                                            endColumn: lineText.length + 1
+                                        },
+                                        text: trimmed
+                                    }] }
+                                });
+                            }
+                            continue;
+                        }
                         const cm = /^(\w+) cannot be resolved to a type/.exec(marker.message);
                         if (!cm) continue;
                         let candidates = [];
@@ -514,6 +566,7 @@
                     }
                     return { actions: actions, dispose: function() {} };
                 }
+            });
             });
 
             // Notify ready
@@ -632,9 +685,12 @@
                         endLineNumber: d.endLine || d.line,
                         endColumn: d.endColumn || 100,
                         message: d.message,
-                        severity: d.severity === 'ERROR' ? monaco.MarkerSeverity.Error : 
-                                 d.severity === 'WARNING' ? monaco.MarkerSeverity.Warning : 
-                                 monaco.MarkerSeverity.Info
+                        severity: d.severity === 'ERROR' ? monaco.MarkerSeverity.Error :
+                                 d.severity === 'WARNING' ? monaco.MarkerSeverity.Warning :
+                                 d.severity === 'WEAK_WARNING'
+                                     ? (monaco.MarkerSeverity.Warning || monaco.MarkerSeverity.Info)
+                                     : monaco.MarkerSeverity.Info,
+                        code: d.code || undefined
                     };
                 });
                 monaco.editor.setModelMarkers(editor.getModel(), 'java', markers);

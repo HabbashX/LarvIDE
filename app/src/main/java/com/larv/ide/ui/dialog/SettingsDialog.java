@@ -48,6 +48,7 @@ public class SettingsDialog {
         void onAccentChanged(String newAccent);
         void onEditorSettingsApplied(String themeId, String fontFamily,
                                      int fontSize, int tabSize);
+        void onInspectionSettingsApplied();
     }
 
     public static void show(Activity activity, @NonNull Callbacks callbacks) {
@@ -99,6 +100,8 @@ public class SettingsDialog {
                 "theme accent color font appearance light dark"},
             {"editor", "Editor", "E",
                 "editor font size tab wrap line numbers minimap indent guides autosave"},
+            {"inspections", "Inspections", "I",
+                "inspection warnings errors problems todo unused import whitespace code quality"},
             {"build", "Build, Execution, Deployment", "B",
                 "build java jdk language level linux termux runtime pkg terminal environment"},
             {"project", "Project", "P", "project hidden files"},
@@ -320,6 +323,18 @@ public class SettingsDialog {
             ed.putInt("editorFontSize", newFontSize).putInt("editorTabSize", newTabSize);
         }
 
+        LinearLayout inspections = panes.get("inspections");
+        if (inspections != null && inspections.getTag() instanceof Object[]) {
+            Object[] state = (Object[]) inspections.getTag();
+            Spinner lengthSpinner = (Spinner) state[0];
+            Spinner severitySpinner = (Spinner) state[1];
+            String[] severityValues = (String[]) state[2];
+            ed.putInt(com.larv.ide.infrastructure.analysis.InspectionConfig.PREF_MAX_LINE,
+                Integer.parseInt((String) lengthSpinner.getSelectedItem()));
+            ed.putString(com.larv.ide.infrastructure.analysis.InspectionConfig.PREF_MIN_SEVERITY,
+                severityValues[severitySpinner.getSelectedItemPosition()]);
+        }
+
         LinearLayout build = panes.get("build");
         if (build != null && build.getTag() instanceof Object[]) {
             Spinner levelSpinner = (Spinner) ((Object[]) build.getTag())[0];
@@ -327,6 +342,7 @@ public class SettingsDialog {
         }
 
         ed.apply();
+        callbacks.onInspectionSettingsApplied();
 
         if (editor != null) {
             callbacks.onEditorSettingsApplied(
@@ -395,6 +411,8 @@ public class SettingsDialog {
             buildAppearancePane(pane, activity, prefs, callbacks, accent);
         } else if ("editor".equals(category)) {
             buildEditorPane(pane, activity, prefs, callbacks, accent);
+        } else if ("inspections".equals(category)) {
+            buildInspectionsPane(pane, activity, prefs, accent);
         } else if ("build".equals(category)) {
             buildBuildPane(pane, activity, prefs, callbacks, accent);
         } else if ("project".equals(category)) {
@@ -536,6 +554,61 @@ public class SettingsDialog {
         pane.addView(tabSpinner);
 
         pane.setTag(new Object[]{fontSeek, tabSpinner, prefs});
+    }
+
+    // ---- Inspections --------------------------------------------------------
+
+    private static void buildInspectionsPane(LinearLayout pane, Activity activity,
+                                             SharedPreferences prefs, int accent) {
+        String prefix = com.larv.ide.infrastructure.analysis.InspectionConfig.PREFIX;
+        pane.addView(sectionTitle(activity, "Live analysis"));
+        pane.addView(toggle(activity, accent, "Inspect while typing (700 ms debounce)",
+            prefs.getBoolean(prefix + "live", true),
+            (b, checked) -> {
+                prefs.edit().putBoolean(prefix + "live", checked).apply();
+                if (!checked) {
+                    // Clearing markers is handled by MainActivity on the next edit.
+                }
+            }));
+
+        pane.addView(divider(activity));
+        pane.addView(sectionTitle(activity, "Enabled inspections"));
+        String[][] checks = {
+            {prefix + "unusedImports", "Unused imports (warning)"},
+            {prefix + "trailingWhitespace", "Trailing whitespace (weak warning)"},
+            {prefix + "longLines", "Long lines (weak warning)"},
+            {prefix + "todoComments", "TODO / FIXME comments (info)"},
+            {prefix + "debugStatements", "Debug output left in source (info)"},
+            {prefix + "emptyCatch", "Empty catch blocks (warning)"},
+            {prefix + "stringComparison", "String == comparison (warning)"},
+            {prefix + "tabs", "Tab characters (weak warning)"},
+        };
+        boolean[] defaults = {true, true, true, true, true, true, true, false};
+        for (int i = 0; i < checks.length; i++) {
+            final String key = checks[i][0];
+            pane.addView(toggle(activity, accent, checks[i][1],
+                prefs.getBoolean(key, defaults[i]),
+                (b, checked) -> prefs.edit().putBoolean(key, checked).apply()));
+        }
+
+        pane.addView(divider(activity));
+        pane.addView(sectionTitle(activity, "Thresholds"));
+        pane.addView(label(activity, "Maximum line length"));
+        String[] lengths = {"80", "100", "120", "150"};
+        int savedLength = prefs.getInt(prefix + "maxLineLength", 120);
+        Spinner lengthSpinner = spinner(activity, lengths,
+            Math.max(0, java.util.Arrays.asList(lengths).indexOf(String.valueOf(savedLength))));
+        pane.addView(lengthSpinner);
+
+        pane.addView(label(activity, "Show severities"));
+        String[] severities = {"All", "Weak warnings and above", "Warnings and above", "Errors only"};
+        String[] severityValues = {"INFO", "WEAK_WARNING", "WARNING", "ERROR"};
+        String savedSeverity = prefs.getString(prefix + "minSeverity", "WEAK_WARNING");
+        int severityIndex = java.util.Arrays.asList(severityValues).indexOf(savedSeverity);
+        Spinner severitySpinner = spinner(activity, severities, Math.max(0, severityIndex));
+        pane.addView(severitySpinner);
+
+        pane.setTag(new Object[]{lengthSpinner, severitySpinner, severityValues});
     }
 
     // ---- Build, Execution, Deployment ---------------------------------------

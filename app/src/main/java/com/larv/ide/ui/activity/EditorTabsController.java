@@ -87,6 +87,10 @@ final class EditorTabsController {
         String filePath = activity.openFiles.get(index).getFilePath();
         activity.currentEditorFile = filePath;
         activity.highlightTreeFile(filePath);
+        OpenFile opened = activity.findOpenFile(filePath);
+        if (opened != null) {
+            activity.scheduleInspection(filePath, opened.getContent(), true);
+        }
 
         ensureEditorFragment();
         OpenFile openFile = activity.findOpenFile(filePath);

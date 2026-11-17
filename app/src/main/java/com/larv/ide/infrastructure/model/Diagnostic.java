@@ -2,7 +2,7 @@ package com.larv.ide.infrastructure.model;
 
 public class Diagnostic {
     public enum Severity {
-        ERROR, WARNING, INFO
+        ERROR, WARNING, WEAK_WARNING, INFO
     }
 
     private String filePath;

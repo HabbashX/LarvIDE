@@ -11,6 +11,19 @@ import java.util.List;
 
 public class ProjectIndexerTest {
 
+    @Test
+    public void contentAwareCompletionIncludesLocalsAndLanguageSnippets() {
+        ProjectIndexer indexer = new ProjectIndexer();
+        String java = "class T {\n    void m() {\n        int localValue = 1;\n        loc\n    }\n}\n";
+        List<CompletionItem> items = indexer.getCompletions("loc", "/t/T.java", 4, 9,
+            null, java);
+        assertTrue(has(items, "localValue"));
+
+        List<CompletionItem> python = indexer.getCompletions("def", "/t/a.py", 1, 4,
+            null, "def ");
+        assertTrue(has(python, "def"));
+    }
+
     private static boolean has(List<CompletionItem> items, String label) {
         for (CompletionItem i : items) {
             if (label.equals(i.getLabel())) return true;

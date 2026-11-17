@@ -42,6 +42,39 @@ public class ProjectIndexer {
     private static final Pattern IMPORT_PATTERN = Pattern.compile("import\\s+([\\w.]+);");
     private static final Pattern PACKAGE_PATTERN = Pattern.compile("package\\s+([\\w.]+);");
 
+    /** Cheap, static language keywords/snippets — no parser, no allocations per call. */
+    private static final String[][] PYTHON_KEYWORDS = {
+        {"def", "Function", "def ${1:name}(${2}):\n    ${3}"},
+        {"class", "Class", "class ${1:Name}:\n    ${2}"},
+        {"if", "If", "if ${1:condition}:\n    ${2}"},
+        {"elif", "Else-if", "elif ${1:condition}:\n    ${2}"},
+        {"else", "Else", "else:\n    ${1}"},
+        {"for", "For loop", "for ${1:item} in ${2:items}:\n    ${3}"},
+        {"while", "While", "while ${1:condition}:\n    ${2}"},
+        {"try", "Try/except", "try:\n    ${1}\nexcept ${2:Exception} as e:\n    ${3}"},
+        {"with", "Context manager", "with ${1:expr} as ${2:name}:\n    ${3}"},
+        {"return", "Return", "return ${1:value}"},
+        {"import", "Import", "import ${1:module}"},
+        {"from", "From import", "from ${1:module} import ${2:name}"},
+        {"print", "Print", "print(${1})"}
+    };
+
+    private static final String[][] JS_KEYWORDS = {
+        {"function", "Function", "function ${1:name}(${2}) {\n    ${3}\n}"},
+        {"const", "Constant", "const ${1:name} = ${2:value};"},
+        {"let", "Variable", "let ${1:name} = ${2:value};"},
+        {"if", "If", "if (${1:condition}) {\n    ${2}\n}"},
+        {"else", "Else", "else {\n    ${1}\n}"},
+        {"for", "For loop", "for (${1:let i = 0; i < n; i++}) {\n    ${2}\n}"},
+        {"while", "While", "while (${1:condition}) {\n    ${2}\n}"},
+        {"try", "Try/catch", "try {\n    ${1}\n} catch (${2:e}) {\n    ${3}\n}"},
+        {"class", "Class", "class ${1:Name} {\n    ${2}\n}"},
+        {"return", "Return", "return ${1};"},
+        {"async", "Async", "async ${1:function} ${2:name}() {\n    ${3}\n}"},
+        {"await", "Await", "await ${1:promise}"},
+        {"console.log", "Log", "console.log(${1});"}
+    };
+
     private static final String[][] KEYWORDS = {
         {"class", "Class declaration", "class ${1:Name} {\n    ${2}\n}"},
         {"interface", "Interface declaration", "interface ${1:Name} {\n    ${2}\n}"},
@@ -245,30 +278,46 @@ public class ProjectIndexer {
 
     @RequiresApi(api = Build.VERSION_CODES.N)
     public List<CompletionItem> getCompletions(@NonNull String prefix, String currentFile, int line, int column) {
-        List<CompletionItem> completions = new ArrayList<>(48);
+        return getCompletions(prefix, currentFile, line, column, null);
+    }
+
+    /**
+     * Content-aware variant used by the editor. Locals and language snippets
+     * are included and the result list is capped before crossing the WebView.
+     */
+    @RequiresApi(api = Build.VERSION_CODES.N)
+    private List<CompletionItem> getCompletions(@NonNull String prefix, String currentFile,
+                                                int line, int column, String currentContent) {
+        String query = prefix == null ? "" : prefix;
+        List<CompletionItem> completions = new ArrayList<>(64);
         Set<String> seen = new HashSet<>();
+
+        // Locals first: they are the most likely intent and need no index.
+        addLocalCompletions(currentContent, line, query, completions, seen);
 
         FileSymbols currentSymbols = resolveCurrentSymbols(currentFile);
         Set<String> currentImports = currentSymbols != null
             ? currentSymbols.imports : java.util.Collections.emptySet();
 
         if (currentSymbols != null) {
-            addCompletionsFromSymbols(completions, seen, currentSymbols, prefix, true);
+            addCompletionsFromSymbols(completions, seen, currentSymbols, query,
+                true, currentImports);
         }
 
         for (Map.Entry<String, FileSymbols> entry : fileIndex.entrySet()) {
             if (!entry.getKey().equals(currentFile)) {
-                addCompletionsFromSymbols(completions, seen, entry.getValue(), prefix,
-                    isAccessible(entry.getValue(), currentImports));
+                addCompletionsFromSymbols(completions, seen, entry.getValue(), query,
+                    isAccessible(entry.getValue(), currentImports), currentImports);
             }
         }
 
-        addStdlibCompletions(completions, seen, currentImports, prefix);
-
-        addKeywordsAndSnippets(completions, prefix);
+        addStdlibCompletions(completions, seen, currentImports, query);
+        addKeywordsAndSnippets(completions, query, languageOf(currentFile));
 
         completions.sort(COMPLETION_ORDER);
-
+        if (completions.size() > PerformanceConfig.MAX_COMPLETIONS) {
+            return new ArrayList<>(completions.subList(0, PerformanceConfig.MAX_COMPLETIONS));
+        }
         return completions;
     }
 
@@ -281,7 +330,52 @@ public class ProjectIndexer {
                 trimToSize(memberOf), currentContent, line,
                 resolveCurrentSymbols(currentFile), prefix);
         }
-        return getCompletions(prefix == null ? "" : prefix, currentFile, line, column);
+        return getCompletions(prefix == null ? "" : prefix, currentFile, line, column, currentContent);
+    }
+
+    /** Scan a few lines above the cursor for locals/parameters (no full parse). */
+    private static void addLocalCompletions(String content, int cursorLine, String prefix,
+                                            List<CompletionItem> out, Set<String> seen) {
+        if (content == null || content.isEmpty() || cursorLine <= 0) return;
+        int offset = lineStartOffset(content, cursorLine);
+        int lines = 0;
+        while (offset >= 0 && lines < PerformanceConfig.MAX_LOCAL_SCAN_LINES) {
+            int nl = content.indexOf('\n', offset);
+            int end = nl < 0 ? content.length() : nl;
+            int len = end - offset;
+            if (len > 0 && len < 512) {
+                String line = content.substring(offset, end);
+                addLocalFromMatcher(LOCAL_DECL_PATTERN.matcher(line), 2, prefix, out, seen);
+                addLocalFromMatcher(PARAM_PATTERN.matcher(line), 2, prefix, out, seen);
+            }
+            lines++;
+            if (offset == 0) break;
+            // offset-1 is the newline before this line; search from the
+            // character before it to land on the previous line's start.
+            nl = content.lastIndexOf('\n', offset - 2);
+            offset = nl < 0 ? 0 : nl + 1;
+        }
+    }
+
+    private static void addLocalFromMatcher(Matcher m, int nameGroup, String prefix,
+                                            List<CompletionItem> out, Set<String> seen) {
+        while (m.find()) {
+            String name = m.group(nameGroup);
+            if (name == null || !startsWithIgnoreCase(name, prefix) || !seen.add(name)) continue;
+            CompletionItem item = new CompletionItem(name, CompletionItem.Kind.LOCAL_VARIABLE);
+            item.setDetail("local variable");
+            item.setSortPriority(matchScore(name, prefix));
+            out.add(item);
+        }
+    }
+
+    private static String languageOf(String file) {
+        if (file == null) return "";
+        String lower = file.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".py")) return "python";
+        if (lower.endsWith(".js") || lower.endsWith(".jsx")
+            || lower.endsWith(".ts") || lower.endsWith(".tsx")) return "javascript";
+        return "java";
     }
 
     private List<CompletionItem> getMemberCompletions(String receiver, String content,
@@ -444,24 +538,29 @@ public class ProjectIndexer {
     }
 
     private void addCompletionsFromSymbols(List<CompletionItem> completions, Set<String> seen,
-            FileSymbols symbols, String prefix, boolean accessible) {
-        if (!accessible) return;
-
+            FileSymbols symbols, String prefix, boolean accessible, Set<String> currentImports) {
+        // Classes from non-imported packages stay available with an auto-import
+        // edit; members of an inaccessible compilation unit are omitted below.
         for (ClassSymbol cls : symbols.classes) {
             if (startsWithIgnoreCase(cls.name, prefix) && seen.add(cls.name)) {
                 CompletionItem item = new CompletionItem(cls.name, CompletionItem.Kind.CLASS);
                 item.setDetail(cls.type + " in " + symbols.fileName);
-                item.setSortPriority(10);
+                item.setSortPriority(10 + matchScore(cls.name, prefix));
+                if (!accessible && symbols.packageName != null && !symbols.packageName.isEmpty()) {
+                    item.setImportText("import " + symbols.packageName + "." + cls.name + ";");
+                    item.setSortPriority(300 + matchScore(cls.name, prefix));
+                }
                 completions.add(item);
             }
         }
+        if (!accessible) return;
 
         for (MethodSymbol method : symbols.methods) {
             if (startsWithIgnoreCase(method.name, prefix) && seen.add(method.name)) {
                 CompletionItem item = new CompletionItem(method.name, CompletionItem.Kind.METHOD);
                 item.setDetail(method.signature);
                 item.setInsertText(method.name + "()");
-                item.setSortPriority(20);
+                item.setSortPriority(20 + matchScore(method.name, prefix));
                 completions.add(item);
             }
         }
@@ -470,7 +569,7 @@ public class ProjectIndexer {
             if (startsWithIgnoreCase(field.name, prefix) && seen.add(field.name)) {
                 CompletionItem item = new CompletionItem(field.name, CompletionItem.Kind.FIELD);
                 item.setDetail(field.type + " in " + symbols.fileName);
-                item.setSortPriority(30);
+                item.setSortPriority(30 + matchScore(field.name, prefix));
                 completions.add(item);
             }
         }
@@ -481,11 +580,8 @@ public class ProjectIndexer {
                                       Set<String> imports, String prefix) {
         for (Map.Entry<String, List<CompletionItem>> entry : stdlibIndex.entrySet()) {
             String packageName = entry.getKey();
-
-            if (!matchesImport(imports, packageName)
-                && !packageName.startsWith("java.lang")) {
-                continue;
-            }
+            boolean accessible = matchesImport(imports, packageName)
+                || packageName.startsWith("java.lang");
 
             for (CompletionItem item : entry.getValue()) {
                 if (startsWithIgnoreCase(item.getLabel(), prefix) && seen.add(item.getLabel())) {
@@ -493,23 +589,64 @@ public class ProjectIndexer {
                     copy.setDetail(item.getDetail());
                     copy.setDocumentation(item.getDocumentation());
                     copy.setInsertText(item.getInsertText());
-                    copy.setSortPriority(item.getSortPriority() + 100);
+                    copy.setSortPriority((accessible ? 100 : 400) + matchScore(item.getLabel(), prefix));
+                    if (!accessible) {
+                        copy.setImportText("import " + packageName + "." + item.getLabel() + ";");
+                    }
                     completions.add(copy);
                 }
             }
         }
     }
 
-    private void addKeywordsAndSnippets(List<CompletionItem> completions, String prefix) {
-        for (String[] kw : KEYWORDS) {
+    private void addKeywordsAndSnippets(List<CompletionItem> completions, String prefix,
+                                        String language) {
+        String[][] table = "python".equals(language) ? PYTHON_KEYWORDS
+            : "javascript".equals(language) ? JS_KEYWORDS : KEYWORDS;
+        for (String[] kw : table) {
             if (startsWithIgnoreCase(kw[0], prefix)) {
-                CompletionItem item = new CompletionItem(kw[0], CompletionItem.Kind.SNIPPET);
-                item.setDetail(kw[1]);
-                item.setInsertText(kw[2]);
-                item.setSortPriority(1000);
-                completions.add(item);
+                if (!seenSnippet(completions, kw[0])) {
+                    CompletionItem item = new CompletionItem(kw[0], CompletionItem.Kind.SNIPPET);
+                    item.setDetail(kw[1]);
+                    item.setInsertText(kw[2]);
+                    item.setSortPriority(1000 + matchScore(kw[0], prefix));
+                    completions.add(item);
+                }
             }
         }
+    }
+
+    private static boolean seenSnippet(List<CompletionItem> items, String label) {
+        for (CompletionItem item : items) {
+            if (item.getKind() == CompletionItem.Kind.SNIPPET && label.equals(item.getLabel())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Rank exact matches above starts-with, camel hunks and loose matches. */
+    private static int matchScore(String label, String prefix) {
+        if (prefix == null || prefix.isEmpty()) return 5;
+        if (label.equalsIgnoreCase(prefix)) return 0;
+        if (startsWithIgnoreCase(label, prefix)) return 2;
+        if (containsCamelHunk(label, prefix)) return 4;
+        return 8;
+    }
+
+    private static boolean containsCamelHunk(String label, String hunk) {
+        if (hunk.isEmpty()) return true;
+        char first = Character.toLowerCase(hunk.charAt(0));
+        for (int i = 0; i < label.length(); i++) {
+            if (Character.toLowerCase(label.charAt(i)) != first) continue;
+            int j = 1;
+            while (j < hunk.length() && i + j < label.length()
+                && Character.toLowerCase(label.charAt(i + j)) == Character.toLowerCase(hunk.charAt(j))) {
+                j++;
+            }
+            if (j == hunk.length()) return true;
+        }
+        return false;
     }
 
     private boolean isAccessible(FileSymbols symbols, Set<String> imports) {

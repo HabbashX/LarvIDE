@@ -13,6 +13,8 @@ public class CompletionItem {
     private Kind kind;
     private String insertText;
     private String filterText;
+    /** Optional import line Monaco inserts as an additional text edit. */
+    private String importText;
     private int sortPriority;
 
     public CompletionItem() {}
@@ -68,6 +70,14 @@ public class CompletionItem {
 
     public void setFilterText(String filterText) {
         this.filterText = filterText;
+    }
+
+    public String getImportText() {
+        return importText;
+    }
+
+    public void setImportText(String importText) {
+        this.importText = importText;
     }
 
     public int getSortPriority() {
