@@ -52,7 +52,7 @@ public class FileTreeItemView extends LinearLayout {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        int chevronCenter = basePaddingLeft + Math.round(7 * getResources().getDisplayMetrics().density);
+        int chevronCenter = basePaddingLeft + Math.round(6 * getResources().getDisplayMetrics().density);
         for (int level = 0; level < depth; level++) {
             float x = chevronCenter + level * indentPx;
             canvas.drawLine(x, 0, x, getHeight(), guidePaint);

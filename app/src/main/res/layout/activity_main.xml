@@ -119,8 +119,8 @@
 
                             <ImageButton
                                 android:id="@+id/btnNewFile"
-                                android:layout_width="24dp"
-                                android:layout_height="24dp"
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
                                 android:background="?attr/selectableItemBackgroundBorderless"
                                 android:contentDescription="@string/new_file"
                                 android:src="@drawable/ic_new_file"
@@ -129,8 +129,8 @@
 
                             <ImageButton
                                 android:id="@+id/btnNewFolder"
-                                android:layout_width="24dp"
-                                android:layout_height="24dp"
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
                                 android:layout_marginStart="4dp"
                                 android:background="?attr/selectableItemBackgroundBorderless"
                                 android:contentDescription="@string/new_folder"
@@ -140,8 +140,8 @@
 
                             <ImageButton
                                 android:id="@+id/btnRefreshProject"
-                                android:layout_width="24dp"
-                                android:layout_height="24dp"
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
                                 android:layout_marginStart="4dp"
                                 android:background="?attr/selectableItemBackgroundBorderless"
                                 android:contentDescription="Refresh"
@@ -151,8 +151,8 @@
 
                             <ImageButton
                                 android:id="@+id/btnCollapseAll"
-                                android:layout_width="24dp"
-                                android:layout_height="24dp"
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
                                 android:layout_marginStart="4dp"
                                 android:background="?attr/selectableItemBackgroundBorderless"
                                 android:contentDescription="Collapse All"
@@ -162,8 +162,8 @@
 
                             <ImageButton
                                 android:id="@+id/btnProjectSearch"
-                                android:layout_width="24dp"
-                                android:layout_height="24dp"
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
                                 android:background="?attr/selectableItemBackgroundBorderless"
                                 android:contentDescription="Search files"
                                 android:src="@drawable/ic_search"
@@ -172,8 +172,8 @@
 
                             <ImageButton
                                 android:id="@+id/btnProjectSort"
-                                android:layout_width="24dp"
-                                android:layout_height="24dp"
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
                                 android:layout_marginStart="2dp"
                                 android:background="?attr/selectableItemBackgroundBorderless"
                                 android:contentDescription="Sort files"
@@ -183,8 +183,8 @@
 
                             <ImageButton
                                 android:id="@+id/btnLocateFile"
-                                android:layout_width="24dp"
-                                android:layout_height="24dp"
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
                                 android:layout_marginStart="2dp"
                                 android:background="?attr/selectableItemBackgroundBorderless"
                                 android:contentDescription="Locate current file"
@@ -194,8 +194,8 @@
 
                             <ImageButton
                                 android:id="@+id/btnCloseProjectWindow"
-                                android:layout_width="24dp"
-                                android:layout_height="24dp"
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
                                 android:layout_marginStart="4dp"
                                 android:background="?attr/selectableItemBackgroundBorderless"
                                 android:contentDescription="Close project panel"

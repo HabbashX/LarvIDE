@@ -18,8 +18,8 @@
 
     <ImageView
         android:id="@+id/fileChevron"
-        android:layout_width="14dp"
-        android:layout_height="14dp"
+        android:layout_width="12dp"
+        android:layout_height="12dp"
         android:layout_gravity="center_vertical"
         android:src="@drawable/ic_chevron_right"
         app:tint="@color/text_secondary"
@@ -27,9 +27,9 @@
 
     <ImageView
         android:id="@+id/fileIcon"
-        android:layout_width="14dp"
-        android:layout_height="14dp"
-        android:layout_marginStart="4dp"
+        android:layout_width="12dp"
+        android:layout_height="12dp"
+        android:layout_marginStart="3dp"
         android:layout_gravity="center_vertical"
         android:src="@drawable/ic_file"
         android:contentDescription="Icon" />
@@ -39,7 +39,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="6dp"
+        android:layout_marginStart="5dp"
         android:layout_gravity="center_vertical"
         android:ellipsize="end"
         android:maxLines="1"
@@ -48,8 +48,8 @@
 
     <ImageView
         android:id="@+id/fileMore"
-        android:layout_width="14dp"
-        android:layout_height="14dp"
+        android:layout_width="12dp"
+        android:layout_height="12dp"
         android:layout_marginStart="2dp"
         android:layout_gravity="center_vertical"
         android:src="@android:drawable/ic_menu_more"
