@@ -1037,14 +1037,14 @@ public class MainActivity extends AppCompatActivity
         int accent = themeColorOrFallback(
             com.google.android.material.R.attr.colorPrimary, R.color.ide_accent);
         int base = ContextCompat.getColor(this, R.color.background);
-        int top = mix(base, accent, 0.26f);
-        int middle = mix(base, accent, 0.14f);
+        int top = mix(base, accent, 0.13f);
+        int middle = mix(base, accent, 0.07f);
         int radius = dp(14);
         GradientDrawable glass = new GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             new int[]{
                 top,
-                withAlpha(middle, 200),
+                withAlpha(middle, 130),
                 Color.TRANSPARENT
             });
         glass.setCornerRadii(new float[]{
@@ -1068,7 +1068,7 @@ public class MainActivity extends AppCompatActivity
         GradientDrawable glass = new GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             new int[]{
-                mix(base, accent, 0.18f),
+                mix(base, accent, 0.09f),
                 base,
                 base
             });
