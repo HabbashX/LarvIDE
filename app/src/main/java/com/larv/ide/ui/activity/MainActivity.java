@@ -16,6 +16,8 @@ import android.os.Looper;
 import android.content.SharedPreferences;
 import android.util.Log;
 
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -497,6 +499,7 @@ public class MainActivity extends AppCompatActivity
         fileTreeRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         fileTreeRecyclerView.setAdapter(fileTreeAdapter);
         fileTreeDrag.setup();
+        applyMenuBarGlass();
 
         bottomPanelAdapter = new BottomPanelAdapter(this);
         bottomViewPager.setAdapter(bottomPanelAdapter);
@@ -1020,6 +1023,37 @@ public class MainActivity extends AppCompatActivity
             case "blue":
             default: setTheme(R.style.Theme_LarvIDE_AccentBlue); break;
         }
+    }
+
+    /**
+     * Glassy menu bar: a translucent accent gradient with rounded bottom
+     * corners. Rebuilt from the current accent so it follows Settings instantly
+     * after the activity is recreated. No blur effect on the view itself — that
+     * would blur the menu labels; the translucency + gradient is the cheap,
+     * low-end-safe way to get the same look.
+     */
+    private void applyMenuBarGlass() {
+        View bar = findViewById(R.id.menuBar);
+        if (bar == null) return;
+        int accent = themeColorOrFallback(
+            com.google.android.material.R.attr.colorPrimary, R.color.ide_accent);
+        int r = Color.red(accent);
+        int g = Color.green(accent);
+        int b = Color.blue(accent);
+        int radius = dp(14);
+        GradientDrawable glass = new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{
+                Color.argb(70, r, g, b),
+                Color.argb(150, 22, 23, 26),
+                Color.argb(45, r, g, b)
+            });
+        glass.setCornerRadii(new float[]{
+            0, 0, 0, 0,
+            radius, radius, radius, radius
+        });
+        glass.setStroke(1, Color.argb(70, r, g, b));
+        bar.setBackground(glass);
     }
 
     private int themeColor(int attr) {
