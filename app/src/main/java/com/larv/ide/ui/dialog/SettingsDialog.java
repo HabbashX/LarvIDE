@@ -16,6 +16,7 @@ import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -50,6 +51,36 @@ public class SettingsDialog {
                                      int fontSize, int tabSize);
         void onInspectionSettingsApplied();
         void onLanguageServerSettingsApplied();
+    }
+
+    /** One node of the IntelliJ-style settings tree. */
+    private static final class NavNode {
+        final String id;
+        final String label;
+        final String badge;
+        final String keywords;
+        final List<NavNode> children = new ArrayList<>();
+        boolean expanded = true;
+
+        NavNode(String id, String label, String badge, String keywords) {
+            this.id = id;
+            this.label = label;
+            this.badge = badge;
+            this.keywords = keywords;
+        }
+
+        NavNode add(NavNode child) {
+            children.add(child);
+            return this;
+        }
+
+        boolean isLeaf() {
+            return children.isEmpty();
+        }
+    }
+
+    private interface NavClick {
+        void onClick(NavNode node);
     }
 
     public static void show(Activity activity, @NonNull Callbacks callbacks) {
@@ -95,39 +126,49 @@ public class SettingsDialog {
         split.setPadding(0, dp(activity, 8), 0, 0);
         root.addView(split);
 
-        // Category groups: id, label, badge, search keywords.
-        final String[][] groups = {
-            {"appearance", "Appearance & Behavior", "A",
-                "theme accent color font appearance light dark"},
-            {"editor", "Editor", "E",
-                "editor font size tab wrap line numbers minimap indent guides autosave"},
-            {"inspections", "Inspections", "I",
-                "inspection warnings errors problems todo unused import whitespace code quality"},
-            {"lsp", "Language Servers (experimental)", "L",
-                "language server LSP clangd pylsp jdtls typescript memory ram performance experimental"},
-            {"build", "Build, Execution, Deployment", "B",
-                "build java jdk language level linux termux runtime pkg terminal environment"},
-            {"project", "Project", "P", "project hidden files"},
-        };
+        // IntelliJ-style settings tree. Parents are expandable sections;
+        // leaves are the actual settings pages.
+        final List<NavNode> tree = new ArrayList<>();
+        tree.add(new NavNode("overview_appearance", "Appearance & Behavior", "A",
+            "appearance theme accent color font light dark")
+            .add(new NavNode("appearance", "Appearance", "a",
+                "theme accent color light dark custom")));
+        tree.add(new NavNode("overview_editor", "Editor", "E",
+            "editor font size tab wrap line numbers minimap indent guides autosave")
+            .add(new NavNode("editor", "General", "g",
+                "font size tab wrap line numbers minimap indent guides autosave"))
+            .add(new NavNode("inspections", "Inspections", "i",
+                "inspection warnings errors problems todo unused import whitespace code quality syntax"))
+            .add(new NavNode("lsp", "Language Servers", "l",
+                "language server LSP clangd pylsp jdtls typescript memory ram performance experimental")));
+        tree.add(new NavNode("overview_build", "Build, Execution, Deployment", "B",
+            "build java jdk language level linux termux runtime pkg terminal environment")
+            .add(new NavNode("build", "Java Compiler", "j",
+                "java jdk language level compiler")));
+        tree.add(new NavNode("overview_project", "Project", "P", "project hidden files")
+            .add(new NavNode("project", "Project Settings", "p", "project hidden files")));
+
+        final List<NavNode> allNodes = new ArrayList<>();
+        collectNodes(tree, allNodes);
 
         // Build every pane ONCE so unsaved edits are not lost when switching
-        // categories (the old implementation rebuilt and discarded them).
+        // pages (the old implementation rebuilt and discarded them).
         final Map<String, LinearLayout> panes = new LinkedHashMap<>();
         final Map<String, ScrollView> scrollers = new LinkedHashMap<>();
         FrameLayout content = new FrameLayout(activity);
         content.setLayoutParams(new LinearLayout.LayoutParams(
             0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
-        for (String[] group : groups) {
+        for (NavNode node : allNodes) {
             LinearLayout pane = new LinearLayout(activity);
             pane.setOrientation(LinearLayout.VERTICAL);
-            pane.setPadding(dp(activity, 16), dp(activity, 8), dp(activity, 16), dp(activity, 16));
-            buildSettingsPane(pane, activity, prefs, callbacks, group[0], accent);
-            panes.put(group[0], pane);
+            pane.setPadding(dp(activity, 22), dp(activity, 12), dp(activity, 22), dp(activity, 20));
+            buildSettingsPane(pane, activity, prefs, callbacks, node.id, accent);
+            panes.put(node.id, pane);
 
             ScrollView scroller = new ScrollView(activity);
             scroller.setFillViewport(true);
             scroller.addView(pane);
-            scrollers.put(group[0], scroller);
+            scrollers.put(node.id, scroller);
             content.addView(scroller);
         }
 
@@ -142,59 +183,42 @@ public class SettingsDialog {
             horizontal.setHorizontalScrollBarEnabled(false);
             horizontal.addView(navList);
             horizontal.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 52)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 56)));
             navHost = horizontal;
         } else {
             ScrollView vertical = new ScrollView(activity);
             vertical.addView(navList);
             vertical.setBackgroundColor(ContextCompat.getColor(activity, R.color.surface_variant));
             vertical.setLayoutParams(new LinearLayout.LayoutParams(
-                dp(activity, 200), ViewGroup.LayoutParams.MATCH_PARENT));
+                dp(activity, 250), ViewGroup.LayoutParams.MATCH_PARENT));
             navHost = vertical;
         }
         split.addView(navHost);
         split.addView(content);
 
         final String[] selected = {"appearance"};
-
-        // Re-built on every selection/search change, so click handlers are
-        // always fresh (refreshCategories used to drop them).
         final Runnable[] renderNav = {null};
         renderNav[0] = () -> {
             String query = search.getText().toString().trim().toLowerCase(Locale.ROOT);
             boolean anyVisible = false;
-            List<String> visible = new ArrayList<>();
-            for (String[] group : groups) {
-                String haystack = (group[1] + " " + group[3]).toLowerCase(Locale.ROOT);
-                if (query.isEmpty() || haystack.contains(query)) visible.add(group[0]);
-            }
-            if (!visible.isEmpty() && !visible.contains(selected[0])) {
-                selected[0] = visible.get(0);
-            }
             navList.removeAllViews();
-            for (String[] group : groups) {
-                if (!visible.contains(group[0])) continue;
+            for (NavNode top : tree) {
+                if (!query.isEmpty() && !matchesQuery(top, query)) continue;
                 anyVisible = true;
-                LinearLayout row = categoryRow(activity, group,
-                    group[0].equals(selected[0]), accent);
-                row.setLayoutParams(narrow
-                    ? new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                    : new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-                row.setOnClickListener(v -> {
-                    selected[0] = group[0];
-                    renderNav[0].run();
-                    showPane(scrollers, selected[0]);
-                });
-                navList.addView(row);
+                renderNode(activity, top, 0, query, selected[0], accent, navList,
+                    node -> {
+                        selected[0] = node.id;
+                        if (!node.isLeaf()) node.expanded = !node.expanded;
+                        renderNav[0].run();
+                        showPane(scrollers, selected[0]);
+                    });
             }
             if (!anyVisible) {
                 TextView empty = new TextView(activity);
                 empty.setText("No matching settings");
-                empty.setTextSize(13);
+                empty.setTextSize(14);
                 empty.setTextColor(ContextCompat.getColor(activity, R.color.text_secondary));
-                empty.setPadding(dp(activity, 14), dp(activity, 12), dp(activity, 12), dp(activity, 12));
+                empty.setPadding(dp(activity, 16), dp(activity, 16), dp(activity, 16), dp(activity, 16));
                 navList.addView(empty);
             }
             showPane(scrollers, selected[0]);
@@ -234,9 +258,44 @@ public class SettingsDialog {
         dialog.show();
         Window window = dialog.getWindow();
         if (window != null) {
-            int w = Math.min(dp(activity, 920), (int) (dm.widthPixels * 0.94f));
-            int h = Math.min(dp(activity, 680), (int) (dm.heightPixels * 0.86f));
+            int w = Math.min(dp(activity, 1080), (int) (dm.widthPixels * 0.96f));
+            int h = Math.min(dp(activity, 780), (int) (dm.heightPixels * 0.92f));
             window.setLayout(w, h);
+        }
+    }
+
+    private static void collectNodes(List<NavNode> nodes, List<NavNode> out) {
+        for (NavNode node : nodes) {
+            out.add(node);
+            collectNodes(node.children, out);
+        }
+    }
+
+    private static boolean matchesQuery(NavNode node, String query) {
+        if (query.isEmpty()) return true;
+        if ((node.label + " " + node.keywords).toLowerCase(Locale.ROOT).contains(query)) {
+            return true;
+        }
+        for (NavNode child : node.children) {
+            if (matchesQuery(child, query)) return true;
+        }
+        return false;
+    }
+
+    private static void renderNode(Activity activity, NavNode node, int depth, String query,
+                                   String selected, int accent, ViewGroup host,
+                                   NavClick click) {
+        boolean hasQuery = !query.isEmpty();
+        boolean isSelected = node.id.equals(selected);
+        LinearLayout row = treeRow(activity, node, depth, isSelected,
+            hasQuery || node.expanded, accent, hasQuery);
+        row.setOnClickListener(v -> click.onClick(node));
+        host.addView(row);
+        if (hasQuery || node.expanded) {
+            for (NavNode child : node.children) {
+                if (!matchesQuery(child, query)) continue;
+                renderNode(activity, child, depth + 1, query, selected, accent, host, click);
+            }
         }
     }
 
@@ -374,19 +433,35 @@ public class SettingsDialog {
      * Category tree
      * ========================================================================= */
 
-    /** One IntelliJ-like navigation row: a small badge plus the category name. */
-    private static LinearLayout categoryRow(Activity activity, String[] group,
-                                            boolean selected, int accent) {
+    /** One row of the settings tree: disclosure arrow, badge and label. */
+    private static LinearLayout treeRow(Activity activity, NavNode node, int depth,
+                                        boolean selected, boolean expanded, int accent,
+                                        boolean searching) {
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(activity, 12), dp(activity, 10), dp(activity, 12), dp(activity, 10));
+        row.setMinimumHeight(dp(activity, 42));
+        row.setPadding(dp(activity, 8) + depth * dp(activity, 16), dp(activity, 10),
+            dp(activity, 10), dp(activity, 10));
         row.setBackgroundColor(selected
             ? ContextCompat.getColor(activity, R.color.primary_light)
             : android.graphics.Color.TRANSPARENT);
 
+        if (node.isLeaf()) {
+            View spacer = new View(activity);
+            spacer.setLayoutParams(new LinearLayout.LayoutParams(dp(activity, 14), 1));
+            row.addView(spacer);
+        } else {
+            ImageView chevron = new ImageView(activity);
+            chevron.setImageResource(R.drawable.ic_chevron_right);
+            chevron.setColorFilter(ContextCompat.getColor(activity, R.color.text_secondary));
+            chevron.setRotation(expanded && !searching ? 90f : 0f);
+            chevron.setLayoutParams(new LinearLayout.LayoutParams(dp(activity, 14), dp(activity, 14)));
+            row.addView(chevron);
+        }
+
         TextView badge = new TextView(activity);
-        badge.setText(group[2]);
+        badge.setText(node.badge);
         badge.setTextSize(12);
         badge.setTypeface(null, android.graphics.Typeface.BOLD);
         badge.setGravity(Gravity.CENTER);
@@ -394,13 +469,14 @@ public class SettingsDialog {
             selected ? R.color.text_on_primary : R.color.text_primary));
         badge.setBackgroundColor(selected ? accent
             : ContextCompat.getColor(activity, R.color.surface_variant));
-        badge.setWidth(dp(activity, 22));
-        badge.setHeight(dp(activity, 22));
+        badge.setWidth(dp(activity, 24));
+        badge.setHeight(dp(activity, 24));
         row.addView(badge);
 
         TextView label = new TextView(activity);
-        label.setText(group[1]);
-        label.setTextSize(13);
+        label.setText(node.label);
+        label.setTextSize(node.isLeaf() ? 14 : 15);
+        if (!node.isLeaf()) label.setTypeface(null, android.graphics.Typeface.BOLD);
         label.setTextColor(selected
             ? ContextCompat.getColor(activity, R.color.ide_accent)
             : ContextCompat.getColor(activity, R.color.text_primary));
@@ -424,6 +500,11 @@ public class SettingsDialog {
                                           int accent) {
         pane.removeAllViews();
 
+        if (category.startsWith("overview_")) {
+            buildOverviewPane(pane, activity, category);
+            return;
+        }
+
         if ("appearance".equals(category)) {
             buildAppearancePane(pane, activity, prefs, callbacks, accent);
         } else if ("editor".equals(category)) {
@@ -437,6 +518,44 @@ public class SettingsDialog {
         } else if ("project".equals(category)) {
             buildProjectPane(pane, activity, prefs, callbacks);
         }
+    }
+
+    private static void buildOverviewPane(LinearLayout pane, Activity activity, String category) {
+        String title;
+        String body;
+        switch (category) {
+            case "overview_appearance":
+                title = "Appearance & Behavior";
+                body = "Choose the IDE theme, accent colour and editor font. "
+                    + "Use the tree on the left to open Appearance.";
+                break;
+            case "overview_editor":
+                title = "Editor";
+                body = "Configure editing behaviour, code inspections and optional "
+                    + "language servers. Expand Editor in the tree to open a page.";
+                break;
+            case "overview_build":
+                title = "Build, Execution, Deployment";
+                body = "Java language level and the embedded Linux runtime used to "
+                    + "compile and run your projects.";
+                break;
+            default:
+                title = "Project";
+                body = "Project-wide options such as showing hidden files.";
+                break;
+        }
+        TextView heading = new TextView(activity);
+        heading.setText(title);
+        heading.setTextSize(22);
+        heading.setTypeface(null, android.graphics.Typeface.BOLD);
+        heading.setTextColor(ContextCompat.getColor(activity, R.color.text_primary));
+        heading.setPadding(0, 0, 0, dp(activity, 12));
+        pane.addView(heading);
+        TextView text = new TextView(activity);
+        text.setText(body);
+        text.setTextSize(14);
+        text.setTextColor(ContextCompat.getColor(activity, R.color.text_secondary));
+        pane.addView(text);
     }
 
     // ---- Appearance & Behavior ----------------------------------------------
