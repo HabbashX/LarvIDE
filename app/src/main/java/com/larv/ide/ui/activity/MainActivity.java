@@ -1051,8 +1051,7 @@ public class MainActivity extends AppCompatActivity
             0, 0, 0, 0,
             radius, radius, radius, radius
         });
-        glass.setStroke(1, Color.argb(45,
-            Color.red(accent), Color.green(accent), Color.blue(accent)));
+        // No stroke: any outline here reads as a hard border against the canvas.
         bar.setBackground(glass);
     }
 
