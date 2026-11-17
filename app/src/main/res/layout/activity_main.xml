@@ -93,7 +93,7 @@
                         android:layout_height="32dp"
                         android:fillViewport="true"
                         android:scrollbars="none"
-                        android:background="@drawable/bg_project_header"
+                        android:background="@null"
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
                         app:layout_constraintEnd_toEndOf="parent">
